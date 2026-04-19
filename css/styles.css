@@ -1,0 +1,173 @@
+[x-cloak] { display: none !important; }
+
+:root {
+  --pico-font-size: 16px;
+}
+
+main.container-fluid { padding: 1rem 1.5rem; }
+
+article[role="alert"] {
+  border-left: 4px solid var(--pico-color-red-500);
+  background: var(--pico-color-red-50);
+  color: var(--pico-color-red-900);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+article[role="alert"] .close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0 0.5rem;
+  width: auto;
+}
+
+/* ---------- editor layout ---------- */
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.sidebar {
+  position: sticky;
+  top: 1rem;
+  border-right: 1px solid var(--pico-muted-border-color);
+  padding-right: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.sidebar ul.chapters {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+}
+
+.sidebar ul.chapters li a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--pico-color);
+}
+
+.sidebar ul.chapters li a:hover { background: var(--pico-secondary-background); }
+.sidebar ul.chapters li a.active { background: var(--pico-primary); color: var(--pico-primary-inverse); }
+.sidebar ul.chapters li a.disabled { opacity: 0.45; pointer-events: none; }
+.sidebar ul.chapters li a small {
+  opacity: 0.6;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sidebar table.dict-mini { font-size: 0.85rem; }
+.sidebar table.dict-mini input { font-size: 0.85rem; padding: 0.25rem 0.4rem; margin: 0; }
+
+/* ---------- two-column paragraph editor ---------- */
+
+.paragraphs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+  align-items: start;
+}
+
+.original,
+textarea.translation {
+  padding: 0.75rem 0.9rem;
+  line-height: 1.55;
+  font-family: var(--pico-font-family);
+  font-size: 1rem;
+  border-radius: 6px;
+  margin: 0;
+}
+
+.original {
+  background: var(--pico-card-background-color);
+  border: 1px solid var(--pico-muted-border-color);
+  white-space: pre-wrap;
+  color: var(--pico-muted-color);
+}
+
+/* Title row: same grid as paragraphs, but bigger and separated. */
+.title-row {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 0.5rem;
+  padding-bottom: 1rem;
+  border-bottom: none;
+}
+.original.title-row {
+  color: var(--pico-color);
+}
+input.translation.title-row {
+  font-size: 1.25rem;
+  font-weight: 600;
+  padding: 0.75rem 0.9rem;
+  height: auto;
+  min-height: 0;
+}
+
+textarea.translation {
+  width: 100%;
+  min-height: 3rem;
+  /* Auto-grow to fit content in browsers that support it (Chromium 123+,
+     Safari 17.4+, Firefox 136+). Without this, a textarea stays at its
+     default row count regardless of content — which looked wrong because
+     the parallel original on the left is as tall as the paragraph and the
+     translation was only ~1.5 lines tall. Fallback below keeps the JS
+     autosize behavior for older browsers. */
+  field-sizing: content;
+  resize: vertical;
+  overflow: hidden;
+  background: var(--pico-background-color);
+  border: 1px solid var(--pico-primary-border);
+}
+
+textarea.translation:focus {
+  border-color: var(--pico-primary);
+  outline: 2px solid var(--pico-primary-focus);
+  outline-offset: -1px;
+}
+
+/* ---------- sticky actions ---------- */
+
+.editor-actions {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(to bottom, transparent, var(--pico-background-color) 25%);
+  padding: 1rem 0 0.5rem;
+}
+
+.editor-actions button { margin: 0; }
+
+/* ---------- dictionary table ---------- */
+
+.dict-table { overflow-x: auto; }
+.dict-table input { margin: 0; }
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 900px) {
+  .editor-grid { grid-template-columns: 1fr; }
+  .sidebar { position: static; border-right: none; border-bottom: 1px solid var(--pico-muted-border-color); padding: 0 0 1rem; max-height: none; }
+  .paragraphs { grid-template-columns: 1fr; }
+  .original { background: var(--pico-card-background-color); }
+}

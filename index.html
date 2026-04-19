@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Book Translate</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body x-data="bookTranslator" x-cloak>
+  <header class="container">
+    <nav>
+      <ul><li><strong>Book Translate</strong></li></ul>
+      <ul>
+        <li><small x-show="book" x-text="(book?.chapters?.length || 0) + ' chapters · ' + (acceptedCount) + ' accepted'"></small></li>
+        <li><a href="#" @click.prevent="gotoSetup()">Setup</a></li>
+        <li><a href="#" @click.prevent="gotoDictionary()" x-show="dictionary.length">Dictionary</a></li>
+        <li><a href="#" @click.prevent="view = 'editor'" x-show="book && anyTranslated">Editor</a></li>
+        <li><button class="secondary outline" @click="reset()">Reset</button></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container-fluid">
+    <article x-show="error" x-cloak role="alert">
+      <strong>Error:</strong> <span x-text="error"></span>
+      <button class="close" @click="error = null">×</button>
+    </article>
+
+    <!-- SETUP -->
+    <section x-show="view === 'setup'" x-cloak class="container">
+      <hgroup>
+        <h2>Paste your book (Markdown)</h2>
+        <p>Chapters start with a heading line — <code># Title</code> for H1, <code>## Title</code> for H2. Paragraphs are blank-line separated. Convert other formats with pandoc: <code>pandoc input.tex -t gfm-raw_html -o book.md</code>.</p>
+      </hgroup>
+      <div class="grid">
+        <label>Chapter heading level
+          <select x-model.number="headingLevel">
+            <option :value="1"># chapter (H1)</option>
+            <option :value="2">## chapter (H2)</option>
+            <option :value="3">### chapter (H3)</option>
+          </select>
+        </label>
+        <label>&nbsp;<button class="secondary" @click="loadSample()" type="button">Load sample</button></label>
+      </div>
+      <label>Book text
+        <textarea rows="16" x-model="rawBook" placeholder="# Chapter One&#10;&#10;It was a bright cold day in April...&#10;&#10;# Chapter Two&#10;&#10;..."></textarea>
+      </label>
+
+      <h3>Translator</h3>
+      <label>Backend
+        <select x-model="config.translator">
+          <option value="dummy">Dummy (returns original — for plumbing tests)</option>
+          <option value="poe">POE (OpenAI-compatible)</option>
+        </select>
+      </label>
+      <div x-show="config.translator === 'poe'" class="grid">
+        <label>Base URL<input x-model="config.baseUrl"></label>
+        <label>Model (POE bot name)<input x-model="config.model" placeholder="gemini-3.1-pro"></label>
+        <label>API key<input type="password" x-model="config.apiKey" autocomplete="off"></label>
+      </div>
+      <label x-show="config.translator === 'poe'">
+        Dictionary chunk size (characters per term-extraction call)
+        <input type="number" min="2000" step="10000" x-model.number="config.dictionaryChunkChars">
+        <small>Rough guideline: ~4 chars per token. Default 400 000 ≈ 100 k tokens — fits modern long-context models (Gemini, Claude, GPT-4o). Lower for small-window models.</small>
+      </label>
+      <label x-show="config.translator === 'poe'">
+        Dictionary guidance
+        <textarea rows="4" x-model="config.dictionaryGuidance"
+          placeholder="- Use the Rosman (Росмэн) translation scheme for Harry Potter names.&#10;- Normalize ALL CAPS in source to title case.&#10;- Include spells (in italics) and magical creatures.&#10;- Skip real-world book titles; keep them in English."></textarea>
+        <small>Free-text instructions injected into both the term-extraction and translation prompts. Use for canonical translations, what to include/skip, and style rules.</small>
+      </label>
+      <label x-show="config.translator === 'poe'">
+        Translation prompt
+        <select x-model="config.translationPromptPreset">
+          <option value="v1">v1 — natural &amp; idiomatic</option>
+          <option value="v2">v2 — two-stage, native-writer rewrite (default)</option>
+          <option value="custom">Custom (edit below)</option>
+        </select>
+      </label>
+      <label x-show="config.translator === 'poe' && config.translationPromptPreset === 'custom'">
+        Custom translation prompt
+        <textarea rows="8" x-model="config.translationPromptCustom"
+          placeholder="Write your own style/instruction block. Use ${lang} where the target language should appear. The structural contract ([0]..[N] numbering) and the dictionary block are appended automatically."></textarea>
+        <small>You're editing the style/instruction part only — the structural contract and dictionary are always appended. Use <code>${'${lang}'}</code> as a placeholder for the target language.</small>
+      </label>
+      <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
+      <small x-show="config.translator === 'poe'">
+        The key is kept in your browser (localforage). If POE blocks direct browser calls via CORS, point Base URL at your own proxy.
+      </small>
+
+      <button @click="startFromRaw()" :disabled="busy || !rawBook.trim()" :aria-busy="busy && view === 'setup'">
+        <span x-text="busy ? 'Building dictionary…' : 'Parse book & build dictionary'"></span>
+      </button>
+    </section>
+
+    <!-- DICTIONARY -->
+    <section x-show="view === 'dictionary'" x-cloak class="container">
+      <hgroup>
+        <h2>Translation dictionary</h2>
+        <p>Edit terms that must stay consistent across chapters. The dictionary is passed to every chapter translation.</p>
+      </hgroup>
+      <div class="dict-table">
+        <table>
+          <thead><tr><th>Term (original)</th><th>Translation</th><th>Notes</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="(t, i) in dictionary" :key="i">
+              <tr>
+                <td><input x-model="t.term"></td>
+                <td><input x-model="t.translation"></td>
+                <td><input x-model="t.notes"></td>
+                <td><button class="secondary outline" @click="removeTerm(i)" aria-label="Remove">×</button></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div role="group">
+        <button class="secondary" @click="addTerm()" type="button">Add term</button>
+        <button @click="acceptDictionary()" :disabled="busy" :aria-busy="busy">
+          <span x-text="busy ? 'Translating chapter 1…' : 'Accept & translate chapter 1'"></span>
+        </button>
+      </div>
+    </section>
+
+    <!-- EDITOR -->
+    <section x-show="view === 'editor'" x-cloak class="editor-grid">
+      <aside class="sidebar">
+        <h4>Chapters</h4>
+        <ul class="chapters">
+          <template x-for="(ch, i) in (book?.chapters || [])" :key="i">
+            <li>
+              <a href="#" @click.prevent="selectChapter(i)"
+                 :class="{ active: i === currentChapterIndex, disabled: ch.status === 'pending' }">
+                <span x-text="(i + 1) + '. ' + ch.title"></span>
+                <small x-text="ch.status"></small>
+              </a>
+            </li>
+          </template>
+        </ul>
+        <details>
+          <summary>Dictionary</summary>
+          <table class="dict-mini">
+            <template x-for="(t, i) in dictionary" :key="i">
+              <tr>
+                <td><input x-model="t.term"></td>
+                <td><input x-model="t.translation"></td>
+              </tr>
+            </template>
+          </table>
+          <button class="secondary outline" @click="addTerm()" type="button">+ term</button>
+        </details>
+      </aside>
+
+      <div class="editor-main">
+        <p><small>Chapter <span x-text="currentChapterIndex + 1"></span> of <span x-text="book?.chapters?.length"></span> · status: <span x-text="book?.chapters?.[currentChapterIndex]?.status"></span></small></p>
+
+        <div class="paragraphs">
+          <!-- Title row: original on the left, editable translation on the right. -->
+          <div class="original title-row" x-text="book?.chapters?.[currentChapterIndex]?.title"></div>
+          <input class="translation title-row" type="text"
+                 :value="book?.chapters?.[currentChapterIndex]?.translatedTitle || ''"
+                 @input="book.chapters[currentChapterIndex].translatedTitle = $event.target.value"
+                 placeholder="Chapter title translation">
+
+          <template x-for="(p, i) in (book?.chapters?.[currentChapterIndex]?.paragraphs || [])" :key="i">
+            <div class="pair" style="display:contents;">
+              <div class="original" x-text="p.original"></div>
+              <textarea class="translation" x-model="p.translation"
+                        @input="autosize($event.target)"
+                        x-init="$nextTick(() => autosize($el))"></textarea>
+            </div>
+          </template>
+        </div>
+
+        <div class="editor-actions">
+          <button class="secondary" @click="persistNow()" type="button">Save</button>
+          <button class="secondary outline" @click="exportSoFar()" :disabled="!canExportSoFar" type="button"
+                  title="Download Markdown of every translated chapter through the one you're viewing">
+            Export so far
+          </button>
+          <button class="secondary outline" @click="retranslateCurrent()" :disabled="busy" type="button">
+            Re-translate this chapter
+          </button>
+          <button @click="acceptAndNext()" :disabled="busy" :aria-busy="busy">
+            <span x-text="nextButtonLabel"></span>
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/localforage@1/dist/localforage.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+</body>
+</html>
