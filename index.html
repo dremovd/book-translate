@@ -56,14 +56,28 @@
       </label>
       <div x-show="config.translator === 'poe'" class="grid">
         <label>Base URL<input x-model="config.baseUrl"></label>
-        <label>Model (POE bot name)<input x-model="config.model" placeholder="gemini-3.1-pro"></label>
+        <label>Model (POE bot name)
+          <input x-model="config.model" list="poe-models" placeholder="gemini-3.1-pro"
+                 autocomplete="off" spellcheck="false">
+        </label>
         <label>API key<input type="password" x-model="config.apiKey" autocomplete="off"></label>
       </div>
       <label x-show="config.translator === 'poe'">
         Dictionary model (optional override)
-        <input x-model="config.dictionaryModel" placeholder="leave empty to reuse the main model">
+        <input x-model="config.dictionaryModel" list="poe-models"
+               placeholder="leave empty to reuse the main model"
+               autocomplete="off" spellcheck="false">
         <small>Used for both dictionary phases (term extraction + term translation). A cheaper model here cuts per-book cost while keeping chapter translation on the strong one.</small>
       </label>
+
+      <!-- Shared POE-bot suggestions for both model inputs. Not a restricted
+           list: any custom bot name still works; these are just type-ahead
+           hints in the dropdown. -->
+      <datalist id="poe-models">
+        <option value="claude-opus-4.7"></option>
+        <option value="gpt-5.4"></option>
+        <option value="gemini-3.1-pro"></option>
+      </datalist>
       <label x-show="config.translator === 'poe'">
         Dictionary chunk size (characters per term-extraction call)
         <input type="number" min="2000" step="10000" x-model.number="config.dictionaryChunkChars">
