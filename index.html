@@ -151,44 +151,59 @@
             <li>
               <a href="#" @click.prevent="selectChapter(i)"
                  :class="{ active: i === currentChapterIndex, disabled: ch.status === 'pending' }">
-                <span x-text="(i + 1) + '. ' + ch.title"></span>
-                <small x-text="ch.status"></small>
+                <span class="chapter-title" x-text="(i + 1) + '. ' + ch.title"></span>
+                <span class="chapter-status" :class="ch.status" :title="ch.status"></span>
               </a>
             </li>
           </template>
         </ul>
         <details>
-          <summary>Dictionary</summary>
-          <table class="dict-mini">
-            <template x-for="(t, i) in dictionary" :key="i">
-              <tr>
-                <td><input x-model="t.term"></td>
-                <td><input x-model="t.translation"></td>
-              </tr>
+          <summary>
+            Dictionary
+            <small class="dict-count"
+                   :title="`${dictionary.length} entries total in this book`"
+                   x-text="`(${_dictionarySubsetForChapter(currentChapterIndex).length} of ${dictionary.length})`"></small>
+          </summary>
+          <p class="dict-hint">Filtered to terms extracted from this chapter. Use the full Dictionary view to see/edit everything.</p>
+          <div class="dict-mini">
+            <template x-for="(t, i) in _dictionarySubsetForChapter(currentChapterIndex)" :key="i">
+              <div class="dict-mini-entry">
+                <input class="dict-mini-term"  x-model="t.term"        placeholder="term">
+                <input class="dict-mini-trans" x-model="t.translation" placeholder="translation">
+              </div>
             </template>
-          </table>
-          <button class="secondary outline" @click="addTerm()" type="button">+ term</button>
+            <button class="secondary outline" @click="addTermForCurrentChapter()" type="button">+ term for this chapter</button>
+          </div>
         </details>
       </aside>
 
       <div class="editor-main">
         <p><small>Chapter <span x-text="currentChapterIndex + 1"></span> of <span x-text="book?.chapters?.length"></span> · status: <span x-text="book?.chapters?.[currentChapterIndex]?.status"></span></small></p>
 
-        <div class="paragraphs">
-          <!-- Title row: original on the left, editable translation on the right. -->
-          <div class="original title-row" x-text="book?.chapters?.[currentChapterIndex]?.title"></div>
+        <div class="paragraphs" :style="`--split-pct: ${splitPercent}%`">
+          <!-- Title row: editable translation on the LEFT, original on the right. -->
           <input class="translation title-row" type="text"
                  :value="book?.chapters?.[currentChapterIndex]?.translatedTitle || ''"
                  @input="book.chapters[currentChapterIndex].translatedTitle = $event.target.value"
                  placeholder="Chapter title translation">
+          <div class="original title-row" x-text="book?.chapters?.[currentChapterIndex]?.title"></div>
 
           <template x-for="(p, i) in (book?.chapters?.[currentChapterIndex]?.paragraphs || [])" :key="i">
-            <div class="pair" style="display:contents;">
-              <div class="original" x-text="p.original"></div>
+            <!-- Per-row local state: `editing` toggles between rendered
+                 markdown (italic / bold visible) and the raw textarea.
+                 Click the rendered cell to start editing; blur returns to
+                 the rendered view. -->
+            <div class="pair" style="display:contents;" x-data="{ editing: false }">
               <div class="translation-wrap">
-                <textarea class="translation" x-model="p.translation"
-                          @input="autosize($event.target)"
-                          x-init="$nextTick(() => autosize($el))"></textarea>
+                <div class="translation rendered" x-show="!editing"
+                     @click="editing = true; $nextTick(() => { autosize($refs.editor); $refs.editor.focus(); })"
+                     x-html="renderMd(p.translation) || '<span class=&quot;translation-placeholder&quot;>(empty — click to edit)</span>'"
+                     title="Click to edit"></div>
+                <textarea class="translation editor" x-show="editing" x-cloak
+                          x-ref="editor"
+                          x-model="p.translation"
+                          @blur="editing = false"
+                          @input="autosize($event.target)"></textarea>
                 <div class="paragraph-actions">
                   <button class="tiny" type="button"
                           @click="retranslateParagraph(i, 'strict')"
@@ -204,8 +219,14 @@
                   </button>
                 </div>
               </div>
+              <div class="original" x-html="renderMd(p.original)"></div>
             </div>
           </template>
+
+          <!-- Drag handle sits at the column boundary; absolutely positioned
+               so it doesn't take a grid slot of its own. -->
+          <div class="resize-handle" @mousedown="startResize($event)"
+               title="Drag to resize columns (20%–80%)"></div>
         </div>
 
         <div class="editor-actions">

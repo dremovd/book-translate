@@ -2,6 +2,7 @@ import { parseBook } from './parse.js';
 import { store } from './store.js';
 import { createTranslator } from './translators/index.js';
 import { renderTranslationMarkdown } from './translators/format.js';
+import { renderInlineMd } from './markdown.js';
 
 export const SAMPLE = `# Chapter One
 
@@ -18,6 +19,12 @@ Outside, even through the shut window-pane, the world looked cold.
 # Chapter Three
 
 The dream had been a strange one, and already it was fading as Winston woke. He lay flat on his back, staring up at the ceiling.`;
+
+function clampSplit(pct) {
+  const n = Number(pct);
+  if (!Number.isFinite(n)) return 50;
+  return Math.max(20, Math.min(80, n));
+}
 
 export function defaultConfig() {
   return {
@@ -56,6 +63,7 @@ export function makeComponent() {
     view: 'setup',               // 'setup' | 'dictionary' | 'editor'
     rawBook: '',
     headingLevel: 1,             // 1 = split on `#`, 2 = split on `##`, …
+    splitPercent: 50,            // editor column split — % of width given to translation, clamped 20..80
     book: null,                  // { chapters: [{ title, paragraphs, status }] }
     dictionary: [],              // [{ term, translation, notes }]
     currentChapterIndex: 0,
@@ -81,6 +89,7 @@ export function makeComponent() {
         this.$watch('currentChapterIndex', schedule);
         this.$watch('rawBook',             schedule);
         this.$watch('headingLevel',        schedule);
+        this.$watch('splitPercent',        schedule);
 
         // Resize all translation textareas whenever the editor becomes
         // visible or the shown chapter changes — these are the two moments
@@ -105,6 +114,7 @@ export function makeComponent() {
           this.view = saved.view ?? 'setup';
           this.rawBook = saved.rawBook ?? '';
           this.headingLevel = saved.headingLevel ?? 1;
+          this.splitPercent = clampSplit(saved.splitPercent ?? 50);
           this.book = saved.book ?? null;
           this.dictionary = saved.dictionary ?? [];
           this.currentChapterIndex = saved.currentChapterIndex ?? 0;
@@ -145,6 +155,7 @@ export function makeComponent() {
           view: this.view,
           rawBook: this.rawBook,
           headingLevel: this.headingLevel,
+          splitPercent: this.splitPercent,
           book: this.book,
           dictionary: this.dictionary,
           currentChapterIndex: this.currentChapterIndex,
@@ -292,6 +303,14 @@ export function makeComponent() {
     },
 
     addTerm() { this.dictionary.push({ term: '', translation: '', notes: '' }); },
+    // Sidebar variant: tag the new entry to the current chapter so it shows
+    // up in the chapter-scoped subset (where it was added).
+    addTermForCurrentChapter() {
+      this.dictionary.push({
+        term: '', translation: '', notes: '',
+        chapters: [this.currentChapterIndex],
+      });
+    },
     removeTerm(i) { this.dictionary.splice(i, 1); },
 
     selectChapter(i) {
@@ -337,6 +356,7 @@ export function makeComponent() {
         view: 'setup',
         rawBook: '',
         headingLevel: 1,
+        splitPercent: 50,
         book: null,
         dictionary: [],
         currentChapterIndex: 0,
@@ -361,6 +381,35 @@ export function makeComponent() {
       if (typeof CSS !== 'undefined' && CSS.supports?.('field-sizing', 'content')) return;
       el.style.height = 'auto';
       el.style.height = (el.scrollHeight + 2) + 'px';
+    },
+
+    // Inline markdown renderer for x-html in paragraph cells. Escapes HTML
+    // first, so passing user/model content can't smuggle script tags.
+    renderMd(text) { return renderInlineMd(text); },
+
+    // Drag-resize the column split between translation (left) and original
+    // (right). Updates `splitPercent` live; CSS reads it as `--split-pct`.
+    // Clamped to 20..80 so neither column collapses or eats the other.
+    startResize(e) {
+      e.preventDefault();
+      if (typeof document === 'undefined') return;
+      const grid = e.currentTarget?.closest?.('.paragraphs');
+      if (!grid) return;
+      const onMove = (ev) => {
+        const r = grid.getBoundingClientRect();
+        if (r.width <= 0) return;
+        this.splitPercent = clampSplit(((ev.clientX - r.left) / r.width) * 100);
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      };
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     },
 
     // Resize every translation textarea in the editor. Must be called after
