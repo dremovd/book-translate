@@ -85,7 +85,7 @@ function dictFetchMock({ extractResponses = [], translateResponse = '[]' } = {})
   return { impl, calls };
 }
 
-test('PoeTranslator.buildDictionary: small book → 1 extract call + 1 translate call', async () => {
+test('PoeTranslator.buildDictionary: small book → 1 extract + 1 translate, entries carry chapters[]', async () => {
   const { impl, calls } = dictFetchMock({
     extractResponses: ['["Winston", "Julia"]'],
     translateResponse: '[{"term":"Winston","translation":"Уинстон"},{"term":"Julia","translation":"Джулия"}]',
@@ -96,17 +96,17 @@ test('PoeTranslator.buildDictionary: small book → 1 extract call + 1 translate
     const dict = await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'Winston met Julia.' }] }]);
     assert.equal(calls.extract.length, 1);
     assert.equal(calls.translate.length, 1);
-    assert.deepEqual(dict, [
-      { term: 'Winston', translation: 'Уинстон', notes: '' },
-      { term: 'Julia',   translation: 'Джулия',  notes: '' },
-    ]);
-    // Translate call message should list every extracted term.
+    assert.equal(dict.length, 2);
+    for (const e of dict) assert.deepEqual(e.chapters, [0], `entry "${e.term}" should be tagged to chapter 0`);
+    const byTerm = Object.fromEntries(dict.map(e => [e.term, e]));
+    assert.equal(byTerm.Winston.translation, 'Уинстон');
+    assert.equal(byTerm.Julia.translation, 'Джулия');
     assert.match(calls.translate[0], /Winston/);
     assert.match(calls.translate[0], /Julia/);
   } finally { restore(); }
 });
 
-test('PoeTranslator.buildDictionary: chunk size forces multiple extract calls, one translate call', async () => {
+test('PoeTranslator.buildDictionary: multiple chapters → one extract call per chapter, entries carry their chapter origin', async () => {
   const { impl, calls } = dictFetchMock({
     extractResponses: ['["A"]', '["B"]', '["A", "C"]'],
     translateResponse: '[{"term":"A","translation":"а"},{"term":"B","translation":"б"},{"term":"C","translation":"в"}]',
@@ -123,12 +123,16 @@ test('PoeTranslator.buildDictionary: chunk size forces multiple extract calls, o
       dictionaryChunkChars: 200,
     });
     const dict = await t.buildDictionary(chapters);
-    assert.ok(calls.extract.length >= 2, `expected multiple extract calls, got ${calls.extract.length}`);
+    assert.equal(calls.extract.length, 3, 'one extract call per chapter');
     assert.equal(calls.translate.length, 1);
     // Merged list in the translate call should be deduplicated — A appears in two chunks.
     const body = calls.translate[0];
     assert.equal((body.match(/- A\b/g) ?? []).length, 1, 'merged list must dedupe A');
     assert.equal(dict.length, 3);
+    const byTerm = Object.fromEntries(dict.map(e => [e.term, e]));
+    assert.deepEqual(byTerm.A.chapters, [0, 2], 'A appeared in chapters 0 and 2');
+    assert.deepEqual(byTerm.B.chapters, [1]);
+    assert.deepEqual(byTerm.C.chapters, [2]);
   } finally { restore(); }
 });
 
@@ -176,6 +180,130 @@ test('PoeTranslator.buildDictionary: empty dictionaryGuidance adds no guidance s
     await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'hi' }] }]);
     assert.doesNotMatch(extractSys, /editor guidance/i);
     assert.doesNotMatch(translateSys, /editor guidance/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildDictionary: when dictionaryModel is set, extract AND translate-terms calls use it', async () => {
+  const models = { extract: [], translate: [] };
+  const restore = withFetch(async (_u, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (user.startsWith('Terms:')) {
+      models.translate.push(body.model);
+      return mockResponse({ body: { choices: [{ message: { content: '[{"term":"W","translation":"В"}]' } }] } });
+    }
+    models.extract.push(body.model);
+    return mockResponse({ body: { choices: [{ message: { content: '["W"]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'Strong-Model', baseUrl: 'http://x',
+      dictionaryModel: 'Cheap-Fast-Model',
+    });
+    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'Winston met Julia.' }] }]);
+    assert.deepEqual(models.extract, ['Cheap-Fast-Model']);
+    assert.deepEqual(models.translate, ['Cheap-Fast-Model']);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildDictionary: when dictionaryModel is blank, falls back to the main model', async () => {
+  const seen = [];
+  const restore = withFetch(async (_u, opts) => {
+    const body = JSON.parse(opts.body);
+    seen.push(body.model);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    const content = user.startsWith('Terms:') ? '[]' : '["X"]';
+    return mockResponse({ body: { choices: [{ message: { content } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'Main-Model', baseUrl: 'http://x',
+      dictionaryModel: '   ',  // whitespace → treat as unset
+    });
+    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'x' }] }]);
+    for (const m of seen) assert.equal(m, 'Main-Model');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateChapter: always uses the main model, ignores dictionaryModel', async () => {
+  let usedModel;
+  const restore = withFetch(async (_u, opts) => {
+    usedModel = JSON.parse(opts.body).model;
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'Strong-Model', baseUrl: 'http://x',
+      dictionaryModel: 'Cheap-Fast-Model',
+    });
+    await t.translateChapter({ title: 'c', paragraphs: [{ original: 'foo' }] }, [], []);
+    assert.equal(usedModel, 'Strong-Model');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: always uses the main model, ignores dictionaryModel', async () => {
+  let usedModel;
+  const restore = withFetch(async (_u, opts) => {
+    usedModel = JSON.parse(opts.body).model;
+    return mockResponse({ body: { choices: [{ message: { content: '.' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'Strong-Model', baseUrl: 'http://x',
+      dictionaryModel: 'Cheap-Fast-Model',
+    });
+    await t.translateParagraph({ original: 'foo' }, 'natural', []);
+    assert.equal(usedModel, 'Strong-Model');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildDictionary: extract prompt explicitly asks for real-world references', async () => {
+  const { impl, calls } = dictFetchMock({ extractResponses: ['[]'] });
+  const restore = withFetch(impl);
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'text' }] }]);
+    // Which *system* prompt triggered this extract call — we need to look
+    // at the messages, but dictFetchMock collects the user msg. Build our
+    // own inspector here.
+  } finally { restore(); }
+
+  // Use an inline mock to peek at the system prompt.
+  let extractSystem;
+  const restore2 = withFetch(async (_u, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (!user.startsWith('Terms:')) {
+      extractSystem = body.messages.find(m => m.role === 'system')?.content;
+      return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+    }
+    return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'text' }] }]);
+    assert.match(extractSystem, /real-world references/i);
+    assert.match(extractSystem, /canonical/i);
+    assert.match(extractSystem, /books.*films.*songs|titles of books/i);
+  } finally { restore2(); }
+});
+
+test('PoeTranslator.buildDictionary: translate prompt asks for canonical published translations', async () => {
+  let translateSystem;
+  const restore = withFetch(async (_u, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (user.startsWith('Terms:')) {
+      translateSystem = body.messages.find(m => m.role === 'system')?.content;
+      return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+    }
+    return mockResponse({ body: { choices: [{ message: { content: '["X"]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'text' }] }]);
+    assert.match(translateSystem, /canonical/i);
+    assert.match(translateSystem, /published|standard/i);
   } finally { restore(); }
 });
 
@@ -333,6 +461,112 @@ test('PoeTranslator.translateChapter: sends title as [0] in the user prompt', as
     const userMsgs = sentBody.messages.filter(m => m.role === 'user').map(m => m.content).join('\n');
     assert.match(userMsgs, /\[0\] My Chapter/);
     assert.match(userMsgs, /\[1\] foo/);
+  } finally { restore(); }
+});
+
+// ---------- translateParagraph ----------
+
+test('PoeTranslator.translateParagraph: strict mode — system prompt biases toward literal fidelity', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'перевод' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Russian' });
+    const out = await t.translateParagraph(
+      { original: 'Hello world.' }, 'strict', [], { chapterTitle: 'Ch 1' }
+    );
+    assert.equal(out, 'перевод');
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /stay close to the original|literal/i);
+    assert.doesNotMatch(sys, /\[0\]|\[1\]/);  // no numbered-paragraph protocol for single-paragraph calls
+    assert.match(sys, /one paragraph|ONE paragraph/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: natural mode — system prompt biases toward native fluency', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'yeah' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Russian' });
+    await t.translateParagraph({ original: 'Hello.' }, 'natural', []);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /native Russian prose|as if a .+ writer wrote it|Calques of English are a failure/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: includes dictionary subset and prior paragraphs in prompt', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '.' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const dict = [{ term: 'Winston', translation: 'Уинстон', notes: '' }];
+    const prior = [
+      { original: 'Earlier.', translation: 'Раньше.' },
+      { original: 'Untranslated.', translation: '' },  // should be filtered out
+    ];
+    await t.translateParagraph(
+      { original: 'Winston walked.' },
+      'strict', dict,
+      { chapterTitle: 'Chapter One', priorParagraphs: prior }
+    );
+    const all = sentBody.messages.map(m => m.content).join('\n');
+    assert.match(all, /Winston → Уинстон/);
+    assert.match(all, /Chapter One/);
+    assert.match(all, /Earlier\./);
+    assert.match(all, /Раньше\./);
+    assert.doesNotMatch(all, /Untranslated\./);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: includes current translation as a "revise this" block when present', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'новый вариант' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateParagraph(
+      { original: 'Hello world.', translation: 'Старый перевод.' },
+      'natural', []
+    );
+    const all = sentBody.messages.map(m => m.content).join('\n');
+    assert.match(all, /Старый перевод\./);
+    assert.match(all, /current translation/i);
+    // System prompt should tell the model not to echo it back unchanged.
+    assert.match(sentBody.messages[0].content, /do not (?:merely )?repeat|do not output it verbatim/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: omits current-translation block when paragraph.translation is empty', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '.' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateParagraph({ original: 'Hello.', translation: '' }, 'strict', []);
+    const all = sentBody.messages.map(m => m.content).join('\n');
+    assert.doesNotMatch(all, /current translation/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: strips labels and wrapping quotes from output', async () => {
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: 'Translation: "переведённый текст"' } }] } }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.translateParagraph({ original: 'foo' }, 'natural', []);
+    assert.equal(out, 'переведённый текст');
   } finally { restore(); }
 });
 

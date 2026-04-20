@@ -134,6 +134,49 @@ textarea.translation {
   overflow: hidden;
   background: var(--pico-background-color);
   border: 1px solid var(--pico-primary-border);
+  margin: 0;
+}
+
+/* Right-column wrapper holding the translation textarea and per-paragraph
+   retranslate buttons. Sits inside the two-column `.paragraphs` grid
+   because `.pair` uses `display: contents`. */
+.translation-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.paragraph-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.translation-wrap:hover .paragraph-actions,
+.translation-wrap:focus-within .paragraph-actions {
+  opacity: 1;
+}
+
+.paragraph-actions button.tiny {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  margin: 0;
+  min-height: 0;
+  width: auto;
+  background: transparent;
+  color: var(--pico-muted-color);
+  border: 1px solid var(--pico-muted-border-color);
+}
+.paragraph-actions button.tiny:hover:not(:disabled) {
+  color: var(--pico-primary);
+  border-color: var(--pico-primary);
+  background: transparent;
+}
+.paragraph-actions button.tiny:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 textarea.translation:focus {

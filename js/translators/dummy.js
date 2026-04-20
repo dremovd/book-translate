@@ -4,18 +4,32 @@
 
 export class DummyTranslator {
   async buildDictionary(chapters) {
-    const counts = new Map();
-    for (const ch of chapters) {
+    // For each capitalized token track which chapter indices it appeared in,
+    // so the dictionary has the same `chapters: number[]` shape the POE
+    // backend produces — keeps the downstream "subset for this chapter"
+    // filter consistent across backends.
+    const perTerm = new Map();
+    chapters.forEach((ch, chIdx) => {
       for (const p of ch.paragraphs) {
         const matches = p.original.match(/\b[A-Z][a-zA-Z'\-]{2,}\b/g) || [];
-        for (const m of matches) counts.set(m, (counts.get(m) || 0) + 1);
+        for (const m of matches) {
+          let e = perTerm.get(m);
+          if (!e) { e = { count: 0, chapters: new Set() }; perTerm.set(m, e); }
+          e.count++;
+          e.chapters.add(chIdx);
+        }
       }
-    }
-    return [...counts.entries()]
-      .filter(([, n]) => n >= 2)
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    });
+    return [...perTerm.entries()]
+      .filter(([, e]) => e.count >= 2)
+      .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
       .slice(0, 40)
-      .map(([term]) => ({ term, translation: term, notes: '' }));
+      .map(([term, e]) => ({
+        term,
+        translation: term,
+        notes: '',
+        chapters: [...e.chapters].sort((a, b) => a - b),
+      }));
   }
 
   async translateChapter(chapter /*, dictionary, priorAcceptedChapters */) {
@@ -27,5 +41,9 @@ export class DummyTranslator {
         status: 'translated',
       })),
     };
+  }
+
+  async translateParagraph(paragraph /*, mode, dictionary, context */) {
+    return paragraph.original;
   }
 }

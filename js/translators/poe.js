@@ -16,7 +16,7 @@ import {
   chapterTranslationText,
   formatDictionary,
   chunkBookText,
-  mergeTermLists,
+  mergeTermsWithSources,
 } from './format.js';
 
 // Default chunk size for dictionary term extraction, in characters.
@@ -56,7 +56,7 @@ export class PoeTranslator {
     if (!config.model)  throw new Error('Model (POE bot name) is required');
   }
 
-  async chat(messages, { temperature = 0.2 } = {}) {
+  async chat(messages, { temperature = 0.2, model } = {}) {
     const r = await fetch(`${this.config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -64,7 +64,7 @@ export class PoeTranslator {
         'Authorization': `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify({
-        model: this.config.model,
+        model: model || this.config.model,
         messages,
         temperature,
       }),
@@ -77,6 +77,14 @@ export class PoeTranslator {
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string') throw new Error('Unexpected API response shape');
     return content;
+  }
+
+  // Dictionary phases (extract + translate-terms) can use a separate,
+  // optionally cheaper/faster model. Falls back to the main model if
+  // `dictionaryModel` is unset or blank.
+  _dictionaryModel() {
+    const dict = (this.config.dictionaryModel || '').trim();
+    return dict || this.config.model;
   }
 
   // Three-phase dictionary build, designed to scale past any one model's
@@ -96,13 +104,24 @@ export class PoeTranslator {
       : DEFAULT_DICT_CHUNK_CHARS;
 
     const chunks = chunkBookText(chapters, maxChars);
-    const termArrays = await mapBatched(
+    const results = await mapBatched(
       chunks, DICT_EXTRACT_CONCURRENCY,
-      chunk => this._extractTerms(chunk, lang),
+      async (chunk) => ({
+        terms: await this._extractTerms(chunk.text, lang),
+        chapterIndices: chunk.chapterIndices,
+      }),
     );
-    const merged = mergeTermLists(termArrays);
+    const merged = mergeTermsWithSources(results);
     if (merged.length === 0) return [];
-    return await this._translateTerms(merged, lang);
+
+    const translated = await this._translateTerms(merged.map(m => m.term), lang);
+    // Attach chapter provenance to each translated entry. Entries whose
+    // `term` didn't survive normalization fall back to empty chapters[].
+    const chaptersByTerm = new Map(merged.map(m => [m.term, m.chapters]));
+    return translated.map(e => ({
+      ...e,
+      chapters: chaptersByTerm.get(e.term) ?? [],
+    }));
   }
 
   async _extractTerms(chunkText, lang) {
@@ -110,13 +129,17 @@ export class PoeTranslator {
       {
         role: 'system',
         content:
-          `You extract terms from a book chunk that need consistent translation into ${lang} across chapters. ` +
-          `Include proper nouns (people, places), invented words, recurring technical or stylistic terms, titles, and forms of address. ` +
+          `You extract terms from a book chunk that need consistent translation into ${lang} across chapters. Include:\n` +
+          `- Proper nouns (characters, places, organizations).\n` +
+          `- Invented words, neologisms, spells, fictional species.\n` +
+          `- Recurring technical, academic, or stylistic terms.\n` +
+          `- Titles, honorifics, and forms of address.\n` +
+          `- Real-world references embedded in the text: titles of books, films, songs, plays, papers, institutions, theories, and names of historical or public figures. These deserve their canonical published translation in ${lang}, not a fresh one.\n\n` +
           this._guidanceSection() +
           `Respond with ONLY a JSON array of strings — the original terms exactly as they appear, no translations, no commentary, no code fences.`,
       },
       { role: 'user', content: chunkText },
-    ]);
+    ], { model: this._dictionaryModel() });
     const arr = parseJsonArray(content);
     return arr.map(x => (x == null ? '' : String(x))).filter(Boolean);
   }
@@ -128,6 +151,7 @@ export class PoeTranslator {
         content:
           `You produce a translation dictionary for book translation into ${lang}. ` +
           `For each input term, provide a single best translation and optional short notes (gender, transliteration scheme, role). ` +
+          `For real-world references (titles of books / films / songs / papers, institutions, theories, historical or public figures), use the canonical published translation into ${lang} when one exists — prefer the standard rendering over a fresh translation, and note it (e.g. "canonical", "standard published title", "Росмэн"). ` +
           this._guidanceSection() +
           `Respond with ONLY a JSON array of objects {"term": string, "translation": string, "notes": string}. No prose, no code fences.`,
       },
@@ -135,7 +159,7 @@ export class PoeTranslator {
         role: 'user',
         content: `Terms:\n\n${terms.map(t => `- ${t}`).join('\n')}`,
       },
-    ]);
+    ], { model: this._dictionaryModel() });
     return normalizeDictionary(parseJsonArray(content));
   }
 
@@ -183,6 +207,71 @@ export class PoeTranslator {
       titleTranslation: parsed.get(0) ?? chapter.title,
       paragraphs: alignByIndex(chapter.paragraphs, parsed),
     };
+  }
+
+  // Retranslate one paragraph, optionally biased toward "strict" (close to
+  // the English original) or "natural" (rewrite freely as idiomatic ${lang}).
+  // Called from the per-paragraph retranslate buttons in the editor — lets
+  // the editor patch a single bad paragraph without redoing the chapter.
+  //   paragraph: { original, translation?, status? }
+  //   mode: 'strict' | 'natural'
+  //   dictionary: subset of entries the caller deems relevant
+  //   context: { chapterTitle?, priorParagraphs?: [{original, translation}] }
+  // Returns the translated text as a plain string.
+  async translateParagraph(paragraph, mode, dictionary, context = {}) {
+    const lang = this.config.targetLanguage || 'the target language';
+    const strict = mode === 'strict';
+    const modeInstruction = strict
+      ? `BIAS: stay close to the original. Preserve the literal meaning, sentence structure, and where possible the word order. A slightly stiffer but more faithful rendering is preferred over a freer one. Do not invent or omit.`
+      : `BIAS: sound like native ${lang} prose, even at the cost of fidelity to English shape. Restructure freely — reorder clauses, split or merge sentences, switch passive↔active, replace abstract English constructions with the ${lang}-native way of saying the same thing. Calques of English are a failure. The paragraph must feel as if a ${lang} writer wrote it.`;
+
+    const currentTranslation = (paragraph.translation || '').trim();
+    const revising = currentTranslation.length > 0;
+    const revisionNote = revising
+      ? `\n\nThe editor will provide a CURRENT TRANSLATION below. That's what you must improve — move the rendering in the direction of the BIAS above. Do not merely repeat it. If it already satisfies the BIAS, still produce a fresh rewording so the editor has something to compare.`
+      : '';
+
+    const priorStr = (context.priorParagraphs || [])
+      .slice(-5)
+      .filter(p => p.translation)
+      .map(p => `Original: ${p.original}\nTranslation: ${p.translation}`)
+      .join('\n\n');
+
+    const messages = [
+      {
+        role: 'system',
+        content:
+          `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}\n\n` +
+          `Output: ONLY the translated paragraph text. No numbering, no quotes, no commentary, no label, no leading or trailing blank lines.\n\n` +
+          `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`,
+      },
+    ];
+    if (context.chapterTitle) {
+      messages.push({ role: 'user', content: `Chapter: ${context.chapterTitle}` });
+    }
+    if (priorStr) {
+      messages.push({
+        role: 'user',
+        content: `Preceding paragraphs in this chapter (for tone and continuity):\n\n${priorStr}`,
+      });
+    }
+    messages.push({
+      role: 'user',
+      content: `Paragraph to translate:\n\n${paragraph.original}`,
+    });
+    if (revising) {
+      messages.push({
+        role: 'user',
+        content: `Current translation (revise it per the BIAS — do not output it verbatim):\n\n${currentTranslation}`,
+      });
+    }
+
+    const content = await this.chat(messages, { temperature: strict ? 0.15 : 0.5 });
+    // Strip potential labels the model slips in ("Translation:", wrapping quotes).
+    return content
+      .replace(/^\s*(?:Translation|Перевод)\s*:\s*/i, '')
+      .replace(/^["'«"]|["'»"]$/g, '')
+      .trim();
   }
 
   // Compose the translation system prompt from three blocks:

@@ -60,6 +60,11 @@
         <label>API key<input type="password" x-model="config.apiKey" autocomplete="off"></label>
       </div>
       <label x-show="config.translator === 'poe'">
+        Dictionary model (optional override)
+        <input x-model="config.dictionaryModel" placeholder="leave empty to reuse the main model">
+        <small>Used for both dictionary phases (term extraction + term translation). A cheaper model here cuts per-book cost while keeping chapter translation on the strong one.</small>
+      </label>
+      <label x-show="config.translator === 'poe'">
         Dictionary chunk size (characters per term-extraction call)
         <input type="number" min="2000" step="10000" x-model.number="config.dictionaryChunkChars">
         <small>Rough guideline: ~4 chars per token. Default 400 000 ≈ 100 k tokens — fits modern long-context models (Gemini, Claude, GPT-4o). Lower for small-window models.</small>
@@ -166,9 +171,25 @@
           <template x-for="(p, i) in (book?.chapters?.[currentChapterIndex]?.paragraphs || [])" :key="i">
             <div class="pair" style="display:contents;">
               <div class="original" x-text="p.original"></div>
-              <textarea class="translation" x-model="p.translation"
-                        @input="autosize($event.target)"
-                        x-init="$nextTick(() => autosize($el))"></textarea>
+              <div class="translation-wrap">
+                <textarea class="translation" x-model="p.translation"
+                          @input="autosize($event.target)"
+                          x-init="$nextTick(() => autosize($el))"></textarea>
+                <div class="paragraph-actions">
+                  <button class="tiny" type="button"
+                          @click="retranslateParagraph(i, 'strict')"
+                          :disabled="busy || config.translator === 'dummy'"
+                          title="Retranslate this paragraph, biased toward literal fidelity">
+                    ↻ stricter
+                  </button>
+                  <button class="tiny" type="button"
+                          @click="retranslateParagraph(i, 'natural')"
+                          :disabled="busy || config.translator === 'dummy'"
+                          title="Retranslate this paragraph, biased toward native-target naturalness">
+                    ↻ more natural
+                  </button>
+                </div>
+              </div>
             </div>
           </template>
         </div>

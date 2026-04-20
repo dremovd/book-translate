@@ -27,16 +27,26 @@ test('DummyTranslator.translateChapter preserves original paragraph count', asyn
   assert.equal(r.paragraphs.length, 7);
 });
 
-test('DummyTranslator.buildDictionary collects recurring capitalized tokens (freq >= 2)', async () => {
+test('DummyTranslator.buildDictionary collects recurring capitalized tokens (freq >= 2) with chapter provenance', async () => {
   const t = new DummyTranslator();
   const chapters = [
     { paragraphs: [{ original: 'Winston met Julia. Winston was tired.' }] },
     { paragraphs: [{ original: 'Julia smiled at Winston.' }] },
   ];
   const dict = await t.buildDictionary(chapters);
-  const terms = dict.map(d => d.term);
-  assert.ok(terms.includes('Winston'), 'recurring capitalized token should be included');
-  assert.ok(terms.includes('Julia'), 'recurring capitalized token should be included');
+  const byTerm = Object.fromEntries(dict.map(d => [d.term, d]));
+  assert.ok(byTerm.Winston, 'recurring capitalized token should be included');
+  assert.ok(byTerm.Julia,   'recurring capitalized token should be included');
+  assert.deepEqual(byTerm.Winston.chapters, [0, 1]);
+  assert.deepEqual(byTerm.Julia.chapters,   [0, 1]);
+});
+
+test('DummyTranslator.translateParagraph returns the original text unchanged', async () => {
+  const t = new DummyTranslator();
+  const out = await t.translateParagraph({ original: 'hello' }, 'strict', []);
+  assert.equal(out, 'hello');
+  const out2 = await t.translateParagraph({ original: 'world' }, 'natural', []);
+  assert.equal(out2, 'world');
 });
 
 test('DummyTranslator.buildDictionary filters out singletons', async () => {

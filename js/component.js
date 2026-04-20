@@ -24,6 +24,10 @@ export function defaultConfig() {
     translator: 'dummy',
     apiKey: '',
     model: 'gemini-3.1-pro',
+    // Optional override for the dictionary extract + translate-terms calls.
+    // Empty → use `model` for everything. A cheaper/faster model here keeps
+    // per-book dictionary cost down without compromising chapter translation.
+    dictionaryModel: '',
     baseUrl: 'https://api.poe.com/v1',
     targetLanguage: 'Russian',
     // Max chars per chunk when extracting terms for the dictionary.
@@ -206,6 +210,45 @@ export function makeComponent() {
       } finally {
         this.busy = false;
       }
+    },
+
+    // Retranslate a single paragraph in the current chapter, biased either
+    // toward literal fidelity ('strict') or toward native-target fluency
+    // ('natural'). Passes only the dictionary entries whose provenance
+    // includes the current chapter — keeps the prompt focused.
+    async retranslateParagraph(pIdx, mode) {
+      const chIdx = this.currentChapterIndex;
+      const ch = this.book?.chapters?.[chIdx];
+      const p = ch?.paragraphs?.[pIdx];
+      if (!p) return;
+      await this._runBusy(async () => {
+        const translator = createTranslator(this.config);
+        if (typeof translator.translateParagraph !== 'function') {
+          throw new Error('This backend does not support per-paragraph retranslation.');
+        }
+        const subset = this._dictionarySubsetForChapter(chIdx);
+        const priorParagraphs = ch.paragraphs
+          .slice(Math.max(0, pIdx - 5), pIdx)
+          .map(pp => ({ original: pp.original, translation: pp.translation }));
+        const newText = await translator.translateParagraph(p, mode, subset, {
+          chapterTitle: ch.title,
+          priorParagraphs,
+        });
+        p.translation = newText;
+        p.status = 'translated';
+        this._autosizeAll();
+      });
+    },
+
+    // Dictionary entries whose provenance includes the given chapter index.
+    // Entries without `chapters` (e.g. from a dictionary built before the
+    // provenance tracking landed, or manually added) are treated as
+    // relevant to every chapter.
+    _dictionarySubsetForChapter(chIdx) {
+      if (!Array.isArray(this.dictionary)) return [];
+      return this.dictionary.filter(e =>
+        !Array.isArray(e.chapters) || e.chapters.length === 0 || e.chapters.includes(chIdx)
+      );
     },
 
     async retranslateCurrent() {

@@ -274,6 +274,40 @@ test('reset respects a cancelling _confirm', async () => {
 
 // ---------- retranslateCurrent ----------
 
+test('retranslateParagraph (dummy): rewrites just the one paragraph, leaves others alone', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptDictionary();
+  // User-edits paragraph 0 and 1.
+  c.book.chapters[0].paragraphs[0].translation = 'my edit 0';
+  c.book.chapters[0].paragraphs[1].translation = 'my edit 1';
+  await c.retranslateParagraph(0, 'strict');
+  // Paragraph 0 is overwritten by dummy (identity), paragraph 1 is untouched.
+  assert.equal(c.book.chapters[0].paragraphs[0].translation, c.book.chapters[0].paragraphs[0].original);
+  assert.equal(c.book.chapters[0].paragraphs[1].translation, 'my edit 1');
+});
+
+test('_dictionarySubsetForChapter: filters by chapters[]; legacy entries (no chapters) are kept', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();  // dummy dict entries now carry chapters[]
+  c.book = { chapters: [
+    { title: 'A', translatedTitle: '', paragraphs: [{ original: 'x', translation: '', status: 'pending' }], status: 'pending' },
+    { title: 'B', translatedTitle: '', paragraphs: [{ original: 'y', translation: '', status: 'pending' }], status: 'pending' },
+  ]};
+  c.dictionary = [
+    { term: 'Alpha',  translation: 'Альфа',  notes: '', chapters: [0] },
+    { term: 'Beta',   translation: 'Бета',   notes: '', chapters: [1] },
+    { term: 'Global', translation: 'Global', notes: '' },  // legacy: no chapters field
+    { term: 'Both',   translation: 'Оба',    notes: '', chapters: [0, 1] },
+  ];
+  const sub0 = c._dictionarySubsetForChapter(0).map(e => e.term).sort();
+  assert.deepEqual(sub0, ['Alpha', 'Both', 'Global']);
+  const sub1 = c._dictionarySubsetForChapter(1).map(e => e.term).sort();
+  assert.deepEqual(sub1, ['Beta', 'Both', 'Global']);
+});
+
 test('retranslateCurrent: regenerates current chapter using prior accepted as context', async () => {
   const c = await initFresh();
   setDummyBook(c);

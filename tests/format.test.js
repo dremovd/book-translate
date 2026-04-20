@@ -10,7 +10,7 @@ import {
   chapterTranslationText,
   formatDictionary,
   chunkBookText,
-  mergeTermLists,
+  mergeTermsWithSources,
   renderTranslationMarkdown,
 } from '../js/translators/format.js';
 import { parseBook } from '../js/parse.js';
@@ -165,92 +165,103 @@ test('formatDictionary: empty dictionary returns "(empty)"', () => {
 
 // ---------- chunkBookText ----------
 
-test('chunkBookText: single small book fits in one chunk', () => {
+test('chunkBookText: single chapter becomes one chunk with its chapter index', () => {
   const chunks = chunkBookText([
     { title: 'A', paragraphs: [{ original: 'p1' }, { original: 'p2' }] },
   ], 1000);
   assert.equal(chunks.length, 1);
-  assert.match(chunks[0], /# A/);
-  assert.match(chunks[0], /p1/);
-  assert.match(chunks[0], /p2/);
+  assert.match(chunks[0].text, /# A/);
+  assert.deepEqual(chunks[0].chapterIndices, [0]);
 });
 
-test('chunkBookText: multiple small chapters combine into one chunk', () => {
+test('chunkBookText: multiple chapters yield one chunk per chapter (no packing)', () => {
   const chunks = chunkBookText([
     { title: 'A', paragraphs: [{ original: 'x' }] },
     { title: 'B', paragraphs: [{ original: 'y' }] },
     { title: 'C', paragraphs: [{ original: 'z' }] },
   ], 1000);
-  assert.equal(chunks.length, 1);
-  for (const t of ['# A', '# B', '# C', 'x', 'y', 'z']) assert.match(chunks[0], new RegExp(t));
-});
-
-test('chunkBookText: chapters that would overflow start a new chunk', () => {
-  const chapters = [
-    { title: 'A', paragraphs: [{ original: 'x'.repeat(100) }] },
-    { title: 'B', paragraphs: [{ original: 'y'.repeat(100) }] },
-    { title: 'C', paragraphs: [{ original: 'z'.repeat(100) }] },
-  ];
-  const chunks = chunkBookText(chapters, 120);
   assert.equal(chunks.length, 3);
-  assert.match(chunks[0], /# A/);
-  assert.match(chunks[1], /# B/);
-  assert.match(chunks[2], /# C/);
+  assert.deepEqual(chunks.map(c => c.chapterIndices), [[0], [1], [2]]);
+  assert.match(chunks[0].text, /# A/);
+  assert.match(chunks[2].text, /# C/);
 });
 
-test('chunkBookText: a chapter larger than max is split by paragraph boundaries', () => {
+test('chunkBookText: a chapter larger than max is split by paragraph boundaries, all with same chapterIndex', () => {
   const chapter = {
     title: 'Huge',
     paragraphs: Array.from({ length: 6 }, (_, i) => ({ original: `para${i}-` + 'x'.repeat(50) })),
   };
   const chunks = chunkBookText([chapter], 100);
   assert.ok(chunks.length >= 3);
-  // Every chunk carries the chapter title for context.
-  for (const c of chunks) assert.match(c, /Huge/);
-  // Every paragraph appears intact in exactly one chunk (no mid-paragraph splits).
+  for (const c of chunks) {
+    assert.match(c.text, /Huge/);
+    assert.deepEqual(c.chapterIndices, [0]);
+  }
   for (const p of chapter.paragraphs) {
-    const hits = chunks.filter(c => c.includes(p.original)).length;
+    const hits = chunks.filter(c => c.text.includes(p.original)).length;
     assert.equal(hits, 1, `paragraph "${p.original.slice(0, 20)}…" should appear in exactly one chunk`);
   }
+});
+
+test('chunkBookText: empty paragraphs chapter is skipped', () => {
+  const chunks = chunkBookText([
+    { title: 'Empty', paragraphs: [] },
+    { title: 'Real',  paragraphs: [{ original: 'body' }] },
+  ], 1000);
+  assert.equal(chunks.length, 1);
+  assert.deepEqual(chunks[0].chapterIndices, [1]);
 });
 
 test('chunkBookText: empty input returns empty array', () => {
   assert.deepEqual(chunkBookText([], 1000), []);
 });
 
-// ---------- mergeTermLists ----------
+// ---------- mergeTermsWithSources ----------
 
-test('mergeTermLists: deduplicates across chunk results', () => {
-  const merged = mergeTermLists([
-    ['Winston', 'Julia'],
-    ['Winston', 'Big Brother'],
-    ['Julia', 'Winston'],
+test('mergeTermsWithSources: deduplicates terms and unions chapter indices', () => {
+  const merged = mergeTermsWithSources([
+    { terms: ['Winston', 'Julia'],      chapterIndices: [0] },
+    { terms: ['Winston', 'Big Brother'], chapterIndices: [1] },
+    { terms: ['Julia', 'Winston'],      chapterIndices: [2] },
   ]);
-  assert.deepEqual(merged.slice().sort(), ['Big Brother', 'Julia', 'Winston']);
+  const byTerm = Object.fromEntries(merged.map(e => [e.term, e]));
+  assert.deepEqual(byTerm.Winston.chapters, [0, 1, 2]);
+  assert.deepEqual(byTerm.Julia.chapters, [0, 2]);
+  assert.deepEqual(byTerm['Big Brother'].chapters, [1]);
 });
 
-test('mergeTermLists: sorts by frequency desc then alphabetical', () => {
-  const merged = mergeTermLists([
-    ['A', 'B'],
-    ['A'],
-    ['A', 'C'],
-    ['B'],
+test('mergeTermsWithSources: sorts by frequency desc, alphabetical tiebreak', () => {
+  const merged = mergeTermsWithSources([
+    { terms: ['A', 'B'], chapterIndices: [0] },
+    { terms: ['A'],      chapterIndices: [1] },
+    { terms: ['A', 'C'], chapterIndices: [2] },
+    { terms: ['B'],      chapterIndices: [3] },
   ]);
-  assert.deepEqual(merged, ['A', 'B', 'C']);  // A=3, B=2, C=1
+  assert.deepEqual(merged.map(e => e.term), ['A', 'B', 'C']);  // A=3, B=2, C=1
+  assert.equal(merged[0].frequency, 3);
 });
 
-test('mergeTermLists: trims whitespace and drops empties', () => {
-  const merged = mergeTermLists([['  Winston  ', ''], ['\n', null, undefined]]);
-  assert.deepEqual(merged, ['Winston']);
+test('mergeTermsWithSources: trims whitespace and drops empty terms', () => {
+  const merged = mergeTermsWithSources([
+    { terms: ['  Winston  ', ''], chapterIndices: [0] },
+    { terms: ['\n', null, undefined], chapterIndices: [0] },
+  ]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].term, 'Winston');
 });
 
-test('mergeTermLists: tolerates non-array entries', () => {
-  assert.deepEqual(mergeTermLists([null, undefined, ['Ok']]), ['Ok']);
+test('mergeTermsWithSources: tolerates malformed rows', () => {
+  const merged = mergeTermsWithSources([
+    null, undefined,
+    { terms: ['Ok'], chapterIndices: [5] },
+    { terms: null, chapterIndices: [7] },
+  ]);
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0].chapters, [5]);
 });
 
-test('mergeTermLists: empty input returns empty array', () => {
-  assert.deepEqual(mergeTermLists([]), []);
-  assert.deepEqual(mergeTermLists([[]]), []);
+test('mergeTermsWithSources: empty input returns empty array', () => {
+  assert.deepEqual(mergeTermsWithSources([]), []);
 });
 
 // ---------- renderTranslationMarkdown ----------

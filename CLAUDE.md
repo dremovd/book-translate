@@ -39,22 +39,35 @@ Everything loaded from CDN at runtime; there is intentionally no package.json, b
 Deliberately sequential, not batch:
 
 1. **Input**: Markdown pasted into the setup view. Chapters are split on ATX headings at a configurable level (default H1, i.e. `# Title`). Paragraphs are blank-line separated. Content before the first heading is ignored (book-level preface metadata). Non-Markdown manuscripts should be converted with pandoc first (`pandoc input.tex -t 'gfm-raw_html' -o book.md`).
-2. **Dictionary pass**: three phases, designed to scale past any single model's context window. (a) Split the book into chunks of `dictionaryChunkChars` characters (default 400 000 ≈ ~100 k tokens at 4 chars/token), cutting at chapter boundaries when possible and paragraph boundaries when a single chapter is too big. (b) For each chunk, ask the model for a JSON array of **terms only** (no translations). (c) Merge and deduplicate the term lists client-side, then ask the model once to translate the merged list into `{term, translation, notes}`. The editor reviews and edits the result. Per-chunk extract calls are fanned out with a concurrency cap (10). Both phases consume `config.dictionaryGuidance` — free-text instructions (canonical translations, case-normalization rules, what to include/skip) injected into the system prompts via `PoeTranslator._guidanceSection()`.
+2. **Dictionary pass**: three phases, designed to scale past any single model's context window. (a) Split the book into chunks of `dictionaryChunkChars` characters (default 400 000 ≈ ~100 k tokens at 4 chars/token). Each chunk covers exactly one chapter (split along paragraph boundaries if the chapter is bigger than `maxChars`) — no packing, so every extracted term's chapter origin is unambiguous. (b) For each chunk, ask the model for a JSON array of **terms only** (no translations). The extract prompt explicitly asks for real-world references (titles of books / films / songs / papers, institutions, theories, historical figures) alongside proper nouns and invented words. (c) Merge and deduplicate client-side via `mergeTermsWithSources`, keeping each term's set of source chapter indices. Then ask the model once to translate the merged list into `{term, translation, notes}` — the translate prompt tells it to use the canonical published translation for real-world references. The final dictionary entries get `chapters: number[]` attached from the merge step. Per-chunk extract calls are fanned out with a concurrency cap (10). Both phases consume `config.dictionaryGuidance` via `PoeTranslator._guidanceSection()`.
 3. **Chapter-by-chapter gate**: chapter 1 is translated → editor edits in the two-column view → click "Accept & translate next" → chapter 2 is translated with the dictionary **plus all previously accepted chapters** as context. Chapter N+1 is not produced until N is marked accepted. Editor edits on accepted chapters are the training signal for downstream chapters.
-4. **Editor UI**: CSS grid, two columns. Paragraph N (original, read-only, left) shares a grid row with paragraph N (translation, editable textarea, right). Translation textareas auto-size to content. Dictionary is visible and editable in the sidebar.
+4. **Editor UI**: CSS grid, two columns. Paragraph N (original, read-only, left) shares a grid row with paragraph N (translation, editable textarea, right). Translation textareas auto-size to content. Two per-paragraph retranslate buttons (`↻ stricter` / `↻ more natural`) sit under each textarea, calling `translator.translateParagraph` with the **chapter-filtered** dictionary subset (from `_dictionarySubsetForChapter`) — so an editor can patch a single bad paragraph without regenerating the chapter. Dictionary is visible and editable in the sidebar.
 
 ## Translator interface
 
 All translators in `js/translators/` implement the same two methods. Swapping backends is a one-line change in `createTranslator`:
 
 ```js
-buildDictionary(chapters) -> [{ term, translation, notes }]
+buildDictionary(chapters) -> [{ term, translation, notes, chapters: number[] }]
+  // `chapters` = sorted chapter indices the term's source chunk(s) covered.
+  // Since chunks are one-chapter-per-chunk (see chunkBookText), this is
+  // exact provenance: the term was extracted from a chunk whose source was
+  // chapter N. The component uses it to filter the dictionary per-chapter
+  // for single-paragraph retranslation calls.
+
 translateChapter(chapter, dictionary, priorAcceptedChapters) -> {
   titleTranslation,   // translation of chapter.title (falls back to the original title)
   paragraphs,         // same length as chapter.paragraphs, aligned by index
 }
   // paragraphs[i] MUST correspond to chapter.paragraphs[i]
   // protocol: title is transmitted as [0], paragraphs as [1]..[N]
+
+translateParagraph(paragraph, mode, dictionarySubset, context) -> string
+  // mode: 'strict' (stay close to English) | 'natural' (rewrite as native-target)
+  // Caller passes only the dictionary entries relevant to the paragraph's chapter.
+  // Return value is the translated paragraph text — no numbering, no wrapping.
+  // Called from the per-paragraph retranslate buttons in the editor, so an
+  // editor can patch one bad paragraph without redoing the whole chapter.
 ```
 
 Implementations:
@@ -69,11 +82,17 @@ Single Alpine component in `js/app.js`. Shape:
 
 ```
 { view: 'setup'|'dictionary'|'editor',
-  rawBook, chapterDelimiter,
-  book: { chapters: [{ title, status, paragraphs: [{ original, translation, status }] }] },
-  dictionary: [{ term, translation, notes }],
+  rawBook, headingLevel,
+  book: { chapters: [{ title, translatedTitle, status, paragraphs: [{ original, translation, status }] }] },
+  dictionary: [{ term, translation, notes, chapters: number[] }],
   currentChapterIndex,
-  config: { translator, apiKey, model, baseUrl, targetLanguage } }
+  config: {
+    translator, apiKey, baseUrl, targetLanguage,
+    model,                  // chapter + per-paragraph translation
+    dictionaryModel,        // optional override for dictionary phases; empty = reuse `model`
+    dictionaryChunkChars, dictionaryGuidance,
+    translationPromptPreset, translationPromptCustom,
+  } }
 ```
 
 Chapter `status` transitions: `pending → translated → accepted`. Paragraph `status`: `pending | translated | untranslated`.

@@ -68,46 +68,40 @@ export function formatDictionary(dictionary) {
     .join('\n');
 }
 
-// Split a book into approximately-maxChars text blobs suitable for term
-// extraction. Chapter boundaries are preserved as `# Title` headings in each
-// chunk. If a single chapter exceeds maxChars, it is split along paragraph
-// boundaries (never mid-paragraph) with the title repeated for context.
-// Output is an array of strings; concatenation is not meaningful.
+// Split a book into chunks suitable for term extraction. Each chunk covers
+// exactly one chapter; chapters bigger than maxChars are split along
+// paragraph boundaries (never mid-paragraph) with the title repeated on
+// every continuation chunk for context. One-chapter-per-chunk makes each
+// chunk's source chapter unambiguous, which the dictionary uses to track
+// which chapters each term appeared in.
+// Returns: [{ text, chapterIndices: [number] }]  (a 1-element array for now,
+// but kept as an array so the shape stays stable if we ever re-enable
+// chapter packing for small books.)
 export function chunkBookText(chapters, maxChars) {
   const chunks = [];
-  let buf = '';
-  const flush = () => { if (buf) { chunks.push(buf); buf = ''; } };
-
-  for (const ch of chapters) {
+  chapters.forEach((ch, chapterIndex) => {
     const heading = `# ${ch.title}`;
     const paragraphs = ch.paragraphs.map(p => p.original);
-    const chapterText = `${heading}\n\n${paragraphs.join('\n\n')}`;
+    if (paragraphs.length === 0) return;
+    const full = `${heading}\n\n${paragraphs.join('\n\n')}`;
 
-    if (chapterText.length > maxChars) {
-      flush();
-      let inner = heading;
-      for (const p of paragraphs) {
-        const addition = '\n\n' + p;
-        if (inner.length + addition.length > maxChars && inner !== heading) {
-          chunks.push(inner);
-          inner = heading + addition;
-        } else {
-          inner += addition;
-        }
+    if (full.length <= maxChars) {
+      chunks.push({ text: full, chapterIndices: [chapterIndex] });
+      return;
+    }
+
+    let buf = heading;
+    for (const p of paragraphs) {
+      const addition = '\n\n' + p;
+      if (buf.length + addition.length > maxChars && buf !== heading) {
+        chunks.push({ text: buf, chapterIndices: [chapterIndex] });
+        buf = heading + addition;
+      } else {
+        buf += addition;
       }
-      if (inner !== heading) chunks.push(inner);
-      continue;
     }
-
-    const addition = buf ? '\n\n' + chapterText : chapterText;
-    if (buf && buf.length + addition.length > maxChars) {
-      flush();
-      buf = chapterText;
-    } else {
-      buf += addition;
-    }
-  }
-  flush();
+    if (buf !== heading) chunks.push({ text: buf, chapterIndices: [chapterIndex] });
+  });
   return chunks;
 }
 
@@ -133,20 +127,32 @@ export function renderTranslationMarkdown(book, uptoIndex) {
   return out.join('\n\n');
 }
 
-// Dedupe term strings across per-chunk results and sort by cross-chunk
-// frequency (descending), breaking ties alphabetically. Input is tolerant
-// of nulls/non-arrays so a partial failure upstream doesn't crash here.
-export function mergeTermLists(termArrays) {
-  const counts = new Map();
-  for (const arr of termArrays) {
-    if (!Array.isArray(arr)) continue;
-    for (const raw of arr) {
+// Merge per-chunk term extractions, dedupe across chunks, and preserve the
+// set of chapter indices each term appeared in (so the dictionary can
+// later filter entries relevant to a given chapter).
+// Input:  [{ terms: string[], chapterIndices: number[] }]
+// Output: [{ term, chapters: number[], frequency: number }]
+//         sorted by frequency desc, ties broken alphabetically.
+export function mergeTermsWithSources(chunkResults) {
+  const byTerm = new Map();
+  for (const r of chunkResults) {
+    if (!r || !Array.isArray(r.terms)) continue;
+    for (const raw of r.terms) {
       const t = String(raw ?? '').trim();
       if (!t) continue;
-      counts.set(t, (counts.get(t) || 0) + 1);
+      let entry = byTerm.get(t);
+      if (!entry) { entry = { count: 0, chapters: new Set() }; byTerm.set(t, entry); }
+      entry.count++;
+      if (Array.isArray(r.chapterIndices)) {
+        for (const ci of r.chapterIndices) entry.chapters.add(ci);
+      }
     }
   }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([term]) => term);
+  return [...byTerm.entries()]
+    .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+    .map(([term, { count, chapters }]) => ({
+      term,
+      chapters: [...chapters].sort((a, b) => a - b),
+      frequency: count,
+    }));
 }
