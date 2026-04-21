@@ -17,6 +17,7 @@ import {
   formatDictionary,
   chunkBookText,
   mergeTermsWithSources,
+  dialogConventionsFor,
 } from './format.js';
 
 // Default chunk size for dictionary term extraction, in characters.
@@ -237,11 +238,17 @@ export class PoeTranslator {
       .map(p => `Original: ${p.original}\nTranslation: ${p.translation}`)
       .join('\n\n');
 
+    const dialog = dialogConventionsFor(lang);
+    const dialogBlock = dialog
+      ? `\n\nDialog formatting (${lang}): ${dialog} If the source paragraph contains multiple ` +
+        `speaker turns, separate them with literal newlines within this single output paragraph.`
+      : '';
+
     const messages = [
       {
         role: 'system',
         content:
-          `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}\n\n` +
+          `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}${dialogBlock}\n\n` +
           `Output: ONLY the translated paragraph text. No numbering, no quotes, no commentary, no label, no leading or trailing blank lines.\n\n` +
           `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`,
       },
@@ -294,8 +301,23 @@ export class PoeTranslator {
       style = entry.render(lang);
     }
     return style +
+      this._dialogSection(lang) +
       `\n\nThe input is numbered: [0] is the chapter title, [1]..[N] are body paragraphs in order. Your output MUST have the same [0]..[N] numbering, one translation per input item. Do not merge, split, reorder, or add commentary.\n\n` +
       `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`;
+  }
+
+  // Inline dialog-formatting block, auto-injected when we have conventions
+  // for the target language. The "stay inside the same numbered slot"
+  // rider is the load-bearing bit: Russian/Spanish/Polish dialog wants
+  // multiple lines per speech, but we still need [N] alignment, so the
+  // model must emit `\n` literals rather than splitting paragraphs.
+  _dialogSection(lang) {
+    const conv = dialogConventionsFor(lang);
+    if (!conv) return '';
+    return `\n\nDialog formatting (${lang}): ${conv}\n\n` +
+      `When the convention requires multiple lines for a single source paragraph (e.g. several ` +
+      `speaker turns), keep all those lines within the same numbered paragraph slot — separate ` +
+      `them with literal newline characters. Do NOT split into multiple [N] paragraphs.`;
   }
 }
 

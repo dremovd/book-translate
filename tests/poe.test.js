@@ -570,6 +570,59 @@ test('PoeTranslator.translateParagraph: strips labels and wrapping quotes from o
   } finally { restore(); }
 });
 
+test('PoeTranslator.translateChapter: prompt includes Russian dialog conventions when target is Russian', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Russian',
+    });
+    await t.translateChapter({ title: 'c', paragraphs: [{ original: 'foo' }] }, [], []);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /Dialog formatting/);
+    assert.match(sys, /em-dash|—/);
+    // Stays inside the same numbered paragraph slot when the convention
+    // expands a paragraph into multiple lines.
+    assert.match(sys, /same numbered paragraph slot|literal newline/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateChapter: no dialog conventions block for unknown target language', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Klingon',
+    });
+    await t.translateChapter({ title: 'c', paragraphs: [{ original: 'foo' }] }, [], []);
+    const sys = sentBody.messages[0].content;
+    assert.doesNotMatch(sys, /Dialog formatting/);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: includes language-specific dialog conventions', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '.' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'French',
+    });
+    await t.translateParagraph({ original: 'Hello.' }, 'natural', []);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /Dialog formatting \(French\)/);
+    assert.match(sys, /guillemets|«/);
+  } finally { restore(); }
+});
+
 test('PoeTranslator.translateChapter: prior-chapter context uses the accepted translatedTitle', async () => {
   let sentBody;
   const restore = withFetch(async (_url, opts) => {

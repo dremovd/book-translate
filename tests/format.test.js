@@ -12,6 +12,7 @@ import {
   chunkBookText,
   mergeTermsWithSources,
   renderTranslationMarkdown,
+  dialogConventionsFor,
 } from '../js/translators/format.js';
 import { parseBook } from '../js/parse.js';
 
@@ -330,6 +331,38 @@ test('renderTranslationMarkdown: falls back to original paragraph when translati
 test('renderTranslationMarkdown: empty or unreachable book returns empty string', () => {
   assert.equal(renderTranslationMarkdown({ chapters: [] }, 0), '');
   assert.equal(renderTranslationMarkdown({ chapters: [ch('X', '', [para('a', '')], 'pending')] }, 0), '');
+});
+
+// ---------- dialogConventionsFor ----------
+
+test('dialogConventionsFor: Russian → em-dash + new-line guidance', () => {
+  const s = dialogConventionsFor('Russian');
+  assert.ok(s.length > 0);
+  assert.match(s, /em-dash|—/);
+  assert.match(s, /new line|new speaker|each speaker/i);
+});
+
+test('dialogConventionsFor: French → guillemets', () => {
+  const s = dialogConventionsFor('French');
+  assert.match(s, /guillemets|«/);
+});
+
+test('dialogConventionsFor: German → German-style quotation marks', () => {
+  const s = dialogConventionsFor('German');
+  assert.ok(s.length > 0);
+  assert.match(s, /„|quotation/i);
+});
+
+test('dialogConventionsFor: case-insensitive lookup', () => {
+  assert.equal(dialogConventionsFor('RUSSIAN'), dialogConventionsFor('russian'));
+  assert.equal(dialogConventionsFor('  french  '), dialogConventionsFor('French'));
+});
+
+test('dialogConventionsFor: unknown language returns empty string', () => {
+  assert.equal(dialogConventionsFor('Klingon'), '');
+  assert.equal(dialogConventionsFor(''), '');
+  assert.equal(dialogConventionsFor(null), '');
+  assert.equal(dialogConventionsFor(undefined), '');
 });
 
 test('renderTranslationMarkdown: output round-trips through parseBook', () => {

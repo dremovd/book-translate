@@ -68,6 +68,54 @@ export function formatDictionary(dictionary) {
     .join('\n');
 }
 
+// Language-specific dialog-formatting guidance auto-injected into the
+// translation system prompt. Keyed on the lowercased target language. An
+// unknown language returns '' (no harm done).
+//
+// Why a hardcoded table: typographic conventions for direct speech are
+// language-level facts that don't change project-to-project, and stuffing
+// them into the prompt avoids the model defaulting to English-style
+// "quotation marks" everywhere. Editors who want different conventions can
+// still override via translationPromptCustom.
+const DIALOG_CONVENTIONS = {
+  russian:
+    'Each speaker line starts with an em-dash (—) on a new line. ' +
+    'Speaker tags inside a line are flanked by em-dashes — for example: «— Привет, — сказал он, — как дела?». ' +
+    'Do NOT use English-style "quotation marks" for spoken lines.',
+  ukrainian:
+    'Each speaker line starts with an em-dash (—) on a new line. ' +
+    'Speaker tags inside a line are flanked by em-dashes. ' +
+    'Do NOT use English-style "quotation marks" for spoken lines.',
+  french:
+    'Use guillemets («…») around spoken lines, with a non-breaking space inside the marks ' +
+    '(« comme ceci »). When dialog continues across multiple turns within a paragraph, start each ' +
+    'new speaker turn with an em-dash (—) on a new line.',
+  german:
+    'Use German-style „lower-and-upper" quotation marks for spoken lines (opening „, closing "). ' +
+    'Reported speech inside dialog can use ›single guillemets‹.',
+  spanish:
+    'Each speaker line starts with an em-dash (—) on a new line. ' +
+    'Speaker tags inside a line are flanked by em-dashes, e.g. «—Hola —dijo él—, ¿cómo estás?».',
+  italian:
+    'Use guillemets («…») around spoken lines — the standard convention in modern Italian publishing. ' +
+    'When dialog continues across multiple speaker turns within a paragraph, start each new turn with an em-dash (—) on a new line.',
+  polish:
+    'Each speaker line starts with an em-dash (—) on a new line. ' +
+    'Speaker tags use em-dashes around them, e.g. «— Cześć — powiedział — jak się masz?».',
+  portuguese:
+    'Each speaker line starts with an em-dash (—) on a new line. ' +
+    'Reported speech inside dialog can use «guillemets».',
+  dutch:
+    'Use double curly quotation marks ("…") around spoken lines — the standard convention in modern Dutch publishing. ' +
+    'For nested speech, use single curly quotation marks (\'…\').',
+};
+
+export function dialogConventionsFor(lang) {
+  if (!lang) return '';
+  const key = String(lang).toLowerCase().trim();
+  return DIALOG_CONVENTIONS[key] || '';
+}
+
 // Split a book into chunks suitable for term extraction. Each chunk covers
 // exactly one chapter; chapters bigger than maxChars are split along
 // paragraph boundaries (never mid-paragraph) with the title repeated on
