@@ -20,6 +20,23 @@ Outside, even through the shut window-pane, the world looked cold.
 
 The dream had been a strange one, and already it was fading as Winston woke. He lay flat on his back, staring up at the ceiling.`;
 
+// Registry of demo books selectable from the setup view. Two kinds:
+//   inline `text` (hardcoded, no network) for quick plumbing tests,
+//   `path`      (fetched at runtime) for real-book demos.
+// Add more by appending to this array.
+export const SAMPLE_BOOKS = [
+  {
+    id: 'tiny',
+    label: 'Tiny 3-chapter demo (no network)',
+    text: SAMPLE,
+  },
+  {
+    id: 'munchausen',
+    label: 'Baron Munchausen — R. E. Raspe (public domain, 35 chapters, Project Gutenberg #3154)',
+    path: 'samples/munchausen.md',
+  },
+];
+
 function clampSplit(pct) {
   const n = Number(pct);
   if (!Number.isFinite(n)) return 50;
@@ -166,10 +183,29 @@ export function makeComponent() {
       }
     },
 
+    // Registry exposed to the setup view so x-for can populate the dropdown.
+    SAMPLE_BOOKS,
+
     // ---- actions ----
-    loadSample() {
-      this.rawBook = SAMPLE;
+    // Load a demo book into the setup textarea. For inline samples, sets
+    // rawBook synchronously; for remote ones, fetches the file relative to
+    // the site root (samples/<id>.md) and assigns on completion.
+    async loadSample(id) {
+      if (!id) return;
+      const entry = SAMPLE_BOOKS.find(s => s.id === id);
+      if (!entry) return;
       this.headingLevel = 1;
+      this.error = null;
+      if (typeof entry.text === 'string') {
+        this.rawBook = entry.text;
+        return;
+      }
+      if (!entry.path) return;
+      await this._runBusy(async () => {
+        const r = await fetch(entry.path);
+        if (!r.ok) throw new Error(`Failed to fetch ${entry.path}: HTTP ${r.status}`);
+        this.rawBook = await r.text();
+      });
     },
 
     async startFromRaw() {
@@ -321,6 +357,107 @@ export function makeComponent() {
 
     gotoSetup()      { this.view = 'setup'; },
     gotoDictionary() { if (this.dictionary.length) this.view = 'dictionary'; },
+
+    get canExport() {
+      return !!(this.book || (this.rawBook && this.rawBook.trim()) || this.dictionary.length);
+    },
+
+    // Build a versioned envelope of the current state for download / sharing.
+    // API key is blanked out — the receiver must fill in their own on import.
+    // Pure function (doesn't mutate this.config).
+    serializeState() {
+      const cfg = { ...this.config, apiKey: '' };
+      return {
+        type: 'book-translate-state',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        state: {
+          view: this.view,
+          rawBook: this.rawBook,
+          headingLevel: this.headingLevel,
+          splitPercent: this.splitPercent,
+          book: this.book,
+          dictionary: this.dictionary,
+          currentChapterIndex: this.currentChapterIndex,
+          config: cfg,
+        },
+      };
+    },
+
+    // Download the current state as a JSON file the receiver can Import.
+    exportState() {
+      if (!this.canExport) return;
+      const envelope = this.serializeState();
+      const json = JSON.stringify(envelope, null, 2);
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+      const rawTitle = this.book?.chapters?.[0]?.title || 'translation';
+      const slug = String(rawTitle)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'translation';
+      const filename = `book-translate-${slug}-${stamp}.json`;
+      if (typeof document === 'undefined' || typeof URL === 'undefined') return;
+      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+
+    // File-input → text → importFromText. Resets the <input> value so the
+    // same file can be re-picked.
+    async importState(event) {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        await this.importFromText(text);
+      } finally {
+        if (event?.target) event.target.value = '';
+      }
+    },
+
+    // Apply a previously exported state envelope. Preserves the receiver's
+    // local apiKey so imports don't clobber a key the receiver has already
+    // typed in. If the receiver has no key set, config.apiKey stays blank
+    // (the export carries it blank) and they must fill it in before using
+    // the POE backend.
+    async importFromText(json) {
+      try {
+        const parsed = JSON.parse(json);
+        if (!parsed || parsed.type !== 'book-translate-state') {
+          throw new Error('Not a book-translate state export (wrong or missing "type" field).');
+        }
+        const data = parsed.state;
+        if (!data || typeof data !== 'object') {
+          throw new Error('Export envelope has no "state" payload.');
+        }
+        if (!this._confirm(
+          'Import will replace your current book, dictionary, and settings.\n' +
+          'Your local API key will be kept. Continue?'
+        )) return;
+        const localKey = this.config?.apiKey || '';
+        Object.assign(this, {
+          view: data.view ?? 'setup',
+          rawBook: data.rawBook ?? '',
+          headingLevel: data.headingLevel ?? 1,
+          splitPercent: clampSplit(data.splitPercent ?? 50),
+          book: data.book ?? null,
+          dictionary: Array.isArray(data.dictionary) ? data.dictionary : [],
+          currentChapterIndex: data.currentChapterIndex ?? 0,
+          config: { ...defaultConfig(), ...(data.config ?? {}), apiKey: localKey },
+          error: null,
+        });
+        await this.persistNow();
+      } catch (e) {
+        this.error = `Import failed: ${e.message}`;
+      }
+    },
 
     get canExportSoFar() {
       if (!this.book?.chapters?.length) return false;

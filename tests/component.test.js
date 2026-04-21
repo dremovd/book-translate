@@ -246,6 +246,108 @@ test('persist is suppressed until loadSaved completes (no clobber of saved state
   assert.deepEqual(after, before, 'pre-init schedulePersist must not write');
 });
 
+// ---------- state export / import ----------
+
+test('serializeState: envelope carries type + version + state; apiKey is blanked', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  c.config.apiKey = 'sk-secret-key';
+  c.config.model = 'gemini-3.1-pro';
+  await c.startFromRaw();
+
+  const env = c.serializeState();
+  assert.equal(env.type, 'book-translate-state');
+  assert.equal(env.version, 1);
+  assert.ok(env.exportedAt, 'exportedAt timestamp must be set');
+  // Secret must not leak.
+  assert.equal(env.state.config.apiKey, '');
+  // Non-secret config survives.
+  assert.equal(env.state.config.model, 'gemini-3.1-pro');
+  // Work state is included.
+  assert.equal(env.state.rawBook, c.rawBook);
+  assert.equal(env.state.book.chapters.length, 3);
+});
+
+test('serializeState: does not mutate this.config.apiKey', async () => {
+  const c = await initFresh();
+  c.config.apiKey = 'sk-keep-me';
+  c.serializeState();
+  assert.equal(c.config.apiKey, 'sk-keep-me');
+});
+
+test('importFromText: applies exported envelope; preserves local apiKey', async () => {
+  const c = await initFresh();
+  c.config.apiKey = 'my-local-key';
+
+  const envelope = {
+    type: 'book-translate-state', version: 1, exportedAt: '2026-04-21T12:00:00Z',
+    state: {
+      view: 'editor',
+      rawBook: '# Chapter 1\n\nhello',
+      headingLevel: 1,
+      splitPercent: 70,
+      book: { chapters: [{
+        title: 'Chapter 1', translatedTitle: 'Глава 1', status: 'translated',
+        paragraphs: [{ original: 'hello', translation: 'привет', status: 'translated' }],
+      }]},
+      dictionary: [{ term: 'hello', translation: 'привет', notes: '', chapters: [0] }],
+      currentChapterIndex: 0,
+      config: { translator: 'poe', apiKey: '', model: 'gemini-3.1-pro', targetLanguage: 'Russian' },
+    },
+  };
+  await c.importFromText(JSON.stringify(envelope));
+
+  assert.equal(c.view, 'editor');
+  assert.equal(c.rawBook, '# Chapter 1\n\nhello');
+  assert.equal(c.splitPercent, 70);
+  assert.equal(c.book.chapters.length, 1);
+  assert.equal(c.dictionary.length, 1);
+  assert.equal(c.config.model, 'gemini-3.1-pro');
+  assert.equal(c.config.apiKey, 'my-local-key', 'local API key must be preserved on import');
+  assert.equal(c.error, null);
+});
+
+test('importFromText: receiver has no key → imported (blank) key + receiver fills in later', async () => {
+  const c = await initFresh();           // fresh → apiKey defaults to ''
+  const envelope = {
+    type: 'book-translate-state', version: 1,
+    state: { config: { apiKey: '' } },   // exported state always has blank key
+  };
+  await c.importFromText(JSON.stringify(envelope));
+  assert.equal(c.config.apiKey, '', 'apiKey stays blank; receiver must type their own');
+});
+
+test('importFromText: rejects JSON without the right envelope type', async () => {
+  const c = await initFresh();
+  await c.importFromText('{"foo": 1}');
+  assert.match(c.error || '', /type/i);
+});
+
+test('importFromText: rejects malformed JSON', async () => {
+  const c = await initFresh();
+  await c.importFromText('not json at all');
+  assert.match(c.error || '', /import failed/i);
+});
+
+test('importFromText: cancelled _confirm leaves state untouched', async () => {
+  const c = await initFresh();
+  c.rawBook = 'keep me';
+  c._confirm = () => false;
+  const env = JSON.stringify({
+    type: 'book-translate-state', version: 1,
+    state: { rawBook: 'replaced' },
+  });
+  await c.importFromText(env);
+  assert.equal(c.rawBook, 'keep me');
+});
+
+test('canExport: false on fresh component, true once there is work to export', async () => {
+  const c = await initFresh();
+  assert.equal(c.canExport, false);
+  c.rawBook = 'some text';
+  assert.equal(c.canExport, true);
+});
+
 test('reset clears all state and the store', async () => {
   const c = await initFresh();
   setDummyBook(c);

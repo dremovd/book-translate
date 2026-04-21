@@ -16,6 +16,20 @@
         <li><a href="#" @click.prevent="gotoSetup()">Setup</a></li>
         <li><a href="#" @click.prevent="gotoDictionary()" x-show="dictionary.length">Dictionary</a></li>
         <li><a href="#" @click.prevent="view = 'editor'" x-show="book && anyTranslated">Editor</a></li>
+        <li>
+          <button class="secondary outline" type="button"
+                  @click="$refs.importFile.click()" :disabled="busy"
+                  title="Load a previously exported state file">Import…</button>
+          <input type="file" accept=".json,application/json" x-ref="importFile"
+                 style="display:none" @change="importState($event)">
+        </li>
+        <li>
+          <button class="secondary outline" type="button"
+                  @click="exportState()" :disabled="!canExport"
+                  title="Download the current book, dictionary, and settings as JSON (API key blanked)">
+            Export
+          </button>
+        </li>
         <li><button class="secondary outline" @click="reset()">Reset</button></li>
       </ul>
     </nav>
@@ -41,7 +55,14 @@
             <option :value="3">### chapter (H3)</option>
           </select>
         </label>
-        <label>&nbsp;<button class="secondary" @click="loadSample()" type="button">Load sample</button></label>
+        <label>Load a sample book
+          <select @change="loadSample($event.target.value); $event.target.value = ''">
+            <option value="" selected>— pick one to populate the textarea —</option>
+            <template x-for="s in SAMPLE_BOOKS" :key="s.id">
+              <option :value="s.id" x-text="s.label"></option>
+            </template>
+          </select>
+        </label>
       </div>
       <label>Book text
         <textarea rows="16" x-model="rawBook" placeholder="# Chapter One&#10;&#10;It was a bright cold day in April...&#10;&#10;# Chapter Two&#10;&#10;..."></textarea>
