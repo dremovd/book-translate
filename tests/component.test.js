@@ -202,6 +202,51 @@ test('startFromRaw: dictionaryProgress starts null, ends null after build', asyn
   assert.equal(c.dictionaryProgress, null, 'progress must be cleared once the build finishes');
 });
 
+test('font-size and splitPercent survive acceptAndNext (translate next chapter)', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptDictionary();
+  c.splitPercent = 72;
+  c.originalFontSize = 'small';
+  c.translationFontSize = 'biggest';
+  await c.acceptAndNext();
+  assert.equal(c.currentChapterIndex, 1);
+  assert.equal(c.splitPercent, 72,           'split preserved across chapter change');
+  assert.equal(c.originalFontSize, 'small');
+  assert.equal(c.translationFontSize, 'biggest');
+});
+
+test('font-size and splitPercent survive selectChapter (sidebar navigation)', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptDictionary();
+  await c.acceptAndNext();
+  c.splitPercent = 30;
+  c.originalFontSize = 'smallest';
+  c.translationFontSize = 'medium';
+  c.selectChapter(0);
+  assert.equal(c.currentChapterIndex, 0);
+  assert.equal(c.splitPercent, 30);
+  assert.equal(c.originalFontSize, 'smallest');
+  assert.equal(c.translationFontSize, 'medium');
+});
+
+test('font-size and splitPercent survive retranslateCurrent', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptDictionary();
+  c.splitPercent = 45;
+  c.originalFontSize = 'big';
+  c.translationFontSize = 'smallest';
+  await c.retranslateCurrent();
+  assert.equal(c.splitPercent, 45);
+  assert.equal(c.originalFontSize, 'big');
+  assert.equal(c.translationFontSize, 'smallest');
+});
+
 test('defaults: split 60 %, original medium, translation big', async () => {
   const c = await initFresh();
   assert.equal(c.splitPercent, 60);
