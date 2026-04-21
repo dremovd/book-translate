@@ -39,8 +39,21 @@ export const SAMPLE_BOOKS = [
 
 function clampSplit(pct) {
   const n = Number(pct);
-  if (!Number.isFinite(n)) return 50;
+  if (!Number.isFinite(n)) return 60;
   return Math.max(20, Math.min(80, n));
+}
+
+// Five-step font-size scale exposed to the editor toolbar.
+export const FONT_SIZES = {
+  smallest: '0.8rem',
+  small:    '0.9rem',
+  medium:   '1rem',
+  big:      '1.15rem',
+  biggest:  '1.35rem',
+};
+const FONT_SIZE_KEYS = Object.keys(FONT_SIZES);
+function clampFontSize(v, fallback) {
+  return typeof v === 'string' && FONT_SIZE_KEYS.includes(v) ? v : fallback;
 }
 
 export function defaultConfig() {
@@ -80,13 +93,19 @@ export function makeComponent() {
     view: 'setup',               // 'setup' | 'dictionary' | 'editor'
     rawBook: '',
     headingLevel: 1,             // 1 = split on `#`, 2 = split on `##`, …
-    splitPercent: 50,            // editor column split — % of width given to translation, clamped 20..80
+    splitPercent: 60,            // editor column split — % of width given to translation, clamped 20..80
+    originalFontSize: 'medium',    // key into FONT_SIZES — font of the read-only original column
+    translationFontSize: 'big',    // key into FONT_SIZES — font of the editable translation column
     book: null,                  // { chapters: [{ title, paragraphs, status }] }
     dictionary: [],              // [{ term, translation, notes }]
     currentChapterIndex: 0,
     config: defaultConfig(),
     busy: false,
     error: null,
+    // Live progress object during dictionary build ({ stage, current, total })
+    // or null when idle. Updated from the translator's onProgress callback;
+    // cleared in the finally of startFromRaw, reset, and on error.
+    dictionaryProgress: null,
 
     _persistTimer: null,
     _loaded: false,
@@ -107,6 +126,8 @@ export function makeComponent() {
         this.$watch('rawBook',             schedule);
         this.$watch('headingLevel',        schedule);
         this.$watch('splitPercent',        schedule);
+        this.$watch('originalFontSize',    schedule);
+        this.$watch('translationFontSize', schedule);
 
         // Resize all translation textareas whenever the editor becomes
         // visible or the shown chapter changes — these are the two moments
@@ -131,7 +152,9 @@ export function makeComponent() {
           this.view = saved.view ?? 'setup';
           this.rawBook = saved.rawBook ?? '';
           this.headingLevel = saved.headingLevel ?? 1;
-          this.splitPercent = clampSplit(saved.splitPercent ?? 50);
+          this.splitPercent = clampSplit(saved.splitPercent ?? 60);
+          this.originalFontSize    = clampFontSize(saved.originalFontSize,    'medium');
+          this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
           this.book = saved.book ?? null;
           this.dictionary = saved.dictionary ?? [];
           this.currentChapterIndex = saved.currentChapterIndex ?? 0;
@@ -173,6 +196,8 @@ export function makeComponent() {
           rawBook: this.rawBook,
           headingLevel: this.headingLevel,
           splitPercent: this.splitPercent,
+          originalFontSize: this.originalFontSize,
+          translationFontSize: this.translationFontSize,
           book: this.book,
           dictionary: this.dictionary,
           currentChapterIndex: this.currentChapterIndex,
@@ -185,6 +210,10 @@ export function makeComponent() {
 
     // Registry exposed to the setup view so x-for can populate the dropdown.
     SAMPLE_BOOKS,
+    // Font-size keys + value map exposed to the editor toolbar (x-for
+    // populates the select; :style reads FONT_SIZES by current key).
+    FONT_SIZE_KEYS,
+    FONT_SIZES,
 
     // ---- actions ----
     // Load a demo book into the setup textarea. For inline samples, sets
@@ -216,7 +245,14 @@ export function makeComponent() {
         }
         this.book = parsed;
         this.currentChapterIndex = 0;
-        this.dictionary = await createTranslator(this.config).buildDictionary(parsed.chapters);
+        this.dictionaryProgress = { stage: 'extract', current: 0, total: parsed.chapters.length };
+        try {
+          this.dictionary = await createTranslator(this.config).buildDictionary(parsed.chapters, {
+            onProgress: (p) => { this.dictionaryProgress = p; },
+          });
+        } finally {
+          this.dictionaryProgress = null;
+        }
         this.view = 'dictionary';
       });
     },
@@ -493,12 +529,15 @@ export function makeComponent() {
         view: 'setup',
         rawBook: '',
         headingLevel: 1,
-        splitPercent: 50,
+        splitPercent: 60,
+        originalFontSize: 'medium',
+        translationFontSize: 'big',
         book: null,
         dictionary: [],
         currentChapterIndex: 0,
         config: defaultConfig(),
         error: null,
+        dictionaryProgress: null,
       });
     },
 

@@ -97,7 +97,7 @@ export class PoeTranslator {
   //      deduplicated set into the target language.
   // This also makes the dictionary step resumable at the chunk level later
   // if we ever want to add progress/cache.
-  async buildDictionary(chapters) {
+  async buildDictionary(chapters, { onProgress } = {}) {
     const lang = this.config.targetLanguage || 'the target language';
     const configured = Number(this.config.dictionaryChunkChars);
     const maxChars = Number.isFinite(configured) && configured > 0
@@ -105,17 +105,33 @@ export class PoeTranslator {
       : DEFAULT_DICT_CHUNK_CHARS;
 
     const chunks = chunkBookText(chapters, maxChars);
+    const total = chunks.length;
+    onProgress?.({ stage: 'extract', current: 0, total });
+
+    // mapBatched awaits each batch of size CONCURRENCY in turn, parallel
+    // within a batch. Incrementing `done` after each chunk's extract
+    // resolves gives one progress tick per chunk (not per batch), so the
+    // bar moves up to CONCURRENCY times per batch-round.
+    let done = 0;
     const results = await mapBatched(
       chunks, DICT_EXTRACT_CONCURRENCY,
-      async (chunk) => ({
-        terms: await this._extractTerms(chunk.text, lang),
-        chapterIndices: chunk.chapterIndices,
-      }),
+      async (chunk) => {
+        const r = {
+          terms: await this._extractTerms(chunk.text, lang),
+          chapterIndices: chunk.chapterIndices,
+        };
+        done++;
+        onProgress?.({ stage: 'extract', current: done, total });
+        return r;
+      },
     );
     const merged = mergeTermsWithSources(results);
     if (merged.length === 0) return [];
 
+    onProgress?.({ stage: 'translate', current: 0, total: 1 });
     const translated = await this._translateTerms(merged.map(m => m.term), lang);
+    onProgress?.({ stage: 'translate', current: 1, total: 1 });
+
     // Attach chapter provenance to each translated entry. Entries whose
     // `term` didn't survive normalization fall back to empty chapters[].
     const chaptersByTerm = new Map(merged.map(m => [m.term, m.chapters]));

@@ -132,6 +132,14 @@
       <button @click="startFromRaw()" :disabled="busy || !rawBook.trim()" :aria-busy="busy && view === 'setup'">
         <span x-text="busy ? 'Building dictionary…' : 'Parse book & build dictionary'"></span>
       </button>
+      <div class="dict-progress" x-show="dictionaryProgress" x-cloak>
+        <small>
+          <span x-text="dictionaryProgress?.stage === 'extract' ? 'Extracting terms per chapter' : 'Translating merged term list'"></span>
+          —
+          <span x-text="`${dictionaryProgress?.current ?? 0} / ${dictionaryProgress?.total ?? 0}`"></span>
+        </small>
+        <progress :value="dictionaryProgress?.current ?? 0" :max="Math.max(1, dictionaryProgress?.total ?? 1)"></progress>
+      </div>
     </section>
 
     <!-- DICTIONARY -->
@@ -199,9 +207,35 @@
       </aside>
 
       <div class="editor-main">
-        <p><small>Chapter <span x-text="currentChapterIndex + 1"></span> of <span x-text="book?.chapters?.length"></span> · status: <span x-text="book?.chapters?.[currentChapterIndex]?.status"></span></small></p>
+        <div class="editor-toolbar">
+          <p class="chapter-info">
+            <small>
+              Chapter <span x-text="currentChapterIndex + 1"></span> of <span x-text="book?.chapters?.length"></span>
+              · status: <span x-text="book?.chapters?.[currentChapterIndex]?.status"></span>
+            </small>
+          </p>
+          <div class="font-size-controls">
+            <label>
+              <small>Original</small>
+              <select x-model="originalFontSize">
+                <template x-for="s in FONT_SIZE_KEYS" :key="s">
+                  <option :value="s" x-text="s"></option>
+                </template>
+              </select>
+            </label>
+            <label>
+              <small>Translation</small>
+              <select x-model="translationFontSize">
+                <template x-for="s in FONT_SIZE_KEYS" :key="s">
+                  <option :value="s" x-text="s"></option>
+                </template>
+              </select>
+            </label>
+          </div>
+        </div>
 
-        <div class="paragraphs" :style="`--split-pct: ${splitPercent}%`">
+        <div class="paragraphs"
+             :style="`--split-pct: ${splitPercent}%; --original-font-size: ${FONT_SIZES[originalFontSize]}; --translation-font-size: ${FONT_SIZES[translationFontSize]}`">
           <!-- Title row: editable translation on the LEFT, original on the right. -->
           <input class="translation title-row" type="text"
                  :value="book?.chapters?.[currentChapterIndex]?.translatedTitle || ''"

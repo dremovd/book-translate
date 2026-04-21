@@ -3,7 +3,10 @@
 // can be exercised end-to-end without a network or API key.
 
 export class DummyTranslator {
-  async buildDictionary(chapters) {
+  async buildDictionary(chapters, { onProgress } = {}) {
+    // Fire a couple of progress events for contract uniformity with the
+    // real backend, even though the work is synchronous here.
+    onProgress?.({ stage: 'extract', current: 0, total: chapters.length });
     // For each capitalized token track which chapter indices it appeared in,
     // so the dictionary has the same `chapters: number[]` shape the POE
     // backend produces — keeps the downstream "subset for this chapter"
@@ -20,7 +23,8 @@ export class DummyTranslator {
         }
       }
     });
-    return [...perTerm.entries()]
+    onProgress?.({ stage: 'extract', current: chapters.length, total: chapters.length });
+    const out = [...perTerm.entries()]
       .filter(([, e]) => e.count >= 2)
       .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
       .slice(0, 40)
@@ -30,6 +34,8 @@ export class DummyTranslator {
         notes: '',
         chapters: [...e.chapters].sort((a, b) => a - b),
       }));
+    onProgress?.({ stage: 'translate', current: 1, total: 1 });
+    return out;
   }
 
   async translateChapter(chapter /*, dictionary, priorAcceptedChapters */) {

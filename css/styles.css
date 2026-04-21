@@ -15,6 +15,15 @@ article[role="alert"] {
   gap: 0.5rem;
 }
 
+.dict-progress {
+  margin-top: 0.75rem;
+}
+.dict-progress small { opacity: 0.75; }
+.dict-progress progress {
+  width: 100%;
+  margin: 0.25rem 0 0;
+}
+
 article[role="alert"] .close {
   margin-left: auto;
   background: transparent;
@@ -161,6 +170,42 @@ article[role="alert"] .close {
   width: auto;
 }
 
+/* Editor toolbar (chapter info + font-size selectors) sits above the
+   paragraph grid. Flex row that wraps on narrow viewports. */
+.editor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+}
+.editor-toolbar .chapter-info { margin: 0; }
+.font-size-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.font-size-controls label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
+  white-space: nowrap;
+}
+.font-size-controls select {
+  margin: 0;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.8rem;
+  width: auto;
+  min-width: 0;
+  height: auto;
+}
+.font-size-controls small {
+  color: var(--pico-muted-color);
+  font-size: 0.72rem;
+}
+
 /* ---------- two-column paragraph editor ----------
    Reads like prose: no per-cell borders or backgrounds, no internal padding.
    Row-gap separates paragraphs visually; the boundary between the two columns
@@ -178,19 +223,25 @@ article[role="alert"] .close {
 }
 
 .original,
-textarea.translation {
+textarea.translation,
+.translation.rendered {
   padding: 0;
   margin: 0;
   border: none;
   background: transparent;
   font-family: var(--pico-font-family);
-  font-size: 1rem;
   line-height: 1.6;
 }
 
 .original {
   white-space: pre-wrap;
   color: var(--pico-muted-color);
+  font-size: var(--original-font-size, 1rem);
+}
+
+textarea.translation,
+.translation.rendered {
+  font-size: var(--translation-font-size, 1.15rem);
 }
 
 textarea.translation {

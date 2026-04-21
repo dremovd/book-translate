@@ -307,6 +307,50 @@ test('PoeTranslator.buildDictionary: translate prompt asks for canonical publish
   } finally { restore(); }
 });
 
+test('PoeTranslator.buildDictionary: calls onProgress through extract then translate stages', async () => {
+  const { impl } = dictFetchMock({
+    extractResponses: ['["A"]', '["B"]'],
+    translateResponse: '[{"term":"A","translation":"а"},{"term":"B","translation":"б"}]',
+  });
+  const restore = withFetch(impl);
+  try {
+    const events = [];
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', dictionaryChunkChars: 100,
+    });
+    await t.buildDictionary(
+      [
+        { title: 'A', paragraphs: [{ original: 'x'.repeat(40) }] },
+        { title: 'B', paragraphs: [{ original: 'y'.repeat(40) }] },
+      ],
+      { onProgress: (p) => events.push({ ...p }) }
+    );
+    const extracts = events.filter(e => e.stage === 'extract');
+    assert.ok(extracts.length >= 2, `expected multiple extract progress events, got ${extracts.length}`);
+    const lastExtract = extracts[extracts.length - 1];
+    assert.equal(lastExtract.current, 2);
+    assert.equal(lastExtract.total, 2);
+
+    const translates = events.filter(e => e.stage === 'translate');
+    assert.ok(translates.length >= 1, 'translate stage must emit at least one event');
+    const lastTranslate = translates[translates.length - 1];
+    assert.equal(lastTranslate.current, 1);
+    assert.equal(lastTranslate.total, 1);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildDictionary: onProgress is optional (no callback → no crash)', async () => {
+  const { impl } = dictFetchMock({
+    extractResponses: ['["X"]'],
+    translateResponse: '[{"term":"X","translation":"Х"}]',
+  });
+  const restore = withFetch(impl);
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'x' }] }]);
+  } finally { restore(); }
+});
+
 test('PoeTranslator.buildDictionary: no extracted terms → no translate call, empty dict', async () => {
   const { impl, calls } = dictFetchMock({ extractResponses: ['[]'] });
   const restore = withFetch(impl);

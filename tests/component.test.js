@@ -194,6 +194,44 @@ test('acceptedCount and anyTranslated getters', async () => {
 
 // ---------- dictionary ----------
 
+test('startFromRaw: dictionaryProgress starts null, ends null after build', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  assert.equal(c.dictionaryProgress, null);
+  await c.startFromRaw();
+  assert.equal(c.dictionaryProgress, null, 'progress must be cleared once the build finishes');
+});
+
+test('defaults: split 60 %, original medium, translation big', async () => {
+  const c = await initFresh();
+  assert.equal(c.splitPercent, 60);
+  assert.equal(c.originalFontSize, 'medium');
+  assert.equal(c.translationFontSize, 'big');
+});
+
+test('font-size selections persist across reloads', async () => {
+  const c1 = await initFresh();
+  c1.originalFontSize = 'small';
+  c1.translationFontSize = 'biggest';
+  await c1.persistNow();
+
+  const c2 = makeComponent();
+  await c2.init();
+  assert.equal(c2.originalFontSize, 'small');
+  assert.equal(c2.translationFontSize, 'biggest');
+});
+
+test('font-size: malformed saved value falls back to default', async () => {
+  clearStore();
+  await globalThis.localforage.setItem('book-translate-state:v1', {
+    originalFontSize: 'enormous', translationFontSize: 42,
+  });
+  const c = makeComponent();
+  await c.init();
+  assert.equal(c.originalFontSize, 'medium');
+  assert.equal(c.translationFontSize, 'big');
+});
+
 test('addTerm/removeTerm mutate the dictionary', async () => {
   const c = await initFresh();
   c.addTerm();
