@@ -190,6 +190,16 @@ export class PoeTranslator {
     return `\n\nEditor guidance (follow strictly):\n${guidance}\n\n`;
   }
 
+  // Per-book translation guidance, appended after whichever style preset
+  // is active (v1 / v2 / custom). Used by both translateChapter and
+  // translateParagraph so per-paragraph retranslations share the same
+  // book-specific voice/register/genre rules.
+  _translationGuidanceSection() {
+    const guidance = (this.config.translationGuidance || '').trim();
+    if (!guidance) return '';
+    return `\n\nAdditional guidance for this book (follow strictly):\n${guidance}`;
+  }
+
   async translateChapter(chapter, dictionary, priorAcceptedChapters) {
     const lang = this.config.targetLanguage || 'the target language';
     const priorStr = priorAcceptedChapters
@@ -259,12 +269,13 @@ export class PoeTranslator {
       ? `\n\nDialog formatting (${lang}): ${dialog} If the source paragraph contains multiple ` +
         `speaker turns, separate them with literal newlines within this single output paragraph.`
       : '';
+    const guidanceBlock = this._translationGuidanceSection();
 
     const messages = [
       {
         role: 'system',
         content:
-          `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}${dialogBlock}\n\n` +
+          `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}${guidanceBlock}${dialogBlock}\n\n` +
           `Output: ONLY the translated paragraph text. No numbering, no quotes, no commentary, no label, no leading or trailing blank lines.\n\n` +
           `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`,
       },
@@ -317,6 +328,7 @@ export class PoeTranslator {
       style = entry.render(lang);
     }
     return style +
+      this._translationGuidanceSection() +
       this._dialogSection(lang) +
       `\n\nThe input is numbered: [0] is the chapter title, [1]..[N] are body paragraphs in order. Your output MUST have the same [0]..[N] numbering, one translation per input item. Do not merge, split, reorder, or add commentary.\n\n` +
       `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`;

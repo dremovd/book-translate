@@ -614,6 +614,77 @@ test('PoeTranslator.translateParagraph: strips labels and wrapping quotes from o
   } finally { restore(); }
 });
 
+test('PoeTranslator.translateChapter: translationGuidance is appended to the v2 preset', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Russian',
+      translationGuidance: 'Use formal вы throughout. Preserve rhetorical irony.',
+    });
+    await t.translateChapter({ title: 'c', paragraphs: [{ original: 'foo' }] }, [], []);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /Use formal вы throughout/);
+    assert.match(sys, /Preserve rhetorical irony/);
+    // v2 preset + structural contract still present.
+    assert.match(sys, /two stages/i);
+    assert.match(sys, /\[0\] is the chapter title/);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateChapter: translationGuidance is appended to the v1 preset too', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Russian',
+      translationPromptPreset: 'v1',
+      translationGuidance: 'Keep sentences short.',
+    });
+    await t.translateChapter({ title: 'c', paragraphs: [{ original: 'foo' }] }, [], []);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /publication-ready Russian/);   // v1 mandate
+    assert.match(sys, /Keep sentences short/);        // appended guidance
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateChapter: empty translationGuidance adds no extra section', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Russian',
+    });
+    await t.translateChapter({ title: 'c', paragraphs: [{ original: 'foo' }] }, [], []);
+    assert.doesNotMatch(sentBody.messages[0].content, /Additional guidance/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: translationGuidance reaches the system prompt', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Russian',
+      translationGuidance: 'Use nautical register.',
+    });
+    await t.translateParagraph({ original: 'foo' }, 'natural', []);
+    assert.match(sentBody.messages[0].content, /Use nautical register/);
+  } finally { restore(); }
+});
+
 test('PoeTranslator.translateChapter: prompt includes Russian dialog conventions when target is Russian', async () => {
   let sentBody;
   const restore = withFetch(async (_url, opts) => {

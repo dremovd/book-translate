@@ -130,6 +130,10 @@ export function defaultConfig() {
     // automatically regardless of preset.
     translationPromptPreset: 'v2',
     translationPromptCustom: '',
+    // Free-text rules appended after whichever preset is active. Use for
+    // book-specific voice, register, or genre conventions. Threads into
+    // both chapter translation and per-paragraph retranslation.
+    translationGuidance: '',
   };
 }
 

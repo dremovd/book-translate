@@ -126,6 +126,12 @@
           placeholder="Write your own style/instruction block. Use ${lang} where the target language should appear. The structural contract ([0]..[N] numbering) and the dictionary block are appended automatically."></textarea>
         <small>You're editing the style/instruction part only — the structural contract and dictionary are always appended. Use <code>${'${lang}'}</code> as a placeholder for the target language.</small>
       </label>
+      <label x-show="config.translator === 'poe'">
+        Translation guidance (per-book)
+        <textarea rows="4" x-model="config.translationGuidance"
+          placeholder="- Use formal register throughout (e.g. вы / Sie / vous).&#10;- Preserve specific rhetorical figures (irony, anaphora).&#10;- Render nautical / period / technical terminology in the genre-appropriate register.&#10;- Keep the narrator's characteristic sentence rhythm."></textarea>
+        <small>Appended to whichever preset above is active, and used for per-paragraph retranslations too. For book-specific voice, register, or genre rules that should persist for every chapter.</small>
+      </label>
       <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
       <small x-show="config.translator === 'poe'">
         The key is kept in your browser (localforage). If POE blocks direct browser calls via CORS, point Base URL at your own proxy.
