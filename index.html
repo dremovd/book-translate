@@ -109,7 +109,7 @@
       <label x-show="config.translator === 'poe'">
         Dictionary guidance
         <textarea rows="4" x-model="config.dictionaryGuidance"
-          placeholder="- Use the Rosman (Росмэн) translation scheme for Harry Potter names.&#10;- Normalize ALL CAPS in source to title case.&#10;- Include spells (in italics) and magical creatures.&#10;- Skip real-world book titles; keep them in English."></textarea>
+          placeholder="- Use a single, consistent transliteration scheme for proper names.&#10;- Normalize ALL CAPS in the source to title case.&#10;- For real-world references (book / film / song titles), use the canonical published translation; note it.&#10;- Include recurring invented words, technical terms, and forms of address."></textarea>
         <small>Free-text instructions injected into both the term-extraction and translation prompts. Use for canonical translations, what to include/skip, and style rules.</small>
       </label>
       <label x-show="config.translator === 'poe'">
