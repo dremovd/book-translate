@@ -80,7 +80,7 @@ export function formatDictionary(dictionary) {
 const DIALOG_CONVENTIONS = {
   russian:
     'Each speaker line starts with an em-dash (—) on a new line. ' +
-    'Speaker tags inside a line are flanked by em-dashes — for example: «— Привет, — сказал он, — как дела?». ' +
+    'Speaker tags inside a line are flanked by em-dashes, e.g. «— Привет, — сказал он, — как дела?». ' +
     'Do NOT use English-style "quotation marks" for spoken lines.',
   ukrainian:
     'Each speaker line starts with an em-dash (—) on a new line. ' +

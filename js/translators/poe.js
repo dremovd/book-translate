@@ -37,15 +37,15 @@ export const TRANSLATION_PRESETS = {
   v1: {
     label: 'v1 — natural & idiomatic',
     render: (lang) =>
-      `Translate the text into high-quality, publication-ready ${lang} that reads fully natural and idiomatic, strictly avoiding any "translationese," while meticulously preserving and adapting the author's unique voice, personality, and rhythm so the result feels exactly like a ${lang} text the author would have written themselves. Never skip English text paragraphs — translate every sentence.`,
+      `Translate into publication-ready ${lang} that reads fully natural and idiomatic — avoid "translationese". Preserve the author's voice, personality, and rhythm so the result reads as ${lang} the author might have written. Never skip a paragraph or sentence.`,
   },
   v2: {
     label: 'v2 — two-stage, native-writer rewrite',
     render: (lang) =>
       `Translate into ${lang} at publication-ready literary quality.\n\n` +
-      `Work in two stages, always. First, read each paragraph and fully grasp what is being said — the thought, the voice, the rhythm, the subtext. Then set the English aside and rewrite the thought the way a native ${lang} writer would phrase it, as if ${lang} were the original language of the book. Do not reach back to the English sentence; reach for what a ${lang} reader would naturally want to read.\n\n` +
-      `Reject "translationese" at the sentence level, not just the word level. If the English syntax would feel foreign in ${lang}, restructure: reorder clauses, split or merge sentences, switch passive to active or vice versa, replace abstract English constructions with the native ${lang} way of saying the same thing. Calques of English idioms are a failure even when grammatical. The result must read as an original ${lang} novel, not as a careful translation from a foreign language.\n\n` +
-      `Preserve the author's voice, personality, rhythm, tone, and subtext. Never skip a paragraph or a sentence — translate every one.`,
+      `Work in two stages. First grasp each paragraph — thought, voice, rhythm, subtext. Then close the English and rewrite the thought the way a native ${lang} writer would phrase it, as if ${lang} were the original language.\n\n` +
+      `Reject "translationese" at the sentence level. If the English syntax would feel foreign in ${lang}, restructure: reorder, split or merge sentences, switch voice, swap abstract English constructions for the native ${lang} way. Calques are a failure even when grammatical. The result must read as an original ${lang} novel, not a careful translation from a foreign language.\n\n` +
+      `Preserve the author's voice, personality, rhythm, tone, subtext. Never skip a paragraph or sentence.`,
   },
 };
 const DEFAULT_TRANSLATION_PRESET = 'v2';
@@ -187,7 +187,7 @@ export class PoeTranslator {
   _guidanceSection() {
     const guidance = (this.config.dictionaryGuidance || '').trim();
     if (!guidance) return '';
-    return `\n\nEditor guidance (follow strictly):\n${guidance}\n\n`;
+    return `\n\nEditor guidance:\n${guidance}\n\n`;
   }
 
   // Per-book translation guidance, appended after whichever style preset
@@ -197,7 +197,17 @@ export class PoeTranslator {
   _translationGuidanceSection() {
     const guidance = (this.config.translationGuidance || '').trim();
     if (!guidance) return '';
-    return `\n\nAdditional guidance for this book (follow strictly):\n${guidance}`;
+    return `\n\nAdditional guidance for this book:\n${guidance}`;
+  }
+
+  // Tell the model how to treat inline Markdown markers (* / ** / _ / __)
+  // in the source. Without this, models read the asterisks as incidental
+  // punctuation and drop them during cleanup — which also severs the link
+  // between "italic in source" and any guidance like "use quotes for
+  // character thoughts". Default behavior: preserve the wrapping; if the
+  // guidance prescribes a different convention, follow that.
+  _inlineMarkersSection() {
+    return `\n\nInline markers in the source (*…*, **…**, _…_, __…__) are italic or bold and semantically meaningful — do not drop them. In fiction, italic often marks a character's thought, an imagined or remembered line, or strong emphasis. If the guidance above prescribes a target-language convention (e.g. "use quotation marks for character thoughts"), apply it to these spans; otherwise preserve the wrapping verbatim around the equivalent phrase.`;
   }
 
   async translateChapter(chapter, dictionary, priorAcceptedChapters) {
@@ -249,13 +259,13 @@ export class PoeTranslator {
     const lang = this.config.targetLanguage || 'the target language';
     const strict = mode === 'strict';
     const modeInstruction = strict
-      ? `BIAS: stay close to the original. Preserve the literal meaning, sentence structure, and where possible the word order. A slightly stiffer but more faithful rendering is preferred over a freer one. Do not invent or omit.`
-      : `BIAS: sound like native ${lang} prose, even at the cost of fidelity to English shape. Restructure freely — reorder clauses, split or merge sentences, switch passive↔active, replace abstract English constructions with the ${lang}-native way of saying the same thing. Calques of English are a failure. The paragraph must feel as if a ${lang} writer wrote it.`;
+      ? `BIAS (strict): faithful to the original — preserve literal meaning, sentence structure, and where possible word order. Stiffer-but-faithful beats freer. Do not invent or omit.`
+      : `BIAS (natural): sound like native ${lang} prose, even at the cost of fidelity to English shape. Restructure freely — reorder, split/merge sentences, switch passive↔active, swap abstract English constructions for the ${lang}-native way. Calques of English are a failure. The paragraph must read as if a ${lang} writer wrote it.`;
 
     const currentTranslation = (paragraph.translation || '').trim();
     const revising = currentTranslation.length > 0;
     const revisionNote = revising
-      ? `\n\nThe editor will provide a CURRENT TRANSLATION below. That's what you must improve — move the rendering in the direction of the BIAS above. Do not merely repeat it. If it already satisfies the BIAS, still produce a fresh rewording so the editor has something to compare.`
+      ? `\n\nA CURRENT TRANSLATION is provided below — produce a fresh rendering that moves it toward the BIAS. Do not repeat it verbatim.`
       : '';
 
     const priorStr = (context.priorParagraphs || [])
@@ -266,19 +276,17 @@ export class PoeTranslator {
 
     const dialog = dialogConventionsFor(lang);
     const dialogBlock = dialog
-      ? `\n\nDialog formatting (${lang}): ${dialog} If the source paragraph contains multiple ` +
-        `speaker turns, separate them with literal newlines within this single output paragraph.`
+      ? `\n\nDialog formatting (${lang}): ${dialog} For multiple speaker turns in a single source paragraph, separate them with literal newlines in the output.`
       : '';
     const guidanceBlock = this._translationGuidanceSection();
+    const markersBlock  = this._inlineMarkersSection();
 
     const messages = [
       {
         role: 'system',
         content:
-          `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}${guidanceBlock}${dialogBlock}\n\n` +
-          `Output: ONLY the translated paragraph text itself. Do NOT wrap the output in an extra pair of quotation marks. ` +
-          `But KEEP any quotation marks that belong inside the translated prose — direct speech, a character's inner monologue, quoted words, etc. ` +
-          `No numbering, no label (e.g. "Translation:"), no commentary, no leading or trailing blank lines.\n\n` +
+          `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}${guidanceBlock}${dialogBlock}${markersBlock}\n\n` +
+          `Output: just the translated paragraph — do NOT wrap it in an extra pair of quotation marks, but KEEP quotation marks that belong inside the prose (direct speech, inner monologue, quoted words). No numbering, label (e.g. "Translation:"), commentary, or leading/trailing blank lines.\n\n` +
           `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`,
       },
     ];
@@ -335,7 +343,8 @@ export class PoeTranslator {
     return style +
       this._translationGuidanceSection() +
       this._dialogSection(lang) +
-      `\n\nThe input is numbered: [0] is the chapter title, [1]..[N] are body paragraphs in order. Your output MUST have the same [0]..[N] numbering, one translation per input item. Do not merge, split, reorder, or add commentary.\n\n` +
+      this._inlineMarkersSection() +
+      `\n\nInput is numbered: [0] is the chapter title, [1]..[N] are body paragraphs in order. Output MUST mirror this numbering with one translation per input item. No merging, splitting, reordering, or commentary.\n\n` +
       `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`;
   }
 
@@ -348,9 +357,7 @@ export class PoeTranslator {
     const conv = dialogConventionsFor(lang);
     if (!conv) return '';
     return `\n\nDialog formatting (${lang}): ${conv}\n\n` +
-      `When the convention requires multiple lines for a single source paragraph (e.g. several ` +
-      `speaker turns), keep all those lines within the same numbered paragraph slot — separate ` +
-      `them with literal newline characters. Do NOT split into multiple [N] paragraphs.`;
+      `For multi-line dialog in a single source paragraph, keep all lines inside the same numbered paragraph slot — separate them with literal newlines.`;
   }
 }
 

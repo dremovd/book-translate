@@ -685,6 +685,39 @@ test('PoeTranslator.translateParagraph: prompt allows internal quotes and forbid
   } finally { restore(); }
 });
 
+test('PoeTranslator.translateChapter: prompt explains inline *italic* / **bold** markers', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateChapter({ title: 'c', paragraphs: [{ original: '*a thought*' }] }, [], []);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /italic/i);
+    assert.match(sys, /thought|inner|internal/i);
+    assert.match(sys, /guidance/i);
+    assert.match(sys, /preserve/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: prompt explains inline *italic* / **bold** markers', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateParagraph({ original: '*thought*' }, 'natural', []);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /italic/i);
+    assert.match(sys, /thought|inner|internal/i);
+    assert.match(sys, /preserve/i);
+  } finally { restore(); }
+});
+
 test('PoeTranslator.translateChapter: translationGuidance is appended to the v2 preset', async () => {
   let sentBody;
   const restore = withFetch(async (_url, opts) => {
