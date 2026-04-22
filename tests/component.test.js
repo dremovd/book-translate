@@ -329,6 +329,63 @@ test('persist is suppressed until loadSaved completes (no clobber of saved state
   assert.deepEqual(after, before, 'pre-init schedulePersist must not write');
 });
 
+// ---------- query-param overrides ----------
+
+test('_applyQueryParamOverrides: applies known string config fields', async () => {
+  const c = await initFresh();
+  const applied = c._applyQueryParamOverrides(
+    '?translator=poe&model=claude-opus-4.7&dictionaryModel=gemini-2.5-flash&apiKey=sk-test&targetLanguage=French'
+  );
+  assert.equal(applied, true);
+  assert.equal(c.config.translator, 'poe');
+  assert.equal(c.config.model, 'claude-opus-4.7');
+  assert.equal(c.config.dictionaryModel, 'gemini-2.5-flash');
+  assert.equal(c.config.apiKey, 'sk-test');
+  assert.equal(c.config.targetLanguage, 'French');
+});
+
+test('_applyQueryParamOverrides: coerces numeric fields', async () => {
+  const c = await initFresh();
+  c._applyQueryParamOverrides('?dictionaryChunkChars=12345');
+  assert.equal(c.config.dictionaryChunkChars, 12345);
+  assert.equal(typeof c.config.dictionaryChunkChars, 'number');
+});
+
+test('_applyQueryParamOverrides: invalid number is skipped (existing value preserved)', async () => {
+  const c = await initFresh();
+  const before = c.config.dictionaryChunkChars;
+  c._applyQueryParamOverrides('?dictionaryChunkChars=not-a-number');
+  assert.equal(c.config.dictionaryChunkChars, before);
+});
+
+test('_applyQueryParamOverrides: empty query returns false and leaves state alone', async () => {
+  const c = await initFresh();
+  const originalModel = c.config.model;
+  assert.equal(c._applyQueryParamOverrides(''), false);
+  assert.equal(c.config.model, originalModel);
+});
+
+test('_applyQueryParamOverrides: only the params present override — absent fields are kept', async () => {
+  const c = await initFresh();
+  c.config.apiKey = 'pre-existing-key';
+  c.config.model = 'pre-existing-model';
+  c._applyQueryParamOverrides('?model=new-model');
+  assert.equal(c.config.model, 'new-model');
+  assert.equal(c.config.apiKey, 'pre-existing-key', 'unspecified field must not be touched');
+});
+
+test('_applyQueryParamOverrides: unknown params are ignored, no throw', async () => {
+  const c = await initFresh();
+  c._applyQueryParamOverrides('?unknown=foo&ALSO_UNKNOWN=bar&model=valid');
+  assert.equal(c.config.model, 'valid');
+});
+
+test('_applyQueryParamOverrides: headingLevel top-level state is overridable', async () => {
+  const c = await initFresh();
+  c._applyQueryParamOverrides('?headingLevel=2');
+  assert.equal(c.headingLevel, 2);
+});
+
 // ---------- state export / import ----------
 
 test('serializeState: envelope carries type + version + state; apiKey is blanked', async () => {

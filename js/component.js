@@ -37,6 +37,52 @@ export const SAMPLE_BOOKS = [
   },
 ];
 
+// Which config fields accept a string from the URL query. These are the
+// knobs an onboarding link can pre-fill — the list is intentionally small
+// and explicit; unknown params are silently ignored.
+const QUERY_STRING_CONFIG_KEYS = [
+  'translator', 'apiKey', 'model', 'dictionaryModel', 'baseUrl',
+  'targetLanguage', 'dictionaryGuidance',
+  'translationPromptPreset', 'translationPromptCustom',
+];
+const QUERY_NUMBER_CONFIG_KEYS = ['dictionaryChunkChars'];
+
+// Pure: parse a window.location.search-style string into a patch applied
+// to state on init. Returns { configPatch, stateOverrides, sampleId, anyApplied }.
+export function parseQueryOverrides(queryString) {
+  const out = { configPatch: {}, stateOverrides: {}, sampleId: null, anyApplied: false };
+  if (!queryString) return out;
+  const params = new URLSearchParams(queryString);
+
+  for (const key of QUERY_STRING_CONFIG_KEYS) {
+    if (params.has(key)) {
+      out.configPatch[key] = params.get(key);
+      out.anyApplied = true;
+    }
+  }
+  for (const key of QUERY_NUMBER_CONFIG_KEYS) {
+    if (params.has(key)) {
+      const n = Number(params.get(key));
+      if (Number.isFinite(n)) {
+        out.configPatch[key] = n;
+        out.anyApplied = true;
+      }
+    }
+  }
+  if (params.has('headingLevel')) {
+    const n = Number(params.get('headingLevel'));
+    if (Number.isFinite(n)) {
+      out.stateOverrides.headingLevel = n;
+      out.anyApplied = true;
+    }
+  }
+  if (params.has('sample')) {
+    out.sampleId = params.get('sample');
+    out.anyApplied = true;
+  }
+  return out;
+}
+
 function clampSplit(pct) {
   const n = Number(pct);
   if (!Number.isFinite(n)) return 60;
@@ -114,6 +160,10 @@ export function makeComponent() {
     async init() {
       await this.loadSaved();
       this._loaded = true;
+      // After restoring from localforage, apply any onboarding URL params
+      // (?model=…&apiKey=…&…). They override saved values for the specific
+      // fields provided, leaving the rest intact.
+      this._applyQueryParamOverrides();
 
       // Alpine-only: reactive auto-persist. Skipped when run outside Alpine (tests).
       if (typeof this.$watch === 'function') {
@@ -545,6 +595,35 @@ export function makeComponent() {
     // needing a jsdom. Tests set `component._confirm = () => false/true`.
     _confirm(msg) {
       return typeof globalThis.confirm === 'function' ? globalThis.confirm(msg) : true;
+    },
+
+    // Read overrides from the URL query string, patch config + state,
+    // then strip the query from the address bar so the API key doesn't
+    // linger in browser history / referrers. Accepts an explicit query
+    // string for testability; falls back to window.location.search.
+    // Returns `true` iff something was applied.
+    _applyQueryParamOverrides(queryString) {
+      const qs = queryString ?? (typeof window !== 'undefined' ? window.location?.search : '');
+      const { configPatch, stateOverrides, sampleId, anyApplied } = parseQueryOverrides(qs || '');
+      if (!anyApplied) return false;
+
+      Object.assign(this.config, configPatch);
+      Object.assign(this, stateOverrides);
+      if (sampleId) {
+        // Fire-and-forget: loadSample is async, init() doesn't wait.
+        // `headingLevel` from query wins because Object.assign ran first.
+        this.loadSample(sampleId);
+      }
+
+      if (typeof window !== 'undefined' && typeof window.history?.replaceState === 'function') {
+        try {
+          const url = new URL(window.location.href);
+          url.search = '';
+          window.history.replaceState({}, (typeof document !== 'undefined' && document.title) || '', url.toString());
+        } catch (_e) { /* best effort */ }
+      }
+      this.persistNow();
+      return true;
     },
 
     // Sizes a textarea to its current content. In modern browsers CSS
