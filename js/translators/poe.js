@@ -303,12 +303,14 @@ export class PoeTranslator {
     }
 
     const content = await this.chat(messages, { temperature: strict ? 0.15 : 0.5 });
-    // Strip a "Translation:" / "Перевод:" label if the model slipped one
-    // in. For quotes, only unwrap an obvious outer pair: both ends the
-    // same quote char AND no other quote of that type inside. Otherwise
-    // legitimate direct-speech quotes get eaten.
     const unlabeled = content.replace(/^\s*(?:Translation|Перевод)\s*:\s*/i, '').trim();
-    return unwrapOuterQuotes(unlabeled);
+    // Quote unwrapping: only strip an outer pair when the SOURCE wasn't
+    // itself wrapped in matching quotes. If the source was a direct-
+    // speech line surrounded by quotes, the matching quotes around the
+    // output are carrying the same meaning and must stay.
+    return isWrappedInMatchingQuotes(paragraph.original)
+      ? unlabeled
+      : unwrapOuterQuotes(unlabeled);
   }
 
   // Compose the translation system prompt from three blocks:
@@ -376,6 +378,18 @@ function unwrapOuterQuotes(text) {
     return inner;
   }
   return text;
+}
+
+// True if a paragraph is itself wrapped in one of the recognized quote
+// pairs — i.e. the paragraph IS a piece of direct speech or a quoted
+// sentence. Used to suppress quote-unwrapping on translator output so the
+// equivalent outer quotes around the translation survive.
+function isWrappedInMatchingQuotes(text) {
+  if (!text || text.length < 2) return false;
+  for (const [open, close] of QUOTE_PAIRS) {
+    if (text[0] === open && text[text.length - 1] === close) return true;
+  }
+  return false;
 }
 
 // Promise.all with a concurrency cap. Preserves input order.

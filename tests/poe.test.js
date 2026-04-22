@@ -640,6 +640,36 @@ test('PoeTranslator.translateParagraph: KEEPS a single opening quote with non-qu
   } finally { restore(); }
 });
 
+test('PoeTranslator.translateParagraph: source wrapped in "…" — output outer quotes are KEPT (direct-speech line)', async () => {
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: '"Здравствуй, мир."' } }] } }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.translateParagraph({ original: '"Hello, world."' }, 'natural', []);
+    assert.equal(out, '"Здравствуй, мир."');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: source NOT wrapped — output outer quotes are STILL stripped (model error)', async () => {
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: '"Это не должно быть в кавычках."' } }] } }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.translateParagraph({ original: 'This should not be quoted.' }, 'natural', []);
+    assert.equal(out, 'Это не должно быть в кавычках.');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: source wrapped in «…» — output « » pair is preserved', async () => {
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: '«Bonjour, monde.»' } }] } }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.translateParagraph({ original: '«Hello, world.»' }, 'natural', []);
+    assert.equal(out, '«Bonjour, monde.»');
+  } finally { restore(); }
+});
+
 test('PoeTranslator.translateParagraph: prompt allows internal quotes and forbids only the wrapping pair', async () => {
   let sentBody;
   const restore = withFetch(async (_u, opts) => {
