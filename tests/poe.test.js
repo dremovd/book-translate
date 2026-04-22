@@ -604,13 +604,54 @@ test('PoeTranslator.translateParagraph: omits current-translation block when par
   } finally { restore(); }
 });
 
-test('PoeTranslator.translateParagraph: strips labels and wrapping quotes from output', async () => {
+test('PoeTranslator.translateParagraph: strips "Translation:" label and an unambiguous wrapper pair of quotes', async () => {
   const restore = withFetch(async () =>
     mockResponse({ body: { choices: [{ message: { content: 'Translation: "переведённый текст"' } }] } }));
   try {
     const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
     const out = await t.translateParagraph({ original: 'foo' }, 'natural', []);
     assert.equal(out, 'переведённый текст');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: KEEPS quotes that belong inside the paragraph (direct speech / inner monologue)', async () => {
+  // Paragraph both starts AND ends with " but contains further " in the
+  // middle — the whole thing is direct speech, the outer quotes are
+  // meaningful, and the stripper must not eat them.
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: '"Я думаю," — подумал он, — "что это необычно."' } }] } }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.translateParagraph({ original: 'He thought things.' }, 'natural', []);
+    // All four " chars must survive — they're part of the prose.
+    assert.equal((out.match(/"/g) ?? []).length, 4);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: KEEPS a single opening quote with non-quote terminator (half-dialog)', async () => {
+  // Paragraph starts with " but does NOT end with " — the leading quote
+  // is part of prose; the stripper must not eat it.
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: '"Здравствуй," — сказал он и улыбнулся.' } }] } }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.translateParagraph({ original: '"Hello," he said, smiling.' }, 'natural', []);
+    assert.ok(out.startsWith('"'), 'opening quote must be preserved');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: prompt allows internal quotes and forbids only the wrapping pair', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '.' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateParagraph({ original: '"foo" she said' }, 'natural', []);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /do not wrap.*quotation marks/i);
+    assert.match(sys, /keep.*quotation marks|direct speech|inner monologue|inside/i);
   } finally { restore(); }
 });
 

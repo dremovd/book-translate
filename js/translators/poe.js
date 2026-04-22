@@ -276,7 +276,9 @@ export class PoeTranslator {
         role: 'system',
         content:
           `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}${guidanceBlock}${dialogBlock}\n\n` +
-          `Output: ONLY the translated paragraph text. No numbering, no quotes, no commentary, no label, no leading or trailing blank lines.\n\n` +
+          `Output: ONLY the translated paragraph text itself. Do NOT wrap the output in an extra pair of quotation marks. ` +
+          `But KEEP any quotation marks that belong inside the translated prose — direct speech, a character's inner monologue, quoted words, etc. ` +
+          `No numbering, no label (e.g. "Translation:"), no commentary, no leading or trailing blank lines.\n\n` +
           `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`,
       },
     ];
@@ -301,11 +303,12 @@ export class PoeTranslator {
     }
 
     const content = await this.chat(messages, { temperature: strict ? 0.15 : 0.5 });
-    // Strip potential labels the model slips in ("Translation:", wrapping quotes).
-    return content
-      .replace(/^\s*(?:Translation|Перевод)\s*:\s*/i, '')
-      .replace(/^["'«"]|["'»"]$/g, '')
-      .trim();
+    // Strip a "Translation:" / "Перевод:" label if the model slipped one
+    // in. For quotes, only unwrap an obvious outer pair: both ends the
+    // same quote char AND no other quote of that type inside. Otherwise
+    // legitimate direct-speech quotes get eaten.
+    const unlabeled = content.replace(/^\s*(?:Translation|Перевод)\s*:\s*/i, '').trim();
+    return unwrapOuterQuotes(unlabeled);
   }
 
   // Compose the translation system prompt from three blocks:
@@ -347,6 +350,32 @@ export class PoeTranslator {
       `speaker turns), keep all those lines within the same numbered paragraph slot — separate ` +
       `them with literal newline characters. Do NOT split into multiple [N] paragraphs.`;
   }
+}
+
+// Strip an outer pair of quotation marks ONLY when it's unambiguously a
+// wrapper — both ends are the same quote char, and no other instance of
+// that char appears between them. Preserves all quotes used legitimately
+// inside the paragraph (direct speech, inner monologue, quoted terms).
+// Handles the common ASCII " and ', plus the French/Russian «…» pair and
+// the curly "…" pair that models sometimes emit.
+const QUOTE_PAIRS = [
+  ['"', '"'],
+  ["'", "'"],
+  ['«', '»'],
+  ['\u201C', '\u201D'], // " "
+  ['\u201E', '\u201C'], // „ "  (German-style)
+];
+function unwrapOuterQuotes(text) {
+  if (!text || text.length < 2) return text;
+  for (const [open, close] of QUOTE_PAIRS) {
+    if (text[0] !== open || text[text.length - 1] !== close) continue;
+    const inner = text.slice(1, -1);
+    // If the same quote appears inside, the outer ones are probably
+    // meaningful (balanced dialog), don't touch.
+    if (inner.includes(open) || inner.includes(close)) continue;
+    return inner;
+  }
+  return text;
 }
 
 // Promise.all with a concurrency cap. Preserves input order.
