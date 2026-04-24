@@ -267,12 +267,16 @@ export class PoeTranslator {
                 : '';
     const hasBias = strict || natural;
 
+    // Default mode always translates fresh from the source — any existing
+    // translation is deliberately ignored, so the editor can use `↻
+    // retranslate` as a "forget what I have, start over" action. The
+    // strict/natural modes DO feed the current translation so the model
+    // can refine it toward the bias.
     const currentTranslation = (paragraph.translation || '').trim();
-    const revising = currentTranslation.length > 0;
-    const revisionNote = !revising ? ''
-      : hasBias
-        ? `\n\nA CURRENT TRANSLATION is provided below — produce a fresh rendering that moves it toward the BIAS. Do not repeat it verbatim.`
-        : `\n\nA CURRENT TRANSLATION is provided below — produce a fresh, improved rendering. Do not repeat it verbatim.`;
+    const revising = hasBias && currentTranslation.length > 0;
+    const revisionNote = revising
+      ? `\n\nA CURRENT TRANSLATION is provided below — produce a fresh rendering that moves it toward the BIAS. Do not repeat it verbatim.`
+      : '';
 
     const priorStr = (context.priorParagraphs || [])
       .slice(-5)

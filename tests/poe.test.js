@@ -531,7 +531,7 @@ test('PoeTranslator.translateParagraph: default mode — no BIAS block, style pr
   } finally { restore(); }
 });
 
-test('PoeTranslator.translateParagraph: default mode + existing translation — revision note does NOT reference BIAS', async () => {
+test('PoeTranslator.translateParagraph: default mode IGNORES any existing translation — source-only, fresh take', async () => {
   let sentBody;
   const restore = withFetch(async (_u, opts) => {
     sentBody = JSON.parse(opts.body);
@@ -539,13 +539,17 @@ test('PoeTranslator.translateParagraph: default mode + existing translation — 
   });
   try {
     const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
-    await t.translateParagraph({ original: 'hi', translation: 'старый перевод' }, 'default', []);
-    const sys = sentBody.messages[0].content;
-    // Revision note still tells the model to produce a fresh rendering,
-    // but can't point at a BIAS (none exists in default mode).
-    assert.match(sys, /current translation/i);
-    assert.doesNotMatch(sys, /toward the BIAS/i);
-    assert.match(sys, /do not repeat it verbatim/i);
+    await t.translateParagraph(
+      { original: 'Hello world.', translation: 'Старый перевод, совсем не похож.' },
+      'default', []
+    );
+    const all = sentBody.messages.map(m => m.content).join('\n');
+    // Existing translation must not be fed to the model.
+    assert.doesNotMatch(all, /Старый перевод/);
+    assert.doesNotMatch(all, /current translation/i);
+    assert.doesNotMatch(all, /A CURRENT TRANSLATION/);
+    // Source still present.
+    assert.match(all, /Hello world\./);
   } finally { restore(); }
 });
 
