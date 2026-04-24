@@ -257,16 +257,22 @@ export class PoeTranslator {
   // Returns the translated text as a plain string.
   async translateParagraph(paragraph, mode, dictionary, context = {}) {
     const lang = this.config.targetLanguage || 'the target language';
-    const strict = mode === 'strict';
-    const modeInstruction = strict
-      ? `BIAS (strict): faithful to the original — preserve literal meaning, sentence structure, and where possible word order. Stiffer-but-faithful beats freer. Do not invent or omit.`
-      : `BIAS (natural): sound like native ${lang} prose, even at the cost of fidelity to English shape. Restructure freely — reorder, split/merge sentences, switch passive↔active, swap abstract English constructions for the ${lang}-native way. Calques of English are a failure. The paragraph must read as if a ${lang} writer wrote it.`;
+    // Three modes: 'strict' (literal-bias), 'natural' (native-target-bias),
+    // anything else (default / no bias) — the per-book style preset alone.
+    const strict  = mode === 'strict';
+    const natural = mode === 'natural';
+    const modeInstruction =
+        strict  ? `BIAS (strict): faithful to the original — preserve literal meaning, sentence structure, and where possible word order. Stiffer-but-faithful beats freer. Do not invent or omit.`
+      : natural ? `BIAS (natural): sound like native ${lang} prose, even at the cost of fidelity to English shape. Restructure freely — reorder, split/merge sentences, switch passive↔active, swap abstract English constructions for the ${lang}-native way. Calques of English are a failure. The paragraph must read as if a ${lang} writer wrote it.`
+                : '';
+    const hasBias = strict || natural;
 
     const currentTranslation = (paragraph.translation || '').trim();
     const revising = currentTranslation.length > 0;
-    const revisionNote = revising
-      ? `\n\nA CURRENT TRANSLATION is provided below — produce a fresh rendering that moves it toward the BIAS. Do not repeat it verbatim.`
-      : '';
+    const revisionNote = !revising ? ''
+      : hasBias
+        ? `\n\nA CURRENT TRANSLATION is provided below — produce a fresh rendering that moves it toward the BIAS. Do not repeat it verbatim.`
+        : `\n\nA CURRENT TRANSLATION is provided below — produce a fresh, improved rendering. Do not repeat it verbatim.`;
 
     const priorStr = (context.priorParagraphs || [])
       .slice(-5)
@@ -310,7 +316,8 @@ export class PoeTranslator {
       });
     }
 
-    const content = await this.chat(messages, { temperature: strict ? 0.15 : 0.5 });
+    const temperature = strict ? 0.15 : natural ? 0.5 : 0.3;
+    const content = await this.chat(messages, { temperature });
     const unlabeled = content.replace(/^\s*(?:Translation|Перевод)\s*:\s*/i, '').trim();
     // Quote unwrapping: only strip an outer pair when the SOURCE wasn't
     // itself wrapped in matching quotes. If the source was a direct-

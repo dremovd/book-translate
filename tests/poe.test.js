@@ -510,6 +510,45 @@ test('PoeTranslator.translateChapter: sends title as [0] in the user prompt', as
 
 // ---------- translateParagraph ----------
 
+test('PoeTranslator.translateParagraph: default mode — no BIAS block, style preset still governs', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x', targetLanguage: 'Russian',
+    });
+    await t.translateParagraph({ original: 'hello' }, 'default', []);
+    const sys = sentBody.messages[0].content;
+    // No strict/natural BIAS line.
+    assert.doesNotMatch(sys, /BIAS\s*\(strict\)/);
+    assert.doesNotMatch(sys, /BIAS\s*\(natural\)/);
+    // Core instruction and shared sections still present.
+    assert.match(sys, /Translate ONE paragraph into Russian/);
+    assert.match(sys, /italic/i);  // inline-markers block
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: default mode + existing translation — revision note does NOT reference BIAS', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateParagraph({ original: 'hi', translation: 'старый перевод' }, 'default', []);
+    const sys = sentBody.messages[0].content;
+    // Revision note still tells the model to produce a fresh rendering,
+    // but can't point at a BIAS (none exists in default mode).
+    assert.match(sys, /current translation/i);
+    assert.doesNotMatch(sys, /toward the BIAS/i);
+    assert.match(sys, /do not repeat it verbatim/i);
+  } finally { restore(); }
+});
+
 test('PoeTranslator.translateParagraph: strict mode — system prompt biases toward literal fidelity', async () => {
   let sentBody;
   const restore = withFetch(async (_u, opts) => {

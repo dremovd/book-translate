@@ -269,6 +269,12 @@
                           @input="autosize($event.target)"></textarea>
                 <div class="paragraph-actions">
                   <button class="tiny" type="button"
+                          @click="retranslateParagraph(i, 'default')"
+                          :disabled="busy || config.translator === 'dummy'"
+                          title="Re-translate this paragraph with the default prompt (no strict/natural bias)">
+                    ↻ retranslate
+                  </button>
+                  <button class="tiny" type="button"
                           @click="retranslateParagraph(i, 'strict')"
                           :disabled="busy || config.translator === 'dummy'"
                           title="Retranslate this paragraph, biased toward literal fidelity">
