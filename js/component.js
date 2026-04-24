@@ -186,9 +186,15 @@ export function makeComponent() {
         // Resize all translation textareas whenever the editor becomes
         // visible or the shown chapter changes — these are the two moments
         // when freshly-rendered textareas might still report scrollHeight 0
-        // if we resized at x-init time.
-        this.$watch('view', v => { if (v === 'editor') this._autosizeAll(); });
-        this.$watch('currentChapterIndex', () => this._autosizeAll());
+        // if we resized at x-init time. Also reset scroll to the top of the
+        // page so a new chapter doesn't open mid-paragraph.
+        this.$watch('view', v => {
+          if (v === 'editor') { this._autosizeAll(); this._scrollToTop(); }
+        });
+        this.$watch('currentChapterIndex', () => {
+          this._autosizeAll();
+          this._scrollToTop();
+        });
       }
 
       // Browser-only: save on tab hide.
@@ -682,6 +688,15 @@ export function makeComponent() {
           this.autosize(el);
         }
       }));
+    },
+
+    // Scroll the page to the top — invoked when the chapter changes or
+    // when the editor view is first shown, so a new chapter doesn't open
+    // mid-paragraph at the previous chapter's scroll offset.
+    _scrollToTop() {
+      if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+        window.scrollTo(0, 0);
+      }
     },
   };
 }

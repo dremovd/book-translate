@@ -320,8 +320,7 @@ export class PoeTranslator {
       });
     }
 
-    const temperature = strict ? 0.15 : natural ? 0.5 : 0.3;
-    const content = await this.chat(messages, { temperature });
+    const content = await this.chat(messages, { temperature: strict ? 0.15 : 0.5 });
     const unlabeled = content.replace(/^\s*(?:Translation|Перевод)\s*:\s*/i, '').trim();
     // Quote unwrapping: only strip an outer pair when the SOURCE wasn't
     // itself wrapped in matching quotes. If the source was a direct-
