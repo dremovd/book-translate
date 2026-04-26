@@ -2,14 +2,15 @@
 // Anything that touches the network or DOM lives in component.js or
 // translators/poe.js — these are testable in plain Node.
 
-// Registry of pre-built alignment artifacts the abtest view can load.
+// Registry of pre-built alignment artifacts the abtest page can load.
 // Each entry's `path` points to a JSON produced by scripts/build-abtest.mjs.
 // Add a new entry here when a new alignment artifact is committed.
+// Currently HPMOR-only; the standalone page (abtest.html) loads ABTESTS[0].
 export const ABTESTS = [
   {
-    id: 'munchausen',
-    label: 'Munchausen — yours vs. Chukovsky\'s classical adaptation',
-    path: 'samples/abtest-munchausen.json',
+    id: 'hpmor',
+    label: 'HPMOR ch1-3 — yours vs. hpmor.ru fan translation',
+    path: 'samples/abtest-hpmor.json',
   },
 ];
 
@@ -151,4 +152,22 @@ function joinRange(paragraphs, start, end) {
     .map(p => (p?.original || '').trim())
     .filter(Boolean)
     .join('\n\n');
+}
+
+// Take a 1-based inclusive range string ("3-5") and return a copy of the
+// book with only those chapters. Used by the offline build script to scope
+// alignment to a sub-range of source/A/B (e.g. "chapters 1-3 of HPMOR
+// without prefaces"). Returns a defensive shallow copy when range is
+// undefined so callers can safely keep mutating their input.
+export function sliceChaptersInBook(book, range) {
+  const chapters = (book?.chapters || []).slice();
+  if (range == null) return { ...(book || {}), chapters };
+  const m = String(range).match(/^\s*(\d+)\s*-\s*(\d+)\s*$/);
+  if (!m) throw new Error(`Bad chapter range: "${range}" (expected "N-M", 1-based inclusive)`);
+  const start = Number(m[1]) - 1;
+  const end   = Number(m[2]) - 1;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) {
+    throw new Error(`Bad chapter range: "${range}"`);
+  }
+  return { ...(book || {}), chapters: chapters.slice(start, end + 1) };
 }

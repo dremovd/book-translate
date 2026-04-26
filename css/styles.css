@@ -198,6 +198,10 @@ article[role="alert"] .close {
   white-space: pre-wrap;
   line-height: 1.55;
 }
+/* renderBlockMd splits source/A/B on blank lines into <p> elements;
+   trim outer margins so the rendered block hugs the card padding. */
+.abtest-running .ab-text > p { margin: 0 0 0.6em 0; }
+.abtest-running .ab-text > p:last-child { margin-bottom: 0; }
 
 .abtest-running .ab-buttons {
   margin-top: 1.25rem;

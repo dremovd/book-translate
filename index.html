@@ -18,7 +18,6 @@
         <li><a href="#" @click.prevent="gotoSetup()">Setup</a></li>
         <li><a href="#" @click.prevent="gotoDictionary()" x-show="dictionary.length">Dictionary</a></li>
         <li><a href="#" @click.prevent="view = 'editor'" x-show="book && anyTranslated">Editor</a></li>
-        <li><a href="#" @click.prevent="view = 'abtest'">A/B</a></li>
         <li>
           <button class="secondary outline" type="button"
                   @click="$refs.importFile.click()" :disabled="busy"
@@ -315,93 +314,6 @@
       </div>
     </section>
 
-    <!-- A/B TEST -->
-    <section x-show="view === 'abtest'" x-cloak class="container">
-      <hgroup>
-        <h2>A/B translation comparison</h2>
-        <p>Pre-aligned blind test: 9 randomly-selected paragraph blocks where two translations both cover the same source content. Pick the side that reads better. Stats and per-pair reveal at the end.</p>
-      </hgroup>
-
-      <!-- SETUP -->
-      <div x-show="abPhase === 'setup' || !abActiveId" x-cloak>
-        <label>Choose a book pair
-          <select @change="loadAbtest($event.target.value)">
-            <option value="" :selected="!abActiveId">— pick one —</option>
-            <template x-for="t in ABTESTS" :key="t.id">
-              <option :value="t.id" :selected="abActiveId === t.id" x-text="t.label"></option>
-            </template>
-          </select>
-        </label>
-        <p x-show="abArtifact" x-cloak>
-          <small>
-            Loaded: <span x-text="abArtifact?.label"></span> ·
-            <span x-text="abArtifact?.stats?.blocks"></span> aligned blocks ·
-            built <span x-text="(abArtifact?.builtAt || '').slice(0, 10)"></span>
-            with <span x-text="abArtifact?.model"></span>.
-          </small>
-        </p>
-        <button @click="startAbtest()" :disabled="!abArtifact || abArtifact.blocks.length < 1">
-          Start blind 9-pair test
-        </button>
-      </div>
-
-      <!-- RUNNING -->
-      <div x-show="abPhase === 'running'" x-cloak class="abtest-running">
-        <p><small>
-          Pair <strong x-text="abIndex + 1"></strong> of <strong x-text="abPairs.length"></strong>
-          <span x-show="abPairs[abIndex]?.label">— <span x-text="abPairs[abIndex]?.label"></span></span>
-        </small></p>
-
-        <article class="ab-source">
-          <header><small>Source</small></header>
-          <div class="ab-text" x-text="abPairs[abIndex]?.source"></div>
-        </article>
-
-        <div class="ab-pair">
-          <article class="ab-side">
-            <header><strong>A</strong></header>
-            <div class="ab-text" x-text="abPairs[abIndex] ? (abPairs[abIndex].swapped ? abPairs[abIndex].bText : abPairs[abIndex].aText) : ''"></div>
-          </article>
-          <article class="ab-side">
-            <header><strong>B</strong></header>
-            <div class="ab-text" x-text="abPairs[abIndex] ? (abPairs[abIndex].swapped ? abPairs[abIndex].aText : abPairs[abIndex].bText) : ''"></div>
-          </article>
-        </div>
-
-        <div class="ab-buttons" role="group">
-          <button @click="recordAbtestChoice('a')">Prefer A</button>
-          <button class="secondary" @click="recordAbtestChoice('tie')">Tie</button>
-          <button @click="recordAbtestChoice('b')">Prefer B</button>
-        </div>
-      </div>
-
-      <!-- DONE -->
-      <div x-show="abPhase === 'done'" x-cloak>
-        <h3>Results</h3>
-        <p>
-          A (your translation): <strong x-text="abResults.aWins"></strong>
-          · B (the comparison): <strong x-text="abResults.bWins"></strong>
-          · Ties: <strong x-text="abResults.ties"></strong>
-        </p>
-        <details>
-          <summary>Per-pair reveal</summary>
-          <ol class="ab-reveal">
-            <template x-for="(p, i) in abPairs" :key="i">
-              <li>
-                <small x-text="p.label"></small> —
-                you picked <strong x-text="abChoices[i]"></strong>;
-                actual:
-                <span x-text="abChoices[i] === 'tie' ? 'tie' : (((abChoices[i] === 'a') !== p.swapped) ? 'A (yours)' : 'B (comparison)')"></span>
-              </li>
-            </template>
-          </ol>
-        </details>
-        <div role="group">
-          <button class="secondary" @click="resetAbtest()">Run another 9-pair set</button>
-          <button class="secondary outline" @click="view = 'setup'">Back to setup</button>
-        </div>
-      </div>
-    </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/localforage@1/dist/localforage.min.js"></script>

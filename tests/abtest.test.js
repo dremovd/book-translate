@@ -6,6 +6,7 @@ import {
   tallyAbResults,
   plainTextToMarkdown,
   buildAlignmentBlocks,
+  sliceChaptersInBook,
 } from '../js/abtest.js';
 
 // ---------- pickRandomSample ----------
@@ -159,4 +160,35 @@ test('buildAlignmentBlocks: tolerates malformed input (missing chapters / non-ar
   const aBook = { chapters: [{ paragraphs: [] }] };
   const bBook = { chapters: [{ paragraphs: [] }] };
   assert.deepEqual(buildAlignmentBlocks(sourceBook, aBook, bBook, { 0: 'not an array' }), []);
+});
+
+// ---------- sliceChaptersInBook ----------
+
+test('sliceChaptersInBook: 1-based inclusive slice', () => {
+  const book = { chapters: [
+    { title: 'C1' }, { title: 'C2' }, { title: 'C3' }, { title: 'C4' },
+  ]};
+  const out = sliceChaptersInBook(book, '2-3');
+  assert.equal(out.chapters.length, 2);
+  assert.equal(out.chapters[0].title, 'C2');
+  assert.equal(out.chapters[1].title, 'C3');
+});
+
+test('sliceChaptersInBook: undefined range returns the original (defensive copy)', () => {
+  const book = { chapters: [{ title: 'C1' }, { title: 'C2' }] };
+  const out = sliceChaptersInBook(book);
+  assert.equal(out.chapters.length, 2);
+  assert.notEqual(out, book); // new object
+});
+
+test('sliceChaptersInBook: range that exceeds book length is clamped', () => {
+  const book = { chapters: [{ title: 'C1' }, { title: 'C2' }] };
+  const out = sliceChaptersInBook(book, '1-99');
+  assert.equal(out.chapters.length, 2);
+});
+
+test('sliceChaptersInBook: invalid range throws', () => {
+  const book = { chapters: [{ title: 'C1' }] };
+  assert.throws(() => sliceChaptersInBook(book, 'garbage'), /range/i);
+  assert.throws(() => sliceChaptersInBook(book, '5-3'), /range/i);
 });

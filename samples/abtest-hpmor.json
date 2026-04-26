@@ -1,0 +1,1165 @@
+{
+  "id": "hpmor",
+  "label": "HPMOR ch1-3 — yours vs. hpmor.ru fan translation",
+  "builtAt": "2026-04-26T07:22:01.415Z",
+  "model": "gemini-3.1-pro",
+  "source": {
+    "path": "/tmp/hpmor.md",
+    "chapters": 3
+  },
+  "a": {
+    "path": "/Users/dmitry/Downloads/hpmor.md",
+    "chapters": 3
+  },
+  "b": {
+    "path": "/tmp/hpmor-ru-fan.md"
+  },
+  "bFormat": "markdown",
+  "stats": {
+    "chapterMapEntries": 3,
+    "paragraphAlignmentPairs": 3,
+    "blocks": 190
+  },
+  "blocks": [
+    {
+      "source": "Beneath the moonlight glints a tiny fragment of silver, a fraction of a line…",
+      "aText": "В лунном свете поблёскивает крошечный осколок серебра, едва намеченный штрих…",
+      "bText": "*В лунном свете блестит полоска серебра…*",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶4-4"
+    },
+    {
+      "source": "(black robes, falling)",
+      "aText": "(чёрные мантии, падают)",
+      "bText": "*(падают тёмные одежды)*",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶5-5"
+    },
+    {
+      "source": "…blood spills out in litres, and someone screams a word.",
+      "aText": "…кровь льётся литрами, и кто-то выкрикивает одно слово.",
+      "bText": "*...кровь льётся литрами, и слышен крик.*",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶6-6"
+    },
+    {
+      "source": "EVERY inch of wall space is covered by a bookcase. Each bookcase has six shelves, going almost to the ceiling. Some bookshelves are stacked to the brim with hardback books: science, maths, history, and everything else. Other shelves have two layers of paperback science fiction, with the back layer of books propped up on old tissue boxes or lengths of wood, so that you can see the back layer of books above the books in front. And it still isn’t enough. Books are overflowing onto the tables and the sofas and making little heaps under the windows.",
+      "aText": "Все стены до последнего дюйма заставлены книжными шкафами. В каждом — по шесть полок, почти до самого потолка. Одни забиты под завязку книгами в твёрдых переплётах: химия, математика, история и всё на свете. На других в два ряда стоят фантастические книжки в мягких обложках; задний ряд приподнят на старых коробках из-под салфеток и деревянных брусках, так что книги сзади виднеются поверх переднего ряда. И всё равно места не хватает. Книги расползлись на столы, на диваны, лежат кучками под окнами.",
+      "bText": "Все стены до последнего дюйма заняты книжными шкафами. B каждом шкафу по\nшесть полок, которые доходят почти до потолка. Некоторые полки плотно\nзаставлены книгами в твёрдом переплёте: математика, химия, история и так\nдалее. На других полках в два ряда стоит научная фантастика в мягкой\nобложке. Под второй ряд книг подложены коробки и деревянные бруски так,\nчто он выглядывает из-за первого и можно прочитать названия стоящих в\nнём книг. Но и это не всё: книги перебираются на столы и диваны,\nобразуют небольшие стопки под окнами.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶7-7"
+    },
+    {
+      "source": "This is the living-room of the house occupied by the eminent Professor Michael Verres-Evans, and his wife, Mrs Petunia Evans-Verres, and their adopted son, Harry James Potter-Evans-Verres.",
+      "aText": "Так выглядит гостиная в доме, где живут достопочтенный профессор Майкл Веррес-Эванс, его жена миссис Петуния Эванс-Веррес и их приёмный сын Гарри Джеймс Поттер-Эванс-Веррес.",
+      "bText": "Так выглядит гостиная дома, в котором живут известный профессор Майкл\nВеррес-Эванс и его жена, миссис Петуния Эванс-Веррес, а также их\nприёмный сын, Гарри Джеймс Поттер-Эванс-Веррес.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶8-8"
+    },
+    {
+      "source": "There is a letter lying on the living-room table, and an unstamped envelope of yellowish parchment, addressed to *Mr H. Potter* in emerald-green ink.",
+      "aText": "На столе в гостиной лежит письмо и незапечатанный конверт из желтоватого пергамента, адресованный *мистеру Г. Поттеру* изумрудно-зелёными чернилами.",
+      "bText": "На столе в гостиной лежит письмо, а рядом с ним — желтоватый\nпергаментный конверт без марки. На конверте изумрудно-зелёными чернилами\nнаписано, что письмо адресовано «мистеру Г. Поттеру»*.*",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶9-9"
+    },
+    {
+      "source": "The Professor and his wife are speaking sharply at each other, but they are not shouting. The Professor considers shouting to be uncivilised.",
+      "aText": "Профессор и его жена обмениваются резкими репликами, но не повышают голос. Профессор считает крик признаком дурного тона.",
+      "bText": "Профессор спорит с женой, не повышая голос, так как считает, что кричать\n— некультурно.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶10-10"
+    },
+    {
+      "source": "“You’re joking,” Michael said to Petunia. His tone indicated that he was very much afraid that she was serious.",
+      "aText": "— Ты шутишь, — сказал Майкл Петунии. По голосу было ясно: он очень боится, что она говорит всерьёз.",
+      "bText": "— Это ведь шутка, да? — по тону Майкла можно было понять: он весьма\nопасается, что жена говорит серьёзно.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶11-11"
+    },
+    {
+      "source": "“My sister was a witch,” Petunia repeated. She looked frightened, but stood her ground. “Her husband was a wizard.”",
+      "aText": "— Моя сестра была ведьмой, — повторила Петуния. Вид у неё был испуганный, но отступать она не собиралась. — А её муж — волшебником.",
+      "bText": "— Моя сестра была ведьмой, — нервно, но настойчиво повторила Петуния. —\nА её муж — волшебником.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶12-12"
+    },
+    {
+      "source": "“This is absurd!” Michael said sharply. “They were at our wedding—they visited for Christmas—”",
+      "aText": "— Нелепость какая! — резко бросил Майкл. — Они были у нас на свадьбе, приезжали на Рождество…",
+      "bText": "— Это абсурд! — отчеканил Майкл. — Они же были на нашей свадьбе, они\nприезжали на Рождество...",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶13-13"
+    },
+    {
+      "source": "“I told them you weren’t to know,” Petunia whispered. “But it’s true. I’ve seen things—”",
+      "aText": "— Я просила их не говорить тебе, — прошептала Петуния. — Но это правда. Я сама видела такое…",
+      "bText": "— Я просила их ничего тебе не рассказывать, — прошептала Петуния, — но\nэто чистая правда, я сама видела...",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶14-14"
+    },
+    {
+      "source": "The Professor rolled his eyes. “Dear, I understand that you’re not familiar with the sceptical literature. You may not realise how easy it is for a trained magician to fake the seemingly impossible. Remember how I taught Harry to bend spoons? If it seemed like they could always guess what you were thinking, that’s called cold reading—”",
+      "aText": "Профессор закатил глаза. — Дорогая, я понимаю, что ты не знакома со критической литературой. Ты, вероятно, просто не представляешь, насколько легко профессиональный иллюзионист может подделать даже то, что кажется невозможным. Помнишь, как я учил Гарри гнуть ложки? Если тебе казалось, будто они всегда угадывают твои мысли, это называется холодное чтение…",
+      "bText": "Профессор закатил глаза:\n\n— Дорогая, я знаю, ты не читаешь скептическую литературу и можешь не\nпонимать, как легко для искусного фокусника делать невозможные на первый\nвзгляд вещи. Помнишь, я учил Гарри гнуть ложки? И если вдруг тебе\nказалось, что твоя сестра и её муж угадывали твои мысли, то такой приём\nназывается «холодное чтение».",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶15-16"
+    },
+    {
+      "source": "“It wasn’t bending spoons—”",
+      "aText": "— Дело было не в ложках…",
+      "bText": "— Это было не сгибание ложек.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶17-17"
+    },
+    {
+      "source": "“What was it, then?”",
+      "aText": "— А в чём же тогда?",
+      "bText": "— А что?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶18-18"
+    },
+    {
+      "source": "Petunia bit her lip. “I can’t just tell you. You’ll think I’m—” She swallowed. “Listen. Michael. I wasn’t—always like this—” She gestured at herself, as though to indicate her lithe form. “Lily did this. Because I—because I *begged* her. For years, I begged her. Lily had *always* been prettier than me, and I’d…been mean to her, because of that, and then she got *magic*, can you imagine how I felt? And I *begged* her to use some of that magic on me so that I could be pretty too, even if I couldn’t have her magic, at least I could be pretty.”",
+      "aText": "Петуния закусила губу. — Я не могу просто взять и сказать. Ты подумаешь, что я… — Она сглотнула. — Послушай, Майкл. Я не всегда… была такой… — Она повела рукой вдоль своего тела, словно указывая на стройную фигуру. — Это Лили меня изменила. Потому что я… потому что я *умоляла* её. Годами умоляла. Лили *всегда* была красивее меня, и я… вела себя с ней гадко из-за этого, а потом у неё ещё и появилась *магия* — ты можешь представить, что я тогда чувствовала? И я *умоляла* её применить часть этой магии ко мне, чтобы я тоже стала красивой. Раз уж мне не быть волшебницей, пусть хоть красавицей.",
+      "bText": "Петуния прикусила губу.\n\n— Так просто не рассказать. Ты подумаешь, что я... — она сглотнула. —\nПослушай, Майкл, я не всегда была... такой, — она махнула рукой вниз,\nобозначая точёную фигуру. — Лили изменила мою внешность. Потому что я...\nя буквально умоляла её. Долгие годы я умоляла. Всё детство я плохо к ней\nотносилась, потому что она всегда, всегда была красивее меня, а потом у\nнеё проявился магический дар. Можешь представить, как я себя\nчувствовала? Я годами умоляла её сделать меня красивой. Пусть у меня не\nбудет магии, но будет хотя бы красота.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶19-20"
+    },
+    {
+      "source": "Tears were gathering in Petunia’s eyes.",
+      "aText": "На глазах Петунии выступили слёзы.",
+      "bText": "В глазах Петунии стояли слёзы:",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶21-21"
+    },
+    {
+      "source": "“And Lily would tell me no, and make up the most ridiculous excuses, like the world would end if she were nice to her sister, or a centaur told her not to—the most ridiculous things, and I hated her for it. And when I had just graduated from university, I was going out with this boy, Vernon Dursley, he was fat and he was the only boy who would talk to me. And he said he wanted children, and that his first son would be named Dudley. And I thought to myself, *what kind of parent names their child Dudley Dursley?* It was like I saw my whole future life stretching out in front of me, and I couldn’t stand it. And I wrote to my sister and told her that if she didn’t help me I’d rather just—”",
+      "aText": "— А Лили всё отказывала и выдумывала самые дурацкие оправдания — будто миру придёт конец, если она сделает доброе дело для родной сестры, или будто какой-то кентавр ей запретил, — ну просто бред, и я её за это ненавидела. А потом, когда я только окончила университет, я встречалась с одним парнем, Верноном Дурслем: толстый, и притом единственный, кто вообще соглашался со мной разговаривать. И он сказал, что хочет детей и что первого сына назовёт Дадли. И я тогда подумала: *какой родитель вообще назовёт ребёнка Дадли Дурсль?* Будто вся моя будущая жизнь вдруг вытянулась передо мной как на ладони, и я поняла, что не вынесу этого. И я написала сестре, что если она мне не поможет, то я лучше просто…",
+      "bText": "— Лили отказывала мне по разным нелепым причинам, говорила, будто\nнаступит конец света, если она немного поможет родной сестре, или что\nкентавр запретил ей это делать, и тому подобную чепуху, и я её за это\nненавидела. А сразу после университета я встречалась с этим Верноном\nДурслем, он был толстый, но кроме него никто из парней со мной вообще не\nразговаривал. Он говорил, что хочет детей и чтобы первенца звали Дадли.\nЯ тогда подумала: «Какие же родители назовут своего ребёнка Дадли\nДурсль?» И тут вся моя будущая жизнь словно встала у меня перед глазами,\nи это было невыносимо. Я написала сестре, что, если она мне не поможет,\nто я…",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶22-22"
+    },
+    {
+      "source": "Petunia stopped.",
+      "aText": "Петуния осеклась.",
+      "bText": "Петуния запнулась и тихо продолжила:",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶23-23"
+    },
+    {
+      "source": "“Anyway,” Petunia said, her voice small, “she gave in. She told me it was dangerous, and I said I didn’t care any more, and I drank this potion and I was sick for weeks, but when I got better my skin cleared up and I finally filled out and…I was beautiful, people were *nice* to me,” her voice broke, “and after that I couldn’t hate my sister any more, especially when I learned what her magic brought her in the end—”",
+      "aText": "— В общем, — тихо продолжила она, — она уступила. Сказала, что это опасно, а я ответила, что мне уже всё равно. Я выпила какое-то зелье, потом несколько недель болела, но когда поправилась, кожа у меня очистилась, фигура наконец оформилась, и… я стала красивой, люди стали *добры* ко мне… — голос её дрогнул. — И после этого я уже не могла ненавидеть сестру. Особенно когда узнала, чем в конце концов обернулась для неё её магия…",
+      "bText": "— В конце концов она сдалась. Она говорила, что это опасно, но мне было\nнаплевать. Я выпила зелье и тяжело болела две недели. Зато потом моя\nкожа стала чистой, фигура похорошела и... Я стала красивой, люди начали\nотноситься ко мне добрее, — её голос сорвался. — После этого я больше не\nмогла ненавидеть сестру, особенно когда узнала, к чему в итоге привела\nеё эта магия.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶24-24"
+    },
+    {
+      "source": "“Darling,” Michael said gently, “you got sick, you gained some weight while resting in bed, and your skin cleared up on its own. Or being sick made you change your diet—”",
+      "aText": "— Милая, — мягко сказал Майкл, — ты переболела, пока лежала в постели — немного поправилась, а кожа очистилась сама собой. Или болезнь заставила тебя изменить питание…",
+      "bText": "— Дорогая, — нежно ответил Майкл, — ты заболела, набрала правильный вес,\nпока лежала в кровати, а кожа стала лучше сама по себе. Или болезнь\nзаставила тебя изменить рацион.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶25-25"
+    },
+    {
+      "source": "“She was a witch,” Petunia repeated. “I saw it.”",
+      "aText": "— Она была ведьмой, — повторила Петуния. — Я это видела.",
+      "bText": "— Она была ведьмой, — настаивала Петуния. — Я видела, как она творила\nчудеса.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶26-26"
+    },
+    {
+      "source": "“Petunia,” Michael said. The annoyance was creeping into his voice. “You *know* that can’t be true. Do I really have to explain why?”",
+      "aText": "— Петуния, — сказал Майкл, и в голосе его уже явственно звучало раздражение. — Ты *сама знаешь*, что это невозможно. Неужели мне в самом деле нужно объяснять почему?",
+      "bText": "— Петуния, — в голосе Майкла появилось раздражение, — ты же знаешь, что\nэто не может быть правдой. Мне точно нужно объяснять почему?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶27-27"
+    },
+    {
+      "source": "Petunia wrung her hands. She seemed to be on the verge of tears. “My love, I know I can’t win arguments with you, but please, you have to trust me on this—”",
+      "aText": "Петуния стиснула руки. Казалось, ещё немного — и она расплачется. — Любимый, я знаю, что спорить с тобой бесполезно, но, пожалуйста, ты должен просто поверить мне на слово…",
+      "bText": "Петуния всплеснула руками. Она почти плакала.\n\n— Милый, я всегда проигрываю тебе в споре, но, пожалуйста, поверь мне\nсейчас...",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶28-29"
+    },
+    {
+      "source": "“*Dad! Mum!*”",
+      "aText": "— *Папа! Мама!*",
+      "bText": "*—* Папа! Мама!",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶30-30"
+    },
+    {
+      "source": "The two of them stopped and looked at Harry as though they’d forgotten there was a third person in the room.",
+      "aText": "Оба разом умолкли и посмотрели на Гарри так, словно забыли, что в комнате есть кто-то третий.",
+      "bText": "Они замолчали и оглянулись на Гарри, который, оказывается, тоже был в\nгостиной всё это время.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶31-31"
+    },
+    {
+      "source": "Harry took a deep breath. “Mum, *your* parents didn’t have magic, did they?”",
+      "aText": "Гарри глубоко вдохнул. — Мам, у *твоих* родителей ведь никакой магии не было?",
+      "bText": "Мальчик сделал глубокий вдох.\n\n— Мама, насколько я понимаю, у твоих родителей не было магических\nспособностей?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶32-33"
+    },
+    {
+      "source": "“No,” Petunia said, looking puzzled.",
+      "aText": "— Нет, — озадаченно ответила Петуния.",
+      "bText": "— Нет, — Петуния озадаченно посмотрела на него.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶34-34"
+    },
+    {
+      "source": "“Then no-one in your family knew about magic when Lily got her letter. How did *they* get convinced?”",
+      "aText": "— Значит, в вашей семье никто не знал о магии, пока Лили не получила письмо. А как убедили *их*?",
+      "bText": "— Получается, что никто из членов вашей семьи не знал о магии, пока Лили\nне получила пригласительное письмо. Каким образом убедили их?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶35-35"
+    },
+    {
+      "source": "“Ah…” Petunia said. “They didn’t just send a letter. They sent a professor from Hogwarts. He—” Petunia’s eyes flicked to Michael. “He showed us some magic.”",
+      "aText": "— Ну… — сказала Петуния. — Прислали не только письмо. Из Хогвартса приехал профессор. Он… — Петуния покосилась на Майкла. — Он показал нам немного магии.",
+      "bText": "— Тогда было не только письмо. К нам приходил профессор из Хогвартса.\nОн… — Петуния бросила взгляд в сторону Майкла, — он показал нам\nнесколько заклинаний.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶36-36"
+    },
+    {
+      "source": "“Then you don’t have to fight over this,” Harry said firmly. Hoping against hope that this time, just this once, they would listen to him. “If it’s true, we can just get a Hogwarts professor here and see the magic for ourselves, and Dad will admit that it’s true. And if not, then Mum will admit that it’s false. That’s what the experimental method is for, so that we don’t have to resolve things just by arguing.”",
+      "aText": "— Тогда вам и ссориться не о чем, — твёрдо сказал Гарри, отчаянно надеясь, что на этот раз, хоть раз в жизни, его всё-таки послушают. — Если это правда, можно просто пригласить сюда профессора из Хогвартса и самим посмотреть на магию, и тогда папа признает, что всё правда. А если нет, тогда мама признает, что ошибалась. В этом и смысл экспериментального метода: чтобы не разрешать споры одной только руганью.",
+      "bText": "— Значит, спорить по этому поводу совершенно ни к чему, — твёрдо\nзаключил Гарри. Впрочем, надежды, что хотя бы сейчас родители к нему\nприслушаются, было мало. — Если всё это правда, то мы можем просто\nпригласить профессора из Хогвартса. Если он продемонстрирует нам магию,\nто папе придётся признать, что она существует. А если нет, то мама\nсогласится, что всё это выдумка. Нужно не ссориться, а провести\nэксперимент.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶37-37"
+    },
+    {
+      "source": "The Professor turned and looked down at him, dismissive as usual. “Oh, come now, Harry. Really, *magic*? I thought *you’d* know better than to take this seriously, son, even if you’re only ten. Magic is just about the most unscientific thing there is!”",
+      "aText": "Профессор повернулся к нему и, как обычно, посмотрел сверху вниз с лёгким пренебрежением. — Ну право, Гарри. Неужели *магия*? Я-то думал, *ты* уже достаточно взрослый, чтобы не принимать такое всерьёз, пусть тебе и всего десять. Магия — это, пожалуй, самое ненаучное явление из всех возможных!",
+      "bText": "Профессор повернулся и, как всегда снисходительно, посмотрел на него\nсверху вниз:\n\n— Гарри? Магия? В самом деле? Я думал, уж ты-то знаешь достаточно, чтобы\nне воспринимать её всерьёз, хоть тебе и десять лет. Сынок, магия — самая\nненаучная вещь, которую только можно себе представить!",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶38-39"
+    },
+    {
+      "source": "Harry’s mouth twisted bitterly. He was treated well, probably better than most genetic fathers treated their own children. Harry had been sent to the best primary schools—and when that didn’t work out, he was provided with tutors from the endless pool of starving students. Always Harry had been encouraged to study whatever caught his attention, bought all the books that caught his fancy, sponsored in whatever maths or science competitions he entered. He was given anything reasonable that he wanted, except, maybe, the slightest shred of respect. A Doctor teaching biochemistry at Oxford could hardly be expected to listen to the advice of a little boy. You would listen to Show Interest, of course; that’s what a Good Parent would do, and so, if you conceived of yourself as a Good Parent, you would do it. But take a ten-year-old *seriously*? Hardly.",
+      "aText": "Рот у Гарри горько скривился. Обращались с ним хорошо — вероятно, куда лучше, чем многие родные отцы обращаются со своими детьми. Его отдали в лучшие начальные школы — а когда и это не помогло, нашли репетиторов из неисчерпаемого моря вечно нуждающихся студентов. Гарри всегда поощряли заниматься тем, что его увлекало, покупали любые книги, которые ему приглянулись, оплачивали участие во всех математических и научных конкурсах, куда он хотел податься. Ему позволяли всё разумное, что он просил, кроме, пожалуй, самой малости — хотя бы крупицы уважения. Вряд ли можно ждать, чтобы доктор наук, преподающий биохимию в Оксфорде, прислушивался к советам маленького мальчика. Проявить интерес — разумеется, проявить интерес следовало: так поступает Хороший Родитель, а если ты считаешь себя Хорошим Родителем, значит, так и будешь делать. Но воспринимать десятилетнего ребёнка *всерьёз*? Ну уж нет.",
+      "bText": "Гарри кисло улыбнулся. Майкл относился к нему хорошо — вероятно, лучше,\nчем большинство родных отцов относятся к своим детям. Гарри отправляли\nучиться в лучшие школы, а когда с ними ничего не вышло, ему стали\nнанимать частных преподавателей из бесконечной вереницы голодающих\nстудентов. Родители всегда поддерживали Гарри в изучении всего, что\nтолько привлекало его внимание. Ему покупали все интересующие его книги,\nпомогали с участием в различных конкурсах по математике и\nестественнонаучным предметам. Он получал практически всё, что хотел, в\nразумных пределах. Единственное, в чём ему отказывали, так это в\nмалейшей доле уважения. Впрочем, с какой стати штатному профессору\nОксфорда, преподающему биохимию, прислушиваться к советам маленького\nмальчика? Он, конечно, «проявит заинтересованность», ведь так положено\nпоступать «хорошему родителю», к каковым профессор, несомненно, себя\nотносил. Но воспринимать десятилетнего ребёнка всерьёз? Вряд ли.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶40-40"
+    },
+    {
+      "source": "Sometimes Harry wanted to scream at his father.",
+      "aText": "Иногда Гарри хотелось заорать на отца.",
+      "bText": "Иногда Гарри хотелось накричать на отца.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶41-41"
+    },
+    {
+      "source": "“Mum,” Harry said. “If you want to win this argument with Dad, look in chapter two of the first book of the Feynman Lectures on Physics. There’s a quote there about how philosophers say a great deal about what science absolutely requires, and it is all wrong, because the only rule in science is that the final arbiter is observation—that you just have to look at the world and report what you see. Um…off the top of my head I can’t think of where to find something about how it’s an ideal of science to settle things by experiment instead of arguments—”",
+      "aText": "— Мам, — сказал Гарри. — Если хочешь выиграть этот спор с папой, открой вторую главу первого тома «Фейнмановских лекций по физике». Там есть цитата о том, как философы очень много рассуждают о том, что *обязательно* требуется науке, и всё это неверно, потому что в науке есть только одно высшее мерило — наблюдение; нужно просто смотреть на мир и честно говорить, что видишь. Э-э… навскидку я не помню, где искать что-нибудь про то, что идеал науки — решать вопросы экспериментом, а не спорами…",
+      "bText": "— Мам, — сказал он, — если ты хочешь выиграть у папы этот спор, посмотри\nвторую главу из первого тома лекций Фейнмана по физике. Там есть цитата,\nв которой говорится, что философы тратят уйму слов, выясняя, без чего\nнаука не может обойтись, и все они неправы, потому что в науке есть\nтолько одно правило: последний судья — это наблюдение. Нужно просто\nпосмотреть на мир и рассказать о том, что ты видишь. И... я не могу\nвспомнить с ходу подходящую цитату, но с научной точки зрения решать\nразногласия нужно опытным путём, а не спорами.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶42-42"
+    },
+    {
+      "source": "His mother looked down at him and smiled. “Thank you, Harry. But—” her head rose back up to stare at her husband. “I don’t want to win an argument with your father. I want my husband to, to listen to his wife who loves him, and trust her just this once—”",
+      "aText": "Мать посмотрела на него и улыбнулась. — Спасибо, Гарри. Но… — она вновь подняла голову и уставилась на мужа. — Я не хочу выигрывать спор у твоего отца. Я хочу, чтобы мой муж… чтобы он выслушал свою жену, которая его любит, и хоть один раз ей доверился…",
+      "bText": "Мать посмотрела на него сверху вниз и улыбнулась:\n\n— Спасибо, Гарри, но... — она с достоинством взглянула на мужа, — я не\nхочу выигрывать спор у твоего отца. Я лишь хочу, чтобы мой муж\nприслушался к любящей его жене и поверил ей.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶43-44"
+    },
+    {
+      "source": "Harry closed his eyes briefly. *Hopeless.* Both of his parents were just hopeless.",
+      "aText": "Гарри на миг закрыл глаза. *Безнадёжно.* Оба его родителя были совершенно безнадёжны.",
+      "bText": "Гарри на секунду закрыл глаза. Безнадёжны. Его родители просто\nбезнадёжны.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶45-45"
+    },
+    {
+      "source": "Now his parents were getting into one of *those* arguments again, one where his mother tried to make his father feel guilty, and his father tried to make his mother feel stupid.",
+      "aText": "Теперь они опять завели *такой* спор — из тех, где мать пытается заставить отца почувствовать себя виноватым, а отец — заставить мать почувствовать себя дурой.",
+      "bText": "Разговор опять превращался в один из тех самых бессмысленных споров,\nкогда мать пытается заставить отца почувствовать себя виноватым, а тот,\nв свою очередь, пытается заставить её почувствовать себя глупой.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶46-46"
+    },
+    {
+      "source": "“I’m going to go to my room,” Harry announced. His voice trembled a little. “Please try not to fight too much about this, Mum, Dad, we’ll know soon enough how it comes out, right?”",
+      "aText": "— Я пойду к себе, — объявил Гарри. Голос у него чуть заметно дрожал. — Пожалуйста, постарайтесь не слишком из-за этого ссориться, мама, папа. Скоро ведь всё равно выяснится, чем дело кончится, правда?",
+      "bText": "— Я пойду в свою комнату, — немного дрожащим голосом объявил Гарри. —\nМама, папа, пожалуйста, постарайтесь долго не ругаться. Мы ведь и так\nскоро всё узнаем.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶47-47"
+    },
+    {
+      "source": "“Of course, Harry,” said his father, and his mother gave him a reassuring kiss, and then they went on fighting while Harry climbed the stairs to his bedroom.",
+      "aText": "— Конечно, Гарри, — сказал отец, мать ободряюще поцеловала его, и они тут же продолжили спорить, пока Гарри поднимался по лестнице в свою комнату.",
+      "bText": "— Конечно, Гарри, — отозвался отец, а мать обнадёживающе его поцеловала,\nпосле чего родители продолжили пререкаться.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶48-48"
+    },
+    {
+      "source": "He shut the door behind him and tried to think.",
+      "aText": "Закрыв за собой дверь, он попытался подумать.",
+      "bText": "Гарри поднялся по лестнице в свою спальню, закрыл за собой дверь и\nпопытался всё обдумать.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶49-49"
+    },
+    {
+      "source": "The funny thing was, he *should* have agreed with Dad. No-one had ever seen any evidence of magic, and according to Mum, there was a whole magical world out there. How could anyone keep something like that a secret? More magic? That seemed like a rather suspicious sort of excuse.",
+      "aText": "Самое странное было в том, что вообще-то он *должен* был согласиться с папой. Никто никогда не видел никаких доказательств существования магии, а если верить маме, где-то рядом существует целый магический мир. Как можно скрыть нечто подобное? Ещё большей магией? Объяснение, прямо скажем, подозрительное.",
+      "bText": "Самое интересное, что он просто должен был согласиться с отцом. Никто и\nникогда не видел ни одного доказательства реальности магии, а из слов\nмамы следовало, что существует целый волшебный мир. Как можно такое\nсохранять в тайне? Тоже с помощью магии? Довольно сомнительное\nобъяснение.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶50-50"
+    },
+    {
+      "source": "It should have been a clean case for Mum joking, lying or being insane, in ascending order of awfulness. If Mum had sent the letter herself, that would explain how it arrived at the letterbox without a stamp. A little insanity was far, far less improbable than the universe really working like that.",
+      "aText": "По всем правилам следовало решить, что мама либо шутит, либо лжёт, либо сошла с ума — в порядке возрастания неприятности. Если письмо мама отправила сама, это как раз объясняло бы, почему оно оказалось в почтовом ящике без марки. Небольшое помешательство было куда, куда вероятнее, чем вселенная, устроенная вот так.",
+      "bText": "Случай по идее элементарный: мама либо шутит, либо лжёт, либо сошла с\nума, в порядке возрастания ужасности. Если мама сама отправила письмо,\nто это объясняет, как оно попало в почтовый ящик без марки. В конце\nконцов, небольшое сумасшествие гораздо, гораздо более вероятно, чем\nвселенная, содержащая в себе магию.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶51-51"
+    },
+    {
+      "source": "Except that some part of Harry was utterly convinced that magic was real, and had been since the instant he saw the putative letter from the Hogwarts School of Witchcraft and Wizardry.",
+      "aText": "И всё же какая-то часть Гарри была совершенно убеждена, что магия существует, — с того самого мгновения, как он увидел предполагаемое письмо из Школы чародейства и волшебства «Хогвартс».",
+      "bText": "Но всё-таки какая-то часть Гарри была совершенно уверена в том, что\nмагия существует. Это чувство возникло в тот самый момент, когда он\nувидел письмо предположительно из Хогвартса, Школы Чародейства и\nВолшебства.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶52-52"
+    },
+    {
+      "source": "Harry rubbed his forehead, grimacing. *Don’t believe everything you think,* one of his books had said.",
+      "aText": "Гарри потёр лоб и поморщился. *Не всему, что думаешь, надо верить,* — говорилось в одной из его книг.",
+      "bText": "Скривившись, Гарри потёр лоб. «Не верь своим мыслям», — было написано в\nодной книге.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶53-53"
+    },
+    {
+      "source": "But this bizarre certainty…Harry was finding himself just *expecting* that, yes, a Hogwarts professor would show up and wave a wand and magic would come out. The strange certainty was making no effort to guard itself against falsification—wasn’t making excuses in advance for why there wouldn’t be a professor, or the professor would only be able to bend spoons.",
+      "aText": "Но эта странная уверенность… Гарри ловил себя на том, что просто *ждёт*: да, сейчас появится профессор Хогвартса, взмахнёт палочкой, и из неё польётся магия. Эта уверенность даже не пыталась подстраховаться на случай опровержения — не придумывала заранее объяснений, почему профессор не придёт или почему профессор сумеет только ложки гнуть.",
+      "bText": "Но эта странная убеждённость... Он как будто знал заранее, что профессор\nиз Хогвартса в самом деле появится на их пороге, взмахнёт палочкой и\nсотворит настоящее волшебство. Эта убеждённость не боялась опровержения:\nне искала заранее оправданий на случай, если вдруг никакой профессор не\nпридёт или придёт, но сможет показать лишь фокус со сгибанием ложек.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶54-54"
+    },
+    {
+      "source": "*Where do you come from, strange little prediction?* Harry directed the thought at his brain. *Why do I believe what I believe?*",
+      "aText": "*Откуда ты взялась, странная маленькая уверенность?* — мысленно спросил Гарри свой мозг. *Почему я верю в то, во что верю?*",
+      "bText": "*Откуда ты взялось, странное маленькое предчувствие?* — Гарри крепко\nзадумался. — *Почему я верю в то, во что я верю?*",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶55-55"
+    },
+    {
+      "source": "Usually Harry was pretty good at answering that question, but in this particular case, he had no *clue* what his brain was thinking.",
+      "aText": "Обычно Гарри довольно неплохо умел отвечать на этот вопрос, но в данном случае понятия не имел, что там у него в голове происходит.",
+      "bText": "Обычно он довольно быстро справлялся с этим вопросом, но сейчас у него\nне было никакой зацепки.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶56-56"
+    },
+    {
+      "source": "Harry mentally shrugged. A flat metal plate on a door affords pushing, and a handle on a door affords pulling, and the thing to do with a testable hypothesis is to go and test it.",
+      "aText": "Гарри мысленно пожал плечами. Плоская металлическая пластина на двери как бы предлагает толкнуть, дверная ручка — потянуть, а проверяемую гипотезу нужно проверять.",
+      "bText": "Гарри мысленно пожал плечами. Двери созданы, чтобы их открывать, а\nгипотезы — чтобы их проверять.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶57-57"
+    },
+    {
+      "source": "He took a piece of lined paper from his desk, and started writing.",
+      "aText": "Он взял со стола листок в линейку и начал писать.",
+      "bText": "Он взял со стола лист линованной бумаги и написал: «Заместителю\nдиректора».",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶58-58"
+    },
+    {
+      "source": "Harry paused, reflecting; then discarded the paper for another, tapping another millimetre of graphite from his mechanical pencil. This called for careful calligraphy.",
+      "aText": "Гарри остановился, подумал, потом отбросил листок и взял другой, щёлкнув механическим карандашом и выпустив ещё миллиметр грифеля. Тут требовалась особенно тщательная каллиграфия.",
+      "bText": "Гарри остановился, собираясь с мыслями, потом взял другой лист и выдавил\nещё один миллиметр графита из механического карандаша — случай требовал\nкаллиграфического почерка.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶59-59"
+    },
+    {
+      "source": "I recently received your letter of acceptance to Hogwarts, addressed to Mr H. Potter. You may not be aware that my genetic parents, James Potter and Lily Potter (formerly Lily Evans) are dead. I was adopted by Lily’s sister, Petunia Evans-Verres, and her husband, Michael Verres-Evans.",
+      "aText": "Недавно я получил ваше письмо о зачислении в Хогвартс, адресованное мистеру Г. Поттеру. Возможно, вам неизвестно, что мои биологические родители, Джеймс Поттер и Лили Поттер (в девичестве Лили Эванс), умерли. Меня усыновили сестра Лили, Петуния Эванс-Веррес, и её муж, Майкл Веррес-Эванс.",
+      "bText": "«Уважаемая заместитель директора Минерва МакГонагалл или другое\nуполномоченное лицо!\n\n------------------------------------------------------------------------\n\nНедавно я получил от Вас пригласительное письмо в Хогвартс на имя\nмистера Г. Поттера. Вы можете не знать, что мои биологические родители,\nДжеймс Поттер и Лили Поттер (в девичестве Лили Эванс), мертвы. Я был\nусыновлён сестрой Лили, Петунией Эванс-Веррес, и её мужем, Майклом\nВеррес-Эвансом.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶60-62"
+    },
+    {
+      "source": "I am extremely interested in attending Hogwarts, conditional on such a place actually existing. Only my mother Petunia says she knows about magic, and she can’t use it herself. My father is highly sceptical. I myself am uncertain. I also don’t know where to obtain any of the books or equipment listed in your acceptance letter.",
+      "aText": "Меня чрезвычайно интересует возможность учиться в Хогвартсе — при условии, конечно, что такое место действительно существует. О магии знает только моя мать, Петуния, да и сама колдовать она не умеет. Отец настроен крайне скептически. Я и сам не уверен. Кроме того, я не знаю, где достать книги и оборудование, перечисленные в вашем письме.",
+      "bText": "------------------------------------------------------------------------\n\nЯ крайне заинтересован в посещении Хогвартса, при условии, что такое\nместо на самом деле существует. Моя мать, Петуния, утверждает, что знает\nпро магию, но сама ею пользоваться не способна. Мой отец настроен\nскептически. Сам я до конца не убеждён. К тому же я не знаю, где\nприобрести книги и материалы, указанные Вами в пригласительном письме.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶63-64"
+    },
+    {
+      "source": "Mother mentioned that you sent a Hogwarts representative to Lily Potter (then Lily Evans) in order to demonstrate to her family that magic was real, and, I presume, help Lily obtain her school materials. If you could do this for my own family it would be extremely helpful.",
+      "aText": "Мама сказала, что, когда письмо получила Лили Поттер (тогда ещё Лили Эванс), вы прислали представителя Хогвартса, чтобы показать её семье, что магия реальна, и, полагаю, помочь Лили приобрести всё необходимое к школе. Если бы вы могли сделать то же самое для моей семьи, это было бы чрезвычайно полезно.",
+      "bText": "------------------------------------------------------------------------\n\nМама упомянула, что Вы присылали представителя Хогвартса к Лили Поттер\n(бывшая Лили Эванс), чтобы продемонстрировать её семье существование\nмагии и, я полагаю, чтобы помочь ей с приобретением школьных\nпринадлежностей. Если Вы поступите подобным образом в отношении моей\nсемьи, это существенно поможет делу.\n\n------------------------------------------------------------------------\n\nС уважением,\n\n------------------------------------------------------------------------\n\nГарри Джеймс Поттер-Эванс-Веррес».",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶65-70"
+    },
+    {
+      "source": "Harry added their current address, then folded up the letter and put it in an envelope, which he addressed to Hogwarts. Further consideration led him to obtain a candle and drip wax onto the flap of the envelope, into which, using a penknife’s tip, he impressed the initials H.J.P.E.V. If he was going to descend into this madness, he was going to do it with style.",
+      "aText": "Гарри приписал их нынешний адрес, затем сложил письмо и сунул его в конверт, который надписал: Хогвартс. Потом подумал ещё немного, достал свечу и накапал воском на клапан конверта, а затем кончиком перочинного ножа выдавил на воске инициалы: Г.Дж.П.Э.В. Если уж сходить с ума, то хотя бы со вкусом.",
+      "bText": "Гарри дописал свой адрес, сложил письмо пополам и засунул в конверт,\nадресовав его в Хогвартс. После чего, поразмыслив, взял свечку и, капнув\nвоском на угол конверта, выдавил на нём кончиком перочинного ножа свои\nинициалы: Г. Д. П. Э. В. Сходить с ума — так со вкусом.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶71-71"
+    },
+    {
+      "source": "Then he opened his door and went back downstairs. His father was sitting in the living-room and reading a book of higher maths to show how smart he was; and his mother was in the kitchen preparing one of his father’s favourite meals to show how loving she was. It didn’t look like they were talking to one another at all. As scary as arguments could be, *not arguing* was somehow much worse.",
+      "aText": "Потом он открыл дверь и снова спустился вниз. Отец сидел в гостиной, уткнувшись в книжку по высшей математике, словно ему непременно нужно было напомнить всем, какой он умный; мать на кухне готовила одно из его любимых блюд, будто стараясь доказать, какая она заботливая. Похоже, они вообще не разговаривали. Как ни страшны бывают ссоры, это молчание — без единой перебранки — почему-то пугало куда сильнее.",
+      "bText": "Затем он открыл дверь и спустился вниз по лестнице. Его отец сидел в\nгостиной и читал книгу по высшей математике, чтобы показать, какой он\nумный муж, а мама готовила на кухне одно из любимых блюд отца, чтобы\nпоказать, какая она любящая жена. Похоже, они не разговаривали друг с\nдругом. Споры могут быть ужасны, но почему-то молчание иногда ещё хуже.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶72-72"
+    },
+    {
+      "source": "“Mum,” Harry said into the unnerving silence, “I’m going to test the hypothesis. According to your theory, how do I send an owl to Hogwarts?”",
+      "aText": "— Мам, — сказал Гарри в тревожной тишине, — я собираюсь проверить гипотезу. По твоей теории, как отправляют сову в Хогвартс?",
+      "bText": "— Мама, — подал голос Гарри, — я хочу проверить гипотезу. Каким образом,\nсогласно твоей теории, я должен послать сову в Хогвартс?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶73-73"
+    },
+    {
+      "source": "His mother turned from the kitchen sink to stare at him, looking shocked. “I—I don’t know, I think you just have to own a magic owl.”",
+      "aText": "Мать обернулась от кухонной мойки и уставилась на него с потрясённым видом. — Я… я не знаю. По-моему, для этого просто нужна собственная волшебная сова.",
+      "bText": "Мать отвернулась от кухонной раковины и озадаченно посмотрела на него.\n\n— Я... Я не знаю. Думаю, для этого у тебя должна быть волшебная сова.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶74-75"
+    },
+    {
+      "source": "That should’ve sounded highly suspicious, *oh, so there’s no way to test your theory then*, but the peculiar certainty in Harry seemed willing to stick its neck out even further.",
+      "aText": "Вообще-то это должно было прозвучать крайне подозрительно — *ага, значит, проверить твою теорию никак нельзя* — но странная уверенность в Гарри, похоже, была готова зайти ещё дальше.",
+      "bText": "Он должен был с подозрением в голосе сказать: «Ага, выходит, проверить\nтвою теорию никак нельзя», но странная уверенность не желала сдаваться.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶76-76"
+    },
+    {
+      "source": "“Well, the letter got here somehow,” Harry said, “so I’ll just wave it around outside and call ‘letter for Hogwarts!’ and see if an owl picks it up. Dad, do you want to come and watch?”",
+      "aText": "— Но письмо же как-то сюда попало, — сказал Гарри. — Значит, я просто выйду во двор, помашу им и крикну: «Письмо в Хогвартс!» — и посмотрю, не подхватит ли его сова. Пап, хочешь посмотреть?",
+      "bText": "— Письмо каким-то образом сюда попало, — рассудил Гарри, — так что я\nпросто помашу им на улице и крикну: «Письмо в Хогвартс!» Посмотрим,\nприлетит ли сова, чтобы забрать его. Папа, ты хочешь пойти со мной?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶77-77"
+    },
+    {
+      "source": "His father shook his head minutely and kept on reading. *Of course,* Harry thought to himself. Magic was a disgraceful thing that only stupid people believed in; if his father went so far as to *test* the hypothesis, or even *watch* it being tested, that would feel like *associating* himself with that…",
+      "aText": "Отец едва заметно качнул головой и продолжил читать. *Ну конечно,* — подумал Гарри. Магия — позорная чепуха, в которую верят только дураки; и если бы отец хотя бы *попытался* проверить гипотезу или даже просто *посмотрел*, как её проверяют, это было бы для него всё равно что признать себя причастным к подобному…",
+      "bText": "Отец отрицательно покачал головой и продолжил чтение.\n\n*Конечно*, — подумал Гарри. — *Магия — это ерунда, в которую верят\nтолько глупцы. Если отец начнёт проверять гипотезу или даже просто будет\nнаблюдать за ходом проверки, то это будет выглядеть так, как будто он\nдопускает вероятность её существования...*",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶78-79"
+    },
+    {
+      "source": "Only as Harry stumped out the back door, into the back garden, did it occur to him that if an owl *did* come down and snatch the letter, he was going to have some trouble telling Dad about it.",
+      "aText": "И только когда Гарри, сердито топая, вышел через заднюю дверь в сад, ему пришло в голову, что если сова *и правда* слетит вниз и унесёт письмо, потом будет затруднительно объяснить это папе.",
+      "bText": "Выходя через заднюю дверь во двор, Гарри вдруг осознал, что если сова в\nсамом деле прилетит и заберёт письмо, то он не сможет доказать это отцу.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶80-80"
+    },
+    {
+      "source": "*But—well—that can’t *really* happen, can it? No matter what my brain seems to believe. If an owl really comes down and grabs this envelope, I’m going to have worries a lot more important than what Dad thinks.*",
+      "aText": "*Но… ну… этого же не может *в самом деле* случиться, верно? Что бы там ни думал мой мозг. Если сова действительно спикирует и схватит этот конверт, у меня появятся заботы куда важнее, чем папино мнение.*",
+      "bText": "*Но ведь этого же на самом деле произойти не может, так? Что бы там ни\nтвердил мой мозг. А если сова действительно спустится с небес и схватит\nконверт, то у меня будут заботы поважнее мнения папы на этот счёт.*",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶81-81"
+    },
+    {
+      "source": "Harry took a deep breath, and raised the envelope into the air.",
+      "aText": "Гарри глубоко вдохнул и поднял конверт над головой.",
+      "bText": "Гарри глубоко вздохнул и поднял конверт над головой.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶82-82"
+    },
+    {
+      "source": "He swallowed.",
+      "aText": "Он сглотнул.",
+      "bText": "Сглотнул.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶83-83"
+    },
+    {
+      "source": "Calling out *Letter for Hogwarts!* while holding an envelope high in the air in the middle of your own back garden was…actually pretty embarrassing, now that he thought about it.",
+      "aText": "Стоять посреди собственного сада, высоко держа в руке конверт, и кричать: *Письмо в Хогвартс!* — если вдуматься, было… довольно унизительно.",
+      "bText": "Кричать «Письмо в Хогвартс!», размахивая конвертом, на заднем дворе\nсвоего дома оказалось вдруг весьма нелепым занятием.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶84-84"
+    },
+    {
+      "source": "*No. I’m better than Dad. I will use the scientific method even if it makes me feel stupid.*",
+      "aText": "*Нет. Я лучше папы. Я буду следовать научному методу, даже если при этом чувствую себя идиотом.*",
+      "bText": "*Нет, я не как папа. Я использую научный метод, даже если буду при этом\nглупо выглядеть.*",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶85-85"
+    },
+    {
+      "source": "“Letter—” Harry said, but it actually came out as more of a whispered croak.",
+      "aText": "— Письмо… — начал Гарри, но получилось скорее что-то вроде хриплого шёпота.",
+      "bText": "— Письмо... — начал было Гарри, но получился только какой-то\nневразумительный отрывистый шёпот.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶86-86"
+    },
+    {
+      "source": "Harry steeled his will, and shouted into the empty sky, “*Letter for Hogwarts! Can I get an owl?*”",
+      "aText": "Гарри собрал волю в кулак и крикнул в пустое небо: — *Письмо в Хогвартс! Можно мне сову?*",
+      "bText": "Тогда он собрался с духом и закричал в пустое небо:\n\n— Письмо в Хогвартс! Можно мне сову?!",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶87-88"
+    },
+    {
+      "source": "“Harry?” asked a bemused woman’s voice, one of the neighbours.",
+      "aText": "— Гарри? — раздался недоумённый женский голос, один из соседских.",
+      "bText": "— Гарри? — произнёс почти над ухом озадаченный голос соседки.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶89-89"
+    },
+    {
+      "source": "Harry pulled down his hand like it was on fire and hid the envelope behind his back like it was drug money. His whole face was hot with shame.",
+      "aText": "Гарри шарахнулся, будто обжёгся, и поспешно убрал конверт за спину, точно прятал пакетик с дурью. Лицо у него пылало от стыда.",
+      "bText": "Гарри отдёрнул руку, словно обжёгся, и спрятал конверт за спину, как\nбудто в нём была выручка от продажи наркотиков. Лицо запылало от\nсмущения.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶90-90"
+    },
+    {
+      "source": "An old woman’s face peered out from above the neighbouring fence, grizzled grey hair escaping from her hairnet. Mrs Figg, the occasional babysitter. “What are you doing, Harry?”",
+      "aText": "Над соседским забором показалось лицо пожилой женщины; из-под сетки для волос выбивались жёсткие седые пряди. Миссис Фигг, та самая соседка, которая иногда сидела с ним. — Что это ты делаешь, Гарри?",
+      "bText": "Над соседским забором появилось женское лицо — растрёпанные седые космы\nторчали из-под сетки для волос. Это была миссис Фигг, которая временами\nза ним приглядывала.\n\n— Что ты тут делаешь, Гарри?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶91-92"
+    },
+    {
+      "source": "“Nothing,” Harry said in a strangled voice. “Just—testing a really silly theory—”",
+      "aText": "— Ничего, — выдавил Гарри сдавленным голосом. — Просто… проверяю одну очень глупую теорию…",
+      "bText": "— Ничего, — ответил он сдавленным голосом. — Просто... проверяю одну\nвесьма глупую теорию...",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶93-93"
+    },
+    {
+      "source": "“Did you get your acceptance letter from Hogwarts?”",
+      "aText": "— Ты получил письмо из Хогвартса?",
+      "bText": "— Ты получил пригласительное письмо из Хогвартса?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶94-94"
+    },
+    {
+      "source": "Harry froze in place.",
+      "aText": "Гарри застыл на месте.",
+      "bText": "Гарри застыл на месте.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶95-95"
+    },
+    {
+      "source": "“Yes,” Harry’s lips said a little while later. “I got a letter from Hogwarts. They say they want my owl by the 31st of July, but—”",
+      "aText": "— Да, — ответили его губы некоторое время спустя. — Мне пришло письмо из Хогвартса. Там сказано, что до тридцать первого июля я должен прислать сову, но…",
+      "bText": "— Да, — сказали его губы после короткой паузы, — я получил письмо из\nХогвартса. Они написали, чтобы я отправил им ответ с совой до 31 июля,\nно...",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶96-96"
+    },
+    {
+      "source": "“But you don’t *have* an owl. Poor dear! I can’t imagine *what* someone must have been thinking, sending you just the standard letter.”",
+      "aText": "— Но у тебя *нет* совы. Бедный мой! Не представляю, *о чём* только думали, когда послали тебе обычное письмо.",
+      "bText": "— Но у тебя нет совы. Бедный мальчик! Даже не представляю, о чём они\nдумали, посылая тебе стандартное приглашение.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶97-97"
+    },
+    {
+      "source": "A wrinkled arm stretched out over the fence, and opened an expectant hand. Hardly even thinking at this point, Harry gave over his envelope.",
+      "aText": "Морщинистая рука протянулась поверх забора и выжидательно раскрылась. Почти не соображая, что делает, Гарри отдал конверт.",
+      "bText": "Морщинистая рука с раскрытой ладонью высунулась из-за забора. С трудом\nпонимая, что происходит, Гарри отдал конверт.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶98-98"
+    },
+    {
+      "source": "“Just leave it to me, dear,” said Mrs Figg, “and in a jiffy or two I’ll have someone over.”",
+      "aText": "— Предоставь это мне, милый, — сказала миссис Фигг, — и через минутку-другую я пришлю к вам кого-нибудь.",
+      "bText": "— Я всё сделаю, дорогой, — сказала миссис Фигг, — мигом кого-нибудь\nприведу.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶99-99"
+    },
+    {
+      "source": "And her face disappeared from over the fence.",
+      "aText": "И её лицо исчезло за забором.",
+      "bText": "И её лицо, торчавшее над забором, исчезло.",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶100-100"
+    },
+    {
+      "source": "There was a long silence in the garden.\n\nThen a boy’s voice said, calmly and quietly, “What.”",
+      "aText": "В саду повисла долгая тишина.\n\nИ тут спокойный, негромкий мальчишеский голос тихо спросил: — Что?",
+      "bText": "Во дворе надолго воцарилась тишина, которую в конце концов нарушил тихий\nи спокойный голос мальчика:\n\n— Что?",
+      "label": "A Day of Very Low Probability  · B ch 1, ¶101-102"
+    },
+    {
+      "source": "Of course it was my fault. There’s no one else here who could be responsible for anything.",
+      "aText": "Разумеется, это была моя вина. Больше тут всё равно некому отвечать за что бы то ни было.",
+      "bText": "*Конечно, это моя вина. Здесь больше некому нести за что-либо\nответственность.*",
+      "label": "Everything I Believe Is False  · B ch 2, ¶3-3"
+    },
+    {
+      "source": "NOW, just to be clear,” Harry said, “if the professor does levitate you, Dad, when you know you haven’t been attached to any wires, that’s going to be sufficient evidence. You’re not going to turn around and say that it’s a magician’s trick. That wouldn’t be fair play. If you feel that way, you should say so *now*, and we can figure out a different experiment instead.”",
+      "aText": "— Итак, давайте сразу проясним, — сказал Гарри. — Если профессор поднимет тебя в воздух, папа, и ты будешь знать, что к тебе не прикреплены никакие проволоки, этого будет достаточно как доказательства. Ты же не скажешь потом, что это просто фокус. Так нечестно. Если ты *сейчас* считаешь именно так, лучше скажи сразу, и мы придумаем другой эксперимент.",
+      "bText": "— Давайте проясним ситуацию, — сказал Гарри, — папа, если профессор\nдействительно поднимет тебя в воздух, причём ты будешь знать, что нет\nникаких скрытых верёвок, то это будет считаться достаточным\nдоказательством существования магии. Ты не будешь отпираться и называть\nпроисходящее обычными фокусами. Так будет честно. Если подобная\nдемонстрация уже сейчас кажется тебе недостаточной, то мы можем\nпридумать другой эксперимент.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶4-4"
+    },
+    {
+      "source": "Harry’s father, Professor Michael Verres-Evans, rolled his eyes. “Yes, Harry.”",
+      "aText": "Его отец, профессор Майкл Веррес-Эванс, закатил глаза.\n— Да, Гарри.",
+      "bText": "Отец Гарри, профессор Майкл Веррес-Эванс, закатил глаза:\n\n— Да, Гарри.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶5-6"
+    },
+    {
+      "source": "“And you, Mum, your theory says that the professor should be able to do this, and if that doesn’t happen, you’ll admit you’re mistaken. Nothing about how magic doesn’t work when people are sceptical of it, or anything like that.”",
+      "aText": "— И ты тоже, мама: по твоей версии профессор должна суметь это сделать, и если не сумеет, ты признаешь, что ошибалась. Без разговоров о том, что магия не работает, когда в неё не верят, и всё такое.",
+      "bText": "— Теперь ты, мама. Твоя теория заключается в том, что профессор сможет\nсделать это. Но если ничего не произойдёт, то ты признаешь, что\nошибалась. И не будешь говорить, что магия не работает, когда люди\nнастроены скептически, и тому подобное.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶7-7"
+    },
+    {
+      "source": "Deputy Headmistress Minerva McGonagall was watching Harry with a bemused expression. She looked quite witchy in her black robes and pointed hat, but when she spoke she sounded formal and Scottish, which didn’t go together with the look at all. At first glance she looked like someone who ought to cackle and put babies into cauldrons, but the whole effect was ruined as soon as she opened her mouth. “Is that sufficient, Mr Potter?” she said. “Shall I go ahead and demonstrate?”",
+      "aText": "Заместитель директора Минерва МакГонагалл наблюдала за Гарри с озадаченно-весёлым выражением. В чёрной мантии и островерхой шляпе она выглядела совершенно по-ведьмински, но стоило ей заговорить — и из образа выпадало решительно всё: голос у неё был суховатый, официальный, с шотландскими нотками. С первого взгляда казалось, что ей полагается хохотать и варить младенцев в котле, но впечатление рушилось, едва она открывала рот.\n— Этого достаточно, мистер Поттер? — спросила она. — Могу я начинать?",
+      "bText": "Заместитель директора Минерва МакГонагалл с удивлением смотрела на\nГарри. Одетая в чёрную мантию и остроконечную шляпу, она выглядела как\nнастоящая ведьма, но разговаривала официальным тоном с шотландским\nакцентом, что совсем не вязалось с её внешним видом. На первый взгляд\nказалось, что она вот-вот разразится злобным хохотом и начнёт варить из\nмладенцев жуткое зелье, но весь этот эффект испарялся, стоило ей открыть\nрот.\n\n— Так этого будет достаточно, мистер Поттер? — уточнила волшебница. —\nМожно начинать демонстрацию?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶8-9"
+    },
+    {
+      "source": "“*Sufficient?* Probably not,” Harry said. “But at least it will *help*. Go ahead, Deputy Headmistress.”",
+      "aText": "— *Достаточно?* Вряд ли, — ответил Гарри. — Но кое-что это, по крайней мере, *прояснит*. Начинайте, заместитель директора.",
+      "bText": "— Достаточно? Скорее всего, нет, — ответил Гарри, — но это точно\nпоможет. Начинайте, заместитель директора.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶10-10"
+    },
+    {
+      "source": "“Just Professor will do,” said she, and then, “*Wingardium Leviosa*.”",
+      "aText": "— Просто профессор, — поправила она и произнесла: — *Вингардиум Левиоса*.",
+      "bText": "— Можно просто «профессор», — сказала она. — *Вингардиум левиоса.*",
+      "label": "Everything I Believe Is False  · B ch 2, ¶11-11"
+    },
+    {
+      "source": "Harry looked at his father.",
+      "aText": "Гарри посмотрел на отца.",
+      "bText": "Гарри посмотрел на отца.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶12-12"
+    },
+    {
+      "source": "“Huh,” Harry said.",
+      "aText": "— Хм, — сказал Гарри.",
+      "bText": "— Гм.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶13-13"
+    },
+    {
+      "source": "His father looked back at him. “Huh,” his father echoed.",
+      "aText": "Отец посмотрел на него в ответ.\n— Хм, — отозвался он.",
+      "bText": "Тот посмотрел на него и повторил эхом:\n\n— Гм.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶14-15"
+    },
+    {
+      "source": "Then Professor Verres-Evans looked back at Professor McGonagall. “All right, you can put me down now.”",
+      "aText": "Потом профессор Веррес-Эванс снова перевёл взгляд на профессора МакГонагалл.\n— Ладно, можете опустить меня.",
+      "bText": "Затем профессор Веррес-Эванс перевёл взгляд на профессора МакГонагалл:\n\n— Ладно, можете опустить меня вниз.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶16-17"
+    },
+    {
+      "source": "His father was lowered carefully to the ground.",
+      "aText": "Отец плавно опустился на пол.",
+      "bText": "Майкл Веррес-Эванс медленно приземлился на пол.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶18-18"
+    },
+    {
+      "source": "Harry ruffled a hand through his own hair. Maybe it was just that strange part of him which had *already* been convinced, but…“That’s a bit of an anticlimax,” Harry said. “You’d think there’d be some kind of more dramatic mental event associated with updating on an observation of infinitesimal probability—” Harry stopped himself. Mum, the witch, and even his Dad were giving him *that look* again. “I mean, with finding out that everything I believe is false.”",
+      "aText": "Гарри взъерошил себе волосы.\n— Как-то это даже… не слишком впечатляет, — сказал он. — Казалось бы, после наблюдения события с бесконечно малой вероятностью должно происходить нечто более драматическое — полное перестроение картины мира…\nОн осёкся. Мама, ведьма и даже папа снова смотрели на него *тем самым* взглядом.\n— То есть я хотел сказать: после того как выясняется, что всё, во что ты верил, неправда.",
+      "bText": "Гарри взъерошил волосы. Может, дело было в том, что какая-то его часть\nзаранее знала результат, но...\n\n— Почему-то меня это не впечатлило, — сказал он. — Я думал, что моя\nреакция будет более драматичной, учитывая, что я стал свидетелем события\nбесконечно малой вероятности...\n\nОн запнулся: мать, МакГонагалл и даже отец снова смотрели на него *тем\nсамым* взглядом.\n\n— Я имею в виду ситуацию, когда всё, во что веришь, оказывается ложью.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶19-22"
+    },
+    {
+      "source": "Seriously, it should have been more dramatic. His brain ought to have been flushing its entire current stock of hypotheses about the universe, none of which allowed this to happen. But instead his brain just seemed to be going, *All right, I saw the Hogwarts Professor wave her wand and make your father rise into the air, now what?*",
+      "aText": "А ведь и правда должно было быть куда драматичнее. По идее, мозг сейчас должен был выбрасывать весь свой запас гипотез о мироздании — ни одна из них не допускала, чтобы случалось *такое*. Но вместо этого мозг, похоже, ограничился чем-то вроде: *Ну хорошо, я видел, как профессор из Хогвартса взмахнула палочкой, и твой отец поднялся в воздух. Что дальше?*",
+      "bText": "В самом деле, увиденное должно было потрясти его гораздо сильнее. Сейчас\nмозгу Гарри следовало бы перебирать все возможные гипотезы об устройстве\nвселенной, которые говорили бы о невозможности того, что только что\nслучилось. А вместо этого его рассудок говорил: «Ладно, я видел, как\nпрофессор из Хогвартса махнула палочкой и мой отец поднялся в воздух. И\nчто тут такого?»",
+      "label": "Everything I Believe Is False  · B ch 2, ¶23-23"
+    },
+    {
+      "source": "The witch-lady was smiling benevolently upon them, looking quite amused. “Would you like a further demonstration, Mr Potter?”",
+      "aText": "Леди-ведьма улыбалась им с благожелательным, явно позабавленным видом.\n— Хотите ещё одну демонстрацию, мистер Поттер?",
+      "bText": "Ведьма с довольно-таки весёлым видом добродушно улыбнулась.\n\n— Вы хотели бы продолжить демонстрацию, мистер Поттер?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶24-25"
+    },
+    {
+      "source": "“You don’t have to,” Harry said. “We’ve performed a definitive experiment. But…” Harry hesitated. He couldn’t help himself. Actually, under the circumstances, he *shouldn’t* be helping himself. It was right and proper to be curious. “What else *can* you do?”",
+      "aText": "— Необязательно, — сказал Гарри. — Эксперимент уже дал однозначный результат. Но…\nОн замялся. Ничего не поделаешь. Впрочем, в такой ситуации *и не следовало* сдерживаться. Любопытство было совершенно уместно.\n— А что ещё вы *умеете*?",
+      "bText": "— Это не обязательно, — ответил Гарри, — мы провели достаточно\nубедительный эксперимент. Но...\n\nОн колебался. Хотелось увидеть больше. В конце концов, сейчас, учитывая\nобстоятельства, любопытство было правильным и уместным.\n\n— Что ещё вы можете показать?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶26-28"
+    },
+    {
+      "source": "Professor McGonagall turned into a cat.",
+      "aText": "Профессор МакГонагалл превратилась в кошку.",
+      "bText": "Профессор МакГонагалл превратилась в кошку.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶29-29"
+    },
+    {
+      "source": "Harry scrambled back unthinkingly, back-pedalling so fast that he tripped over a stray stack of books and landed hard on his bottom with a *thwack*. His hands came down to catch himself without quite reaching properly, and there was a warning twinge in his shoulder as the weight came down unbraced.",
+      "aText": "Гарри отшатнулся, даже не успев подумать. Он попятился так стремительно, что зацепился за случайную стопку книг и с размаху шлёпнулся на пол. Руки дёрнулись, пытаясь смягчить падение, но не успели как следует, и в плече болезненно кольнуло от неловко принятого веса.",
+      "bText": "Гарри отскочил назад так быстро, что споткнулся о стопку книг и звучно\nшмякнулся на пол. Не успев правильно выставить руки, он всем своим весом\nприземлился на плечо, и теперь оно болезненно ныло.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶30-30"
+    },
+    {
+      "source": "At once the small tabby cat morphed back up into a robed woman. “I’m sorry, Mr Potter,” said the witch, sounding sincere, though the corners of her lips were twitching upwards. “I should have warned you.”",
+      "aText": "В ту же секунду маленькая полосатая кошка снова вытянулась вверх, обращаясь в женщину в мантии.\n— Простите, мистер Поттер, — искренне сказала ведьма, хотя уголки её губ предательски подрагивали. — Надо было вас предупредить.",
+      "bText": "В тот же миг маленькая полосатая кошка вновь стала женщиной в чёрной\nмантии.\n\n— Извините, мистер Поттер, — в её голосе звучало искреннее сочувствие,\nно губы едва заметно улыбались. — Я должна была вас предупредить.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶31-32"
+    },
+    {
+      "source": "Harry was breathing in short gasps. His voice came out choked. “*You can’t *do* that!*”",
+      "aText": "Гарри дышал коротко, прерывисто.\n— *Так нельзя!* — выдавил он.",
+      "bText": "Гарри еле дышал от потрясения:\n\n— Как вы ЭТО сделали?!",
+      "label": "Everything I Believe Is False  · B ch 2, ¶33-34"
+    },
+    {
+      "source": "“It’s only a Transfiguration,” said Professor McGonagall. “An Animagus transformation, to be exact.”",
+      "aText": "— Это всего лишь трансфигурация, — сказала профессор МакГонагалл. — Если точнее — превращение анимага.",
+      "bText": "— Это просто трансфигурация, — ответила МакГонагалл. — Трансформация\nанимага, если говорить точно.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶35-35"
+    },
+    {
+      "source": "“You turned into a cat! A *small* cat! You violated Conservation of Energy! That’s not just an arbitrary rule, it’s implied by the form of the quantum Hamiltonian! Rejecting it destroys unitarity and then you get FTL signalling! And cats are *complicated*! A human mind can’t just visualise a whole cat’s anatomy and, and all the cat biochemistry, and what about the *neurology*? How can you go on *thinking* using a cat-sized brain?”",
+      "aText": "— Вы превратились в кошку! В *маленькую* кошку! Вы нарушили закон сохранения энергии! Это не какая-то условность, он следует из формы квантового гамильтониана! Если от него отказаться, рушится унитарность, а дальше получается сверхсветовая передача сигналов! И кошки ведь *сложные*! Человеческий разум не может просто так вообразить всю кошачью анатомию, и всю кошачью биохимию, и, и что насчёт *нейрологии*? Как вы вообще продолжаете *думать* с мозгом размером с кошачий?",
+      "bText": "— Вы превратились в кошку! В МАЛЕНЬКУЮ кошку! Вы нарушили закон\nсохранения энергии! Это не какое-то условное правило. Энергия выражается\nс помощью квантового гамильтониана, а при нарушении закона сохранения\nтеряется унитарность! Получается распространение сигналов быстрее\nскорости света! И кошки СЛОЖНЫЕ! Человеческий разум просто не в\nсостоянии представить себе всю кошачью анатомию и всю кошачью биохимию,\nне говоря уже о неврологии. Как можно продолжать думать*,* используя\nмозг размером с кошачий?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶36-36"
+    },
+    {
+      "source": "Professor McGonagall’s lips were twitching harder now. “Magic.”",
+      "aText": "Уголки губ профессора МакГонагалл задрожали ещё сильнее.\n— Магия.",
+      "bText": "Профессор МакГонагалл уже едва сдерживала улыбку:\n\n— Магия.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶37-38"
+    },
+    {
+      "source": "“Magic *isn’t enough* to do that! You’d have to be a god!”",
+      "aText": "— Для этого одной магии *мало*! Тут надо быть богом!",
+      "bText": "— Магии для такого недостаточно. Для этого нужно быть богом!",
+      "label": "Everything I Believe Is False  · B ch 2, ¶39-39"
+    },
+    {
+      "source": "Professor McGonagall blinked. “That’s the first time I’ve ever been called *that*.”",
+      "aText": "Профессор МакГонагалл моргнула.\n— Впервые в жизни меня так называют.",
+      "bText": "МакГонагалл моргнула:\n\n— Так меня ещё никто не называл.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶40-41"
+    },
+    {
+      "source": "A blur was coming over Harry’s vision, as his brain started to comprehend what had just broken. The whole idea of a unified universe with mathematically regular laws, that was what had been flushed down the toilet; the whole notion of *physics*. Three thousand years of resolving big complicated things into smaller pieces, discovering that the music of the planets was the same tune as a falling apple, finding that the true laws were perfectly universal and had no exceptions anywhere and took the form of simple maths governing the smallest parts, *not to mention* that the mind was the brain and the brain was made of neurons, a brain was what a person *was*—",
+      "aText": "Перед глазами у Гарри всё поплыло: мозг начал наконец осознавать, что именно только что разлетелось вдребезги. В унитаз спустили саму идею единой вселенной, подчинённой математически стройным законам; само представление о *физике*. Три тысячи лет, в течение которых человечество разбирало большие и сложные явления на меньшие части, обнаруживало, что музыка планет звучит в том же ключе, что и падающее яблоко, понимало, что подлинные законы везде одинаковы, не знают исключений и выражаются простой математикой, управляющей мельчайшими составляющими мира; не говоря уж о том, что разум — это мозг, а мозг состоит из нейронов, и человек — это, собственно, и есть его мозг…",
+      "bText": "Взгляд Гарри затуманился, его разум принялся подсчитывать причинённый\nущерб. Вся идея единообразной вселенной с математически обоснованными\nзаконами, все представления физики пошли коту (точнее, кошке) под хвост.\n\nТри тысячи лет люди по маленьким кусочкам складывали картину мира,\nузнавали, что музыка планет имеет ту же мелодию, что и падающее яблоко,\nискали истинные универсальные законы, для которых нет исключений и\nкоторые, принимая простую математическую форму, управляли даже\nмельчайшими частицами... И ещё тот факт, что сознание находится в мозге,\nи что мозг состоит из нейронов, и что мозг равен личности...",
+      "label": "Everything I Believe Is False  · B ch 2, ¶42-43"
+    },
+    {
+      "source": "And then a woman turned into a cat, so much for all that.",
+      "aText": "А потом женщина превратилась в кошку — и всему этому конец.",
+      "bText": "А тут женщина превращается в кошку, только и всего.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶44-44"
+    },
+    {
+      "source": "A hundred questions fought for priority over Harry’s lips and the winner poured out: “And, and what kind of incantation is *Wingardium Leviosa?* Who invents the words to these spells, nursery schoolers?”",
+      "aText": "На языке у Гарри теснилась сотня вопросов, но первым вырвался один:\n— И вообще, что это за заклинание такое — *Вингардиум Левиоса*? Кто придумывает эти слова, воспитанники детского сада?",
+      "bText": "Гарри хотел задать тысячу вопросов, но в итоге вырвался один:\n\n— Что это за словосочетание — «Вингардиум левиоса»? Кто придумывает\nслова к этим заклинаниям, дети дошкольного возраста?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶45-46"
+    },
+    {
+      "source": "“That will do, Mr Potter,” Professor McGonagall said crisply, though her eyes shone with suppressed amusement. “If you wish to learn about magic, I suggest that we finalise the paperwork so that you can go to Hogwarts.”",
+      "aText": "— Довольно, мистер Поттер, — сухо сказала профессор МакГонагалл, хотя глаза у неё блестели от сдерживаемого смеха. — Если вы хотите изучать магию, предлагаю сначала уладить формальности, чтобы вы могли отправиться в Хогвартс.",
+      "bText": "— Закончим на этом, мистер Поттер, — решительно остановила его\nМакГонагалл, но в её глазах читался с трудом удерживаемый смех. — Если\nвы хотите изучать магию, нам необходимо обговорить все детали вашего\nпоступления в Хогвартс.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶47-47"
+    },
+    {
+      "source": "“Right,” Harry said, somewhat dazed. He pulled his thoughts together. The March of Reason would just have to start over, that was all; they still had the experimental method and that was the important thing. “How do I get to Hogwarts, then?”",
+      "aText": "— Точно, — сказал Гарри, всё ещё слегка оглушённый.\nОн собрался с мыслями. Поступь Разума просто придётся начать заново — только и всего; экспериментальный метод у них по-прежнему есть, а это главное.\n— И как же мне попасть в Хогвартс?",
+      "bText": "— Верно, — задумчиво ответил Гарри. Он собрался с мыслями. Путь к\nзнаниям придётся начинать заново, но у него ещё оставался\nэкспериментальный метод, и об этом стоило помнить. — Так как же мне\nпопасть в Хогвартс?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶48-48"
+    },
+    {
+      "source": "A choked laugh escaped Professor McGonagall, as if extracted from her by tweezers.",
+      "aText": "Из профессора МакГонагалл вырвался какой-то сдавленный смешок — словно его пришлось вытягивать щипцами.",
+      "bText": "Сдавленный смешок вырвался изо рта ведьмы, будто его выдернули клещами.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶49-49"
+    },
+    {
+      "source": "“Hold on a moment, Harry,” his father said. “Remember why you haven’t been going to school up until now? What about your condition?”",
+      "aText": "— Подожди-ка, Гарри, — вмешался отец. — А ты не забыл, почему до сих пор не ходил в обычную школу? А как же твоё состояние?",
+      "bText": "— Подожди, Гарри, — вмешался его отец. — Ты же знаешь, по каким причинам\nты до сих пор не посещаешь школу. Что будем делать с ними?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶50-50"
+    },
+    {
+      "source": "Professor McGonagall spun to face Michael. “His condition? What’s this?”",
+      "aText": "Профессор МакГонагалл резко повернулась к Майклу.\n— Его состояние? О чём вы?",
+      "bText": "МакГонагалл повернулась к Майклу:\n\n— Какие причины? О чём вы говорите?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶51-52"
+    },
+    {
+      "source": "“I don’t sleep right,” Harry said. He waved his hands helplessly. “My sleep cycle is twenty-six hours long, I always go to sleep two hours later, every day. I can’t fall asleep any earlier than that, and then the next day I go to sleep two hours later than *that*. 10, 12, 2, 4, until it goes around the clock. Even if I try to wake up early, it makes no difference and I’m a wreck that whole day. That’s why I haven’t been going to a normal school up until now.”",
+      "aText": "— Я неправильно сплю, — сказал Гарри, беспомощно разводя руками. — Мой цикл сна длится двадцать шесть часов: каждый день я засыпаю на два часа позже. И раньше уснуть не могу, а на следующий день засыпаю ещё на два часа позже. В десять, в двенадцать, в два, в четыре — и так по кругу, пока снова не дойдёт до того же времени. Даже если я заставлю себя встать пораньше, это ничего не меняет, и весь день потом я развалина. Поэтому я до сих пор и не ходил в обычную школу.",
+      "bText": "— У меня проблемы со сном, — сказал Гарри, беспомощно разводя руками. —\nВ моих биологических сутках двадцать шесть часов, я каждый день ложусь\nспать на два часа позже. Десять вечера, двенадцать, два часа, четыре\nутра и так по кругу. Даже если я заставлю себя встать раньше, это не\nпоможет, и весь следующий день я буду не в своей тарелке. Поэтому я до\nсих пор не хожу в обычную школу.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶53-53"
+    },
+    {
+      "source": "“One of the reasons,” said his mother. Harry shot her a glare.",
+      "aText": "— Это *одна* из причин, — заметила мать.\nГарри метнул в неё сердитый взгляд.",
+      "bText": "— Это одна из причин, — уточнила его мать, награждённая за это свирепым\nвзглядом Гарри.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶54-54"
+    },
+    {
+      "source": "McGonagall gave a long *hmmmmm*. “I can’t recall hearing about such a condition before…” she said slowly. “I’ll check with Madam Pomfrey to see if she knows any remedies.” Then her face brightened. “No, I’m sure this won’t be a problem—I’ll find a solution in time. Now,” and her gaze sharpened again, “what are these *other* reasons?”",
+      "aText": "МакГонагалл протянула задумчивое:\n— М-м-м…\n— Не припомню, чтобы мне прежде встречалось что-то подобное, — медленно сказала она. — Я спрошу у мадам Помфри, знает ли она какое-нибудь средство.\nЛицо её тут же прояснилось.\n— Нет, думаю, это не станет проблемой. Я найду решение до начала занятий. А теперь…\nИ взгляд её снова стал острым.\n— Что это за *другие* причины?",
+      "bText": "— Хм-м, — протянула МакГонагалл. — Не сталкивалась с подобным прежде.\nНужно будет спросить у мадам Помфри, знает ли она подходящее лекарство.\n\nЕё лицо смягчилось:\n\n— Но не думаю, что это может быть препятствием. Я найду решение вашей\nпроблемы со временем, — она снова сдвинула брови. — Каковы же другие\nпричины?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶55-57"
+    },
+    {
+      "source": "Harry sent his parents a glare. “I am a conscientious objector to child conscription, on grounds that I should not have to suffer for a disintegrating school system’s failure to provide teachers or study materials of even minimally adequate quality.”",
+      "aText": "Гарри мрачно посмотрел на родителей.\n— Я сознательный отказник от детской мобилизации, поскольку не считаю, что обязан страдать из-за того, что распадающаяся школьная система не в состоянии обеспечить ни учителей, ни учебные материалы хотя бы минимально приемлемого качества.",
+      "bText": "Гарри наградил родителей ещё одним свирепым взглядом:\n\n— Я сознательно возражаю против идеи обязательного посещения школы,\nосновываясь на перманентной неспособности системы школьного образования\nпредоставить мне учителей и учебные пособия минимально приемлемого\nуровня.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶58-59"
+    },
+    {
+      "source": "Both of Harry’s parents howled with laughter at that, like they thought it was all a big joke. “Oh,” said Harry’s father, eyes bright, “is *that* why you bit a maths teacher in third year.”",
+      "aText": "Оба родителя расхохотались так, будто ничего смешнее в жизни не слышали.\n— Вот оно что, — сказал отец, утирая смеющиеся глаза. — Значит, поэтому ты в третьем классе укусил учительницу математики?",
+      "bText": "Родители Гарри рассмеялись, как будто вдруг услышали отличную шутку.\n\n— Ага, — сказал отец Гарри, сверкнув глазами, — теперь понятно, почему в\nтретьем классе ты укусил свою учительницу математики.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶60-61"
+    },
+    {
+      "source": "“*She didn’t know what a logarithm was!*”",
+      "aText": "— *Она не знала, что такое логарифм!*",
+      "bText": "— Она не знала, что такое логарифм!",
+      "label": "Everything I Believe Is False  · B ch 2, ¶62-62"
+    },
+    {
+      "source": "“Of course,” seconded Harry’s mother. “Biting her was a very mature response to that.”",
+      "aText": "— Ну разумеется, — подхватила мать. — Укусить её было чрезвычайно зрелой реакцией.",
+      "bText": "— И, конечно, укусить её — весьма взрослый способ решения проблемы, —\nвторила мать.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶63-63"
+    },
+    {
+      "source": "Harry’s father nodded. “A well-considered policy for addressing the problem of teachers who don’t understand logarithms.”",
+      "aText": "Отец кивнул.\n— Взвешенная и продуманная мера против учителей, не понимающих логарифмов.",
+      "bText": "Отец Гарри кивнул:\n\n— Продуманная стратегия в отношении учителей, которые не понимают\nлогарифмов.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶64-65"
+    },
+    {
+      "source": "“I was *seven years old*! How long are you going to keep on bringing that up?”",
+      "aText": "— Мне было *семь лет*! Сколько можно это припоминать?",
+      "bText": "— Мне было семь лет! Как долго вы ещё собираетесь вспоминать тот случай?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶66-66"
+    },
+    {
+      "source": "“I know,” said his mother sympathetically, “you bite *one* maths teacher and they never let you forget it, do they?”",
+      "aText": "— Знаю, — сочувственно сказала мать. — Стоит тебе *всего один раз* укусить учительницу математики — и люди уже никак не могут об этом забыть, да?",
+      "bText": "— Да, всё понятно, — с участием в голосе сказала мать. — Ты укусил\nодного учителя математики, и теперь тебе этого никогда не забудут.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶67-67"
+    },
+    {
+      "source": "Harry turned to Professor McGonagall. “There! You see what I have to deal with?”",
+      "aText": "Гарри повернулся к профессору МакГонагалл.\n— Вот! Видите, с чем мне приходится жить?",
+      "bText": "Гарри повернулся к МакГонагалл:\n\n— Вот видите, с чем мне приходится иметь дело?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶68-69"
+    },
+    {
+      "source": "“Excuse me,” said Petunia, and fled through the back door into the garden, from which her screams of laughter were clearly audible.",
+      "aText": "— Прошу прощения, — сказала Петуния и выскочила через заднюю дверь в сад, откуда тотчас донёсся её неудержимый хохот.",
+      "bText": "— Извините, — сказала Петуния и выбежала за стеклянную дверь гостиной.\nВпрочем, её смех было слышно даже оттуда.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶70-70"
+    },
+    {
+      "source": "“There, ah, there,” Professor McGonagall seemed to be having trouble speaking for some reason, “there is to be no biting of teachers at Hogwarts, is that quite clear, Mr Potter?”",
+      "aText": "— Так, э-э… так вот, — сказала профессор МакГонагалл, которой почему-то тоже было трудно говорить, — в Хогвартсе кусать учителей не полагается. Это вам ясно, мистер Поттер?",
+      "bText": "— Гм, значит так, — по какой-то причине МакГонагалл было непросто\nпродолжить разговор. — Никакого кусания учителей в Хогвартсе. Это\nпонятно, мистер Поттер?",
+      "label": "Everything I Believe Is False  · B ch 2, ¶71-71"
+    },
+    {
+      "source": "Harry scowled at her. “Fine, I won’t bite anyone who doesn’t bite me first.”",
+      "aText": "Гарри нахмурился.\n— Ладно. Никого не укушу, если только меня не укусят первым.",
+      "bText": "Гарри, насупившись, посмотрел на неё:\n\n— Хорошо, я не стану никого кусать, пока меня самого не укусят.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶72-73"
+    },
+    {
+      "source": "Professor Michael Verres-Evans also had to leave the room briefly upon hearing that.",
+      "aText": "Услышав это, профессор Майкл Веррес-Эванс тоже был вынужден ненадолго выйти из комнаты.",
+      "bText": "Услышав это, профессор Майкл Веррес-Эванс тоже был вынужден покинуть\nкомнату.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶74-74"
+    },
+    {
+      "source": "“Well,” Professor McGonagall sighed, after Harry’s parents had composed themselves and returned. “Well. I think, under the circumstances, that I should avoid taking you to purchase your study materials until a day or two before school begins.”",
+      "aText": "— Что ж, — вздохнула профессор МакГонагалл, когда родители Гарри наконец отсмеялись, вернулись и снова приняли подобающий вид. — Что ж. При таких обстоятельствах, думаю, будет лучше не брать вас за школьными принадлежностями раньше чем за день-два до начала занятий.",
+      "bText": "— Итак, — вздохнула МакГонагалл, дождавшись, пока родители Гарри возьмут\nсебя в руки и вернутся. — Думаю, учитывая обстоятельства, стоит\nповременить с покупкой школьных принадлежностей. Займёмся этим за\nнесколько дней до начала учебного года.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶75-75"
+    },
+    {
+      "source": "“What? Why? The other children already know magic, don’t they? I have to start catching up right away!”",
+      "aText": "— Что? Почему? Другие дети ведь уже знают магию, разве нет? Мне нужно немедленно начинать наверстывать!",
+      "bText": "— Что? Почему? Ведь другие дети уже знакомы с магией! Я должен начать\nготовиться прямо сейчас!",
+      "label": "Everything I Believe Is False  · B ch 2, ¶76-76"
+    },
+    {
+      "source": "“Rest assured, Mr Potter,” replied Professor McGonagall, “Hogwarts is quite capable of teaching the basics. And I suspect, Mr Potter, that if I leave you alone for two months with your schoolbooks, even without a wand, I will return to this house only to find a crater billowing purple smoke, a depopulated city surrounding it and a plague of flaming zebras terrorising what remains of England.”",
+      "aText": "— Не беспокойтесь, мистер Поттер, — ответила профессор МакГонагалл. — Хогвартс вполне способен обучить основам. А у меня, мистер Поттер, есть сильное подозрение, что, если оставить вас на два месяца наедине с учебниками — даже без волшебной палочки, — я вернусь в этот дом и обнаружу на его месте кратер, из которого валит фиолетовый дым, вокруг — обезлюдевший город, а по тому, что осталось от Англии, носятся огнедышащие зебры.",
+      "bText": "— Смею вас заверить, мистер Поттер, — ответила профессор МакГонагалл, —\nв Хогвартсе вы сможете начать обучение с самых основ. К тому же, мистер\nПоттер, подозреваю, что если я оставлю вас на два месяца с вашими\nучебниками даже без волшебной палочки, то, вернувшись сюда, я найду лишь\nкратер, полный лилового дыма, опустевший город и полчища огненных зебр,\nтерроризирующих остатки Англии.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶77-77"
+    },
+    {
+      "source": "Harry’s mother and father nodded in perfect unison.",
+      "aText": "Мать и отец Гарри одновременно, с безупречной синхронностью, кивнули.",
+      "bText": "Мать и отец Гарри согласно кивнули.",
+      "label": "Everything I Believe Is False  · B ch 2, ¶78-78"
+    },
+    {
+      "source": "“*Mum! Dad!*”",
+      "aText": "— *Мама! Папа!*",
+      "bText": "— Мама! Папа!",
+      "label": "Everything I Believe Is False  · B ch 2, ¶79-79"
+    },
+    {
+      "source": "If J. K. Rowling asks you about this story, you know nothing.",
+      "aText": "Если Дж. К. Роулинг станет расспрашивать вас об этой истории, вы ничего не знаете.",
+      "bText": "Если Дж. К. Роулинг спросит вас об этом фанфике — вы ничего не знаете.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶1-1"
+    },
+    {
+      "source": "But then the question is—who?",
+      "aText": "Но тогда возникает вопрос — кто?",
+      "bText": "*Но тогда вопрос в том, кто?*",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶3-3"
+    },
+    {
+      "source": "GOOD Lord,” said the barman, peering at Harry, “is this—can this be—?”",
+      "aText": "— Боже правый, — сказал трактирщик, вглядываясь в Гарри, — неужели это… может быть, это и есть…?",
+      "bText": "— Господи боже! — воскликнул бармен, уставившись на Гарри. — Это же...\nнеужели?",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶4-4"
+    },
+    {
+      "source": "Harry leaned towards the bar of the Leaky Cauldron as best he could, though it came up to somewhere around the tips of his eyebrows. A question like *that* deserved his very best.",
+      "aText": "Гарри как мог подался к стойке «Дырявого котла», хотя та доходила ему примерно до кончиков бровей. На такой вопрос следовало ответить как можно лучше.",
+      "bText": "Гарри придвинулся к барной стойке «Дырявого котла», находившейся на\nуровне его глаз. Такой вопрос заслуживал наилучшего ответа:",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶5-5"
+    },
+    {
+      "source": "“Am I—could I be—maybe—you never know—if I’m *not*—but then the question is—*who?*”",
+      "aText": "— Я ли это… могу ли я быть… может быть… кто знает… а если *не* я… тогда вопрос в том… *кто?*",
+      "bText": "— Я... неужели… возможно… точно не знаю… может, и нет… но тогда вопрос в\nтом, кто?",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶6-6"
+    },
+    {
+      "source": "“Bless my soul,” whispered the old barman. “Harry Potter…what an honour.”",
+      "aText": "— Господи помилуй, — прошептал старый трактирщик. — Гарри Поттер… какая честь.",
+      "bText": "— Господи благослови, — прошептал бармен, — Гарри Поттер, какая честь!",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶7-7"
+    },
+    {
+      "source": "Harry blinked, then rallied. “Well, yes, you’re quite perceptive; most people don’t realise that so quickly—”",
+      "aText": "Гарри моргнул, но тут же собрался.\n— Ну да, вы весьма проницательны; обычно люди не так быстро это понимают…",
+      "bText": "Гарри моргнул, но быстро вернул самообладание:\n\n— Вы крайне наблюдательны, большинство людей не понимают этого так\nбыстро...",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶8-9"
+    },
+    {
+      "source": "“That’s enough,” Professor McGonagall said. Her hand tightened on Harry’s shoulder. “Don’t pester the boy, Tom, he’s new to all this.”",
+      "aText": "— Довольно, — сказала профессор МакГонагалл, сильнее сжимая руку на плече Гарри. — Не донимай мальчика, Том, он к такому ещё не привык.",
+      "bText": "— Достаточно, — сказала профессор МакГонагалл, её рука сжала плечо\nГарри. — Том, не приставай к мальчику, он к этому не привык.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶10-10"
+    },
+    {
+      "source": "“But it is him?” quavered an old woman. “It’s Harry Potter?” With a scraping sound, she got up from her chair.",
+      "aText": "— Так это правда? — дрожащим голосом спросила какая-то пожилая женщина. — Это Гарри Поттер?\nС неприятным скрежетом она поднялась со стула.",
+      "bText": "— Но это он? — встряла пожилая женщина. — Это Гарри Поттер?\n\nСкрипнув стулом, она поднялась.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶11-12"
+    },
+    {
+      "source": "“Doris—” McGonagall said warningly. The glare she shot around the room should have been enough to intimidate anyone.",
+      "aText": "— Дорис… — предостерегающе произнесла МакГонагалл.\nВзгляд, которым она обвела комнату, должен был бы устрашить кого угодно.",
+      "bText": "— Дорис, — остановила её МакГонагалл и обвела зал взглядом, смысл\nкоторого был понятен каждому.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶13-13"
+    },
+    {
+      "source": "“I only want to shake his hand,” the woman whispered. She bent low and stuck out a wrinkled hand, which Harry, feeling confused and more uncomfortable than he ever had in his life, carefully shook. Tears fell from the woman’s eyes onto their clasped hands. “My grandson was an Auror,” she whispered to him. “Died in seventy-nine. Thank you, Harry Potter. Thank heavens for you.”",
+      "aText": "— Я только хочу пожать ему руку, — еле слышно сказала женщина.\nНизко склонившись, она протянула к Гарри сморщенную ладонь; он, совсем смешавшись и чувствуя себя неловко, как никогда в жизни, осторожно пожал её. На их сомкнутые руки упали слёзы.\n— Мой внук был мракоборцем, — прошептала она. — Его не стало в семьдесят девятом. Спасибо тебе, Гарри Поттер. Храни тебя Господь.",
+      "bText": "— Я только хотела пожать ему руку, — прошептала женщина.\n\nОна нагнулась и протянула Гарри морщинистую ладонь. Сбитый с толку и\nсмущённый, как никогда в своей жизни, он осторожно пожал её. Слёзы из\nглаз женщины оросили их соединённые руки.\n\n— Мой внук был аврором, — прошептала она. — Погиб в семьдесят девятом.\nСпасибо тебе, Гарри Поттер. Хвала небесам, что ты есть.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶14-16"
+    },
+    {
+      "source": "“You’re welcome,” Harry said automatically, and then he turned his head and shot Professor McGonagall a frightened, pleading look.",
+      "aText": "— Не за что, — автоматически ответил Гарри, а потом быстро повернулся к профессору МакГонагалл и посмотрел на неё испуганно, почти умоляюще.",
+      "bText": "— Пожалуйста, — автоматически ответил Гарри, бросив в сторону\nМакГонагалл испуганный, умоляющий взгляд.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶17-17"
+    },
+    {
+      "source": "Professor McGonagall slammed her foot down just as the general rush was about to start. It made a noise that gave Harry a new referent for the phrase “Crack of Doom”, and everyone froze in place.",
+      "aText": "Профессор МакГонагалл с силой топнула как раз в тот миг, когда толпа уже готова была хлынуть к Гарри.\nГрохот был такой, что у Гарри появилось новое, наглядное понимание выражения «Роковая Гора», — и все разом замерли.",
+      "bText": "По залу пошло шевеление, люди начали подниматься со своих мест, и тут\nпрофессор громко топнула ногой. Звук получился такой, что у Гарри\nвозникла новая ассоциация к словосочетанию «Удар судьбы». Все замерли.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶18-18"
+    },
+    {
+      "source": "“We’re in a hurry,” Professor McGonagall said in a voice that sounded perfectly, utterly normal.",
+      "aText": "— Мы спешим, — сказала профессор МакГонагалл голосом совершенно обыденным, ровным и спокойным.",
+      "bText": "— Мы торопимся, — чрезвычайно спокойно произнесла волшебница.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶19-19"
+    },
+    {
+      "source": "They left the bar without any trouble.",
+      "aText": "Из трактира они вышли безо всяких происшествий.",
+      "bText": "Никто не рискнул их задерживать.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶20-20"
+    },
+    {
+      "source": "“Professor?” Harry said, once they were in the courtyard. He had meant to ask what was going on, but oddly found himself asking an entirely different question instead. “Who was that pale man, by the corner? The man with the twitching eye?”",
+      "aText": "— Профессор? — сказал Гарри, когда они оказались во дворе.\nОн собирался спросить совсем о другом — что вообще сейчас произошло, — но почему-то сорвался с губ иной вопрос:\n— А кто был тот бледный человек в углу? С дёргающимся глазом?",
+      "bText": "— Профессор? — начал Гарри, как только они оказались снаружи. Он\nсобирался выяснить, что произошло, но неожиданно даже для себя задал\nдругой вопрос: — Кто был тот бледный человек в углу? Тот, с дёргающимся\nглазом?",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶21-21"
+    },
+    {
+      "source": "“Hm?” said Professor McGonagall, sounding a bit surprised; perhaps she hadn’t expected that question either. “That was Professor Quirinus Quirrell. He’ll be teaching Defence Against the Dark Arts this year at Hogwarts.”",
+      "aText": "— М-м? — отозвалась профессор МакГонагалл, явно слегка удивлённая; кажется, такого вопроса она тоже не ожидала. — Это был профессор Квиринус Квиррелл. В этом году он будет преподавать в Хогвартсе Защиту от Тёмных искусств.",
+      "bText": "— М? — удивилась МакГонагалл. Вероятно, она тоже не ожидала такого\nвопроса. — Его зовут профессор Квиррелл. В этом году он будет\nпреподавать в Хогвартсе защиту от Тёмных искусств.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶22-22"
+    },
+    {
+      "source": "“I had the strangest feeling that I knew him…” Harry rubbed his forehead. “And that I shouldn’t shake his hand.” Like meeting someone who had been a friend, once, before something went drastically wrong…that wasn’t really it at all, but Harry couldn’t find words. “And what *was*…all of that?”",
+      "aText": "— У меня было очень странное чувство, будто я его знаю… — Гарри потёр лоб. — И будто мне не следовало пожимать ему руку.\nКак будто встретил человека, который когда-то был тебе другом, а потом что-то пошло ужасно, непоправимо не так… нет, всё-таки не совсем так, но других слов Гарри не находил.\n— И что это *вообще* было… всё это?",
+      "bText": "— У меня появилось странное ощущение, что мы с ним знакомы... — Гарри\nпотёр лоб. — И что мне лучше не здороваться с ним за руку.\n\nЭто было похоже на воспоминание из далёкого прошлого, как будто он\nвстретил кого-то, кто раньше был ему другом. До тех пор, пока не\nслучилось что-то совершенно неправильное... Это было не совсем верное\nопределение возникшему чувству, но Гарри не мог подобрать других слов.\n\n— А об остальном расскажете?",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶23-25"
+    },
+    {
+      "source": "Professor McGonagall was giving him an odd glance. “Mr Potter…do you know…how *much* have you been told…about how your parents died?”",
+      "aText": "Профессор МакГонагалл посмотрела на него как-то странно.\n— Мистер Поттер… вы знаете… то есть вам говорили… сколько именно вы знаете о том, как погибли ваши родители?",
+      "bText": "МакГонагалл странно на него посмотрела:\n\n— Мистер Поттер... вы знаете... что вам говорили о том... как погибли\nваши родители?",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶26-27"
+    },
+    {
+      "source": "Harry returned a steady look. “My parents are alive and well, and they always refused to talk about how my *genetic* parents died. From which I infer that it wasn’t good.”",
+      "aText": "Гарри спокойно выдержал её взгляд.\n— Мои родители живы и здоровы, а о том, как умерли мои *биологические* родители, они всегда отказывались говорить. Из чего я заключаю, что ничего хорошего там не было.",
+      "bText": "Гарри невозмутимо ответил:\n\n— Мои родители живы и в добром здравии, но они всегда отказывались\nрассказывать мне о том, как погибли мои биологические родители. Из чего\nя сделал вывод, что их смерть была не самой простой.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶28-29"
+    },
+    {
+      "source": "“An admirable loyalty,” said Professor McGonagall. Her voice went low. “Though it hurts a little to hear you say it like that. Lily and James were friends of mine.”",
+      "aText": "— Похвальная верность, — сказала профессор МакГонагалл.\nГолос у неё стал тише.\n— Хотя слышать это в такой форме немного больно. Лили и Джеймс были моими друзьями.",
+      "bText": "— Похвальная верность, — произнесла МакГонагалл, понижая голос. — Хотя\nменя немного задевает то, как вы говорите об этом. Лили и Джеймс были\nмоими друзьями.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶30-30"
+    },
+    {
+      "source": "Harry looked away, suddenly ashamed. “I’m sorry,” he said in a small voice. “But I *have* a Mum and Dad. And I know that I’d just make myself unhappy by comparing that reality to…something perfect that I built up in my imagination.”",
+      "aText": "Гарри отвёл глаза, внезапно устыдившись.\n— Простите, — тихо сказал он. — Но у меня *есть* мама и папа. И я понимаю, что только сделаю себе хуже, если начну сравнивать эту реальность с… чем-то идеальным, что сам же выдумаю у себя в голове.",
+      "bText": "Гарри вдруг стало стыдно, и он отвернулся.\n\n— Простите, — тихо сказал мальчик, — но у меня уже есть мама и папа. И я\nзнаю, что почувствую себя несчастным, если буду сравнивать то, что\nсуществует в реальности с... с чем-то идеальным, созданным моим\nвоображением.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶31-32"
+    },
+    {
+      "source": "“That is amazingly wise of you,” Professor McGonagall said quietly. “But your *genetic* parents died very well indeed, protecting you.”",
+      "aText": "— Поразительно мудро с вашей стороны, — так же тихо ответила профессор МакГонагалл. — Но ваши *биологические* родители умерли поистине достойно — защищая вас.",
+      "bText": "— Удивительно мудро с вашей стороны, — ответила МакГонагалл. — Но ваши\n«биологические» родители погибли, защищая вас.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶33-33"
+    },
+    {
+      "source": "*Protecting me?*",
+      "aText": "*Защищая меня?*",
+      "bText": "Защищая меня?!",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶34-34"
+    },
+    {
+      "source": "Something strange clutched at Harry’s heart. “What…*did* happen?”",
+      "aText": "У Гарри странно сжалось сердце.\n— Что… *случилось*?",
+      "bText": "Что-то ёкнуло в сердце Гарри.\n\n— Что... Как именно это случилось?",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶35-36"
+    },
+    {
+      "source": "Professor McGonagall sighed. Her wand tapped Harry’s forehead, and his vision blurred for a moment. “Something of a disguise,” she said, “so that this doesn’t happen again, not until you’re ready.” Then her wand licked out again, and tapped three times on a brick wall…",
+      "aText": "Профессор МакГонагалл вздохнула.\nОна коснулась палочкой лба Гарри, и на мгновение у него затуманилось зрение.\n— Небольшая маскировка, — сказала она, — чтобы это больше не повторялось. По крайней мере, пока вы к этому не готовы.\nПотом палочка снова метнулась вперёд и трижды коснулась кирпичной стены…",
+      "bText": "МакГонагалл вздохнула. Её волшебная палочка коснулась лба мальчика, и у\nнего на мгновение потемнело в глазах.\n\n— Это для маскировки, — пояснила свои действия МакГонагалл, — чтобы\nсцена в трактире не повторилась до тех пор, пока вы не будете готовы.\n\nЗатем она направила палочку в сторону кирпичной кладки и постучала по\nней три раза...",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶37-39"
+    },
+    {
+      "source": "…which hollowed into a hole, and dilated and expanded and shivered into a huge archway, revealing a long row of shops with signs advertising cauldrons and dragon livers.",
+      "aText": "…и в стене открылся проём, который стал шириться, расти, дрожать и распахнулся огромной аркой, за которой тянулся длинный ряд лавок с вывесками про котлы и драконью печень.",
+      "bText": "...Дыра в стене стремительно разрасталась, образуя большую арку; за ней\nоткрывался вид на длинные ряды магазинов с рекламными плакатами, на\nкоторых красовались котлы и драконья печень.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶40-40"
+    },
+    {
+      "source": "Harry didn’t blink. It wasn’t like anyone was turning into a cat.",
+      "aText": "Гарри даже не моргнул.\nПодумаешь. Вот если бы кто-нибудь превратился в кошку.",
+      "bText": "Гарри даже не повёл бровью: после превращения в кошку это было сущим\nпустяком.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶41-41"
+    },
+    {
+      "source": "And they walked forwards, together, into the wizarding world.",
+      "aText": "И они вместе шагнули вперёд — в волшебный мир.",
+      "bText": "И они двинулись вперёд, в мир волшебства.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶42-42"
+    },
+    {
+      "source": "There were merchants hawking Bounce Boots (“Made with real Flubber!”) and “Knives +3! Forks +2! Spoons with a +4 bonus!” There were goggles that would turn anything you looked at green, and a line-up of comfy armchairs with ejection seats for emergencies.\n\nHarry’s head kept rotating, rotating like it was trying to wind itself off his neck. It was like walking through the magical items section of an *Advanced Dungeons and Dragons* rulebook (he didn’t play the game, but he did enjoy reading the rulebooks). Harry desperately didn’t want to miss a single item for sale, in case it was one of the three you needed to complete the cycle of infinite *wish* spells.",
+      "aText": "Торговцы наперебой расхваливали Ботинки-прыгуны — «Из настоящего Флаббера!» — и орали:\n— Ножи +3! Вилки +2! Ложки с бонусом +4!\nПродавались очки, которые окрашивали в зелёный всё, на что ни посмотри, и целый ряд уютных кресел с катапультой на случай чрезвычайной ситуации.\n\nГолова у Гарри вертелась без остановки, словно ещё немного — и совсем открутится.\nЭто было всё равно что идти по разделу магических предметов в книге правил *Advanced Dungeons & Dragons (AD&D)* — сам он не играл, но читать правила очень любил. Гарри до смерти боялся пропустить хоть одну вещь на витрине: вдруг именно она окажется одной из трёх, нужных, чтобы замкнуть цикл бесконечных заклинаний *Исполнения желаний*.",
+      "bText": "Голова Гарри непрерывно крутилась во все стороны. Это было всё равно,\nчто перелистывать справочник магических вещей во второй редакции\nнастольной игры «Подземелья и драконы» (он не играл в настольные игры,\nно это не мешало ему с удовольствием читать книги правил).\n\nНа улице бойко шла торговля Прыгающими Ботинками («Сделано из настоящего\nфлаббера!»), ножами с бонусом +3, вилками +2, ложками +4. Продавались\nочки, перекрашивающие в зелёный цвет всё, на что сквозь них смотрели, и\nроскошные кресла со встроенной системой катапультирования.\n\nГарри старался не пропустить ни одной вещи на прилавках, на случай, если\nему вдруг попадётся какой-то из трёх компонентов, необходимых при\nсоздании замкнутого цикла для получения бесконечного числа заклинаний\n*желания*.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶43-45"
+    },
+    {
+      "source": "Then Harry spotted something that made him, entirely without thinking, veer off from the Deputy Headmistress and start heading straight into the shop, a front of blue bricks with bronze-metal trim. He was brought back to reality only when Professor McGonagall stepped right in front of him.",
+      "aText": "И тут Гарри заметил нечто такое, что заставило его, совершенно не думая, резко свернуть от заместителя директора и направиться прямиком в лавку — фасад из синих кирпичей с бронзовой отделкой.\nВ чувство его привела только профессор МакГонагалл, вставшая прямо перед ним.",
+      "bText": "Вдруг Гарри заметил кое-что, заставившее его сильно отклониться от\nсовместного с МакГонагалл курса и направиться прямиком в магазин из\nсинего кирпича с орнаментом из бронзы на витринах. Очнулся он, лишь\nкогда МакГонагалл встала на его пути.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶46-46"
+    },
+    {
+      "source": "“Mr Potter?” she said.",
+      "aText": "— Мистер Поттер? — сказала она.",
+      "bText": "— Мистер Поттер? — окликнула она.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶47-47"
+    },
+    {
+      "source": "Harry blinked, then realised what he’d just done. “I’m sorry! I forgot for a moment that I was with you instead of my family.” Harry gestured at the shop window, which displayed fiery letters that shone piercingly bright and yet remote, spelling out *Bigbam’s Brilliant Books*. “When you walk past a bookshop you haven’t visited before, you have to go in and look around. That’s the family rule.”",
+      "aText": "Гарри моргнул и только тогда понял, что сделал.\n— Простите! Я на секунду забыл, что я с вами, а не с семьёй.\nОн указал на витрину, где огненные буквы сияли ослепительно-ярко и в то же время как будто отстранённо: *«Блистательные книги Бигбэма»*.\n— Если проходишь мимо книжного магазина, в котором ещё не был, туда обязательно надо зайти и осмотреться. Это семейное правило.",
+      "bText": "Гарри пришёл в себя.\n\n— Простите! На секунду я забыл, что иду с вами, а не со своей семьёй, —\nГарри показал на окно магазина, в котором ярко блестели буквы, составляя\nназвание: «Несравненные книги Бигбэма». — У нас есть семейное правило:\nпроходя мимо незнакомого книжного магазина, обязательно нужно зайти\nвнутрь и осмотреться.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶48-49"
+    },
+    {
+      "source": "“That is the most Ravenclaw thing I have ever heard.”",
+      "aText": "— Более когтевранского заявления я в жизни не слышала.",
+      "bText": "— Самое когтевранское правило из тех, что мне приходилось слышать.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶50-50"
+    },
+    {
+      "source": "“What?”",
+      "aText": "— Что?",
+      "bText": "— Что?",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶51-51"
+    },
+    {
+      "source": "“Nothing. Mr Potter, our first step is to visit Gringotts, the bank of the wizarding world. Your *genetic* family vault is there, with the inheritance your *genetic* parents left you, and you’ll need money for school supplies.” She sighed. “And, I suppose, a certain amount of spending money for books could be excused as well. Though you might want to hold off for a time. Hogwarts has quite a large library on magical subjects. And the tower in which, I strongly suspect, you will be living, has a more broad-ranging library of its own. Any book you bought now would probably be a duplicate.”",
+      "aText": "— Ничего. Мистер Поттер, первым делом мы отправимся в «Гринготтс», банк волшебного мира. Там находится хранилище вашей *биологической* семьи — наследство, оставленное вам вашими *биологическими* родителями, — и вам понадобятся деньги на школьные принадлежности.\nОна вздохнула.\n— Впрочем, некоторую сумму на книги, полагаю, тоже можно будет простить. Хотя, возможно, с этим лучше немного повременить. В Хогвартсе весьма большая библиотека по магическим предметам. А в башне, где вы, как я сильно подозреваю, будете жить, есть и своя библиотека — куда более разносторонняя. Всё, что вы купите сейчас, почти наверняка окажется дубликатом.",
+      "bText": "— Не важно. Мистер Поттер, в первую очередь, нам необходимо посетить\nГринготтс, банк волшебного мира. Там находится родовое хранилище вашей\n«биологической» семьи с наследством, которое ваши «биологические»\nродители вам завещали. Вам нужны деньги, чтобы купить школьные\nпринадлежности, — она вздохнула. — Полагаю, некоторую сумму можно будет\nпотратить и на книги. Впрочем, советую воздержаться: в Хогвартсе собрана\nбольшая библиотека книг о магии. Кроме того, в башне, в которой, как я\nподозреваю, вы будете жить, есть своя весьма обширная библиотека.\nУчитывая это, практически любая купленная сейчас книга окажется лишь\nбесполезным дубликатом.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶52-52"
+    },
+    {
+      "source": "Harry nodded, and they walked on.",
+      "aText": "Гарри кивнул, и они пошли дальше.",
+      "bText": "Гарри кивнул, и они пошли дальше.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶53-53"
+    },
+    {
+      "source": "“Don’t get me wrong, it’s a *great* distraction,” Harry said as his head kept swivelling, “probably the best distraction anyone has ever tried on me, but don’t think I’ve forgotten about our pending discussion.”",
+      "aText": "— Вы только не подумайте, это *великолепный* отвлекающий манёвр, — сказал Гарри, продолжая крутить головой по сторонам, — пожалуй, лучший из всех, что когда-либо на мне пробовали. Но не воображайте, будто я забыл о нашем незаконченном разговоре.",
+      "bText": "— Не поймите меня неправильно, это прекрасная уловка, чтобы отвлечь моё\nвнимание, — сказал Гарри, продолжая смотреть по сторонам, — вероятно,\nлучшая из всех, что были использованы на мне, но не думайте, что я забыл\nо нашем разговоре.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶54-54"
+    },
+    {
+      "source": "Professor McGonagall sighed. “Your parents—or your mother at any rate—may have been very wise not to tell you.”",
+      "aText": "Профессор МакГонагалл вздохнула.\n— Ваши родители — или, по крайней мере, ваша мать — возможно, поступили очень мудро, не рассказав вам этого.",
+      "bText": "Профессор МакГонагалл вздохнула:\n\n— Ваши родители, ваша мать уж точно, поступили весьма мудро, не\nрассказывая вам правды.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶55-56"
+    },
+    {
+      "source": "“So you wish that I could continue in blissful ignorance? There is a certain flaw in that plan, Professor McGonagall.”",
+      "aText": "— То есть вы предпочли бы, чтобы я и дальше блаженно пребывал в неведении? У этого плана есть один очевидный изъян, профессор МакГонагалл.",
+      "bText": "— Вы хотите, чтобы я продолжал пребывать в блаженном неведении? Мне\nкажется, в вашем плане есть определённый изъян, профессор МакГонагалл.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶57-57"
+    },
+    {
+      "source": "“I suppose it would be rather pointless,” the witch said tightly, “when anyone on the street could tell you the story. Very well.”",
+      "aText": "— Пожалуй, это и впрямь было бы бессмысленно, — сдержанно сказала ведьма, — если любой прохожий на улице может рассказать вам эту историю. Хорошо.",
+      "bText": "— Полагаю, это бессмысленно, учитывая, что каждый встречный может вам\nвсё рассказать.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶58-58"
+    },
+    {
+      "source": "And she told him of He-Who-Must-Not-Be-Named, the Dark Lord, Voldemort.",
+      "aText": "И она рассказала ему о Тот-Кого-Нельзя-Называть, о Тёмном Лорде, о Волан-де-Морте.",
+      "bText": "И она поведала ему о Том-Кого-Нельзя-Называть, Тёмном Лорде, Волдеморте.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶59-59"
+    },
+    {
+      "source": "“Voldemort?” Harry whispered. It should have been funny, but it wasn’t. The name burned with a cold feeling, ruthlessness, diamond clarity, a hammer of pure titanium descending upon an anvil of yielding flesh. A chill swept over Harry even as he pronounced the word, and he resolved then and there to use safer terms like You-Know-Who.",
+      "aText": "— Волан-де-Морт? — шёпотом повторил Гарри.\nЭто должно было бы звучать смешно, но смешно не было. Имя обожгло ледяным ощущением — безжалостностью, алмазной ясностью, ударом молота из чистого титана по податливой плоти. Гарри пробрала дрожь ещё прежде, чем слово сорвалось с губ, и он тут же решил впредь пользоваться более безопасными обозначениями вроде Сами-Знаете-Кто.",
+      "bText": "— Волдеморт? — прошептал Гарри. Имя могло бы показаться забавным, но оно\nтаковым не являлось. От него веяло холодом и беспощадностью, оно\nпорождало образы разума кристальной ясности и молота из чистого титана,\nрушащегося на бренную плоть. По спине Гарри побежали мурашки. Он решил,\nчто лучше и безопаснее будет использовать фразы-заменители, вроде:\nСам-Знаешь-Кто.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶60-60"
+    },
+    {
+      "source": "The Dark Lord had raged upon wizarding Britain like a wilding wolf, tearing and rending at the fabric of their everyday lives. Other countries had wrung their hands but hesitated to intervene, whether out of apathetic selfishness or simple fear, for whichever was first among them to oppose the Dark Lord, their peace would be the next target of his terror.",
+      "aText": "Тёмный Лорд прошёлся по магической Британии, как обезумевший волк по стаду, раздирая в клочья саму ткань повседневной жизни. Другие страны заламывали руки, но не решались вмешаться — то ли из равнодушного эгоизма, то ли просто от страха; ведь кто первым выступит против Тёмного Лорда, на того следующего и обрушится его террор.",
+      "bText": "Тёмный Лорд бешеным волком свирепствовал по всей магической Британии,\nразрывая и раздирая привычную канву жизни её обитателей. Другие страны,\nстиснув зубы, не вмешивались из-за равнодушного эгоизма, либо просто\nбоялись, что первая из них, выступившая против Тёмного Лорда, станет\nследующей целью его террора.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶61-61"
+    },
+    {
+      "source": "(*The bystander effect,* thought Harry, thinking of Latané and Darley’s experiment which had shown that you were more likely to get help if you had an epileptic fit in front of one person than in front of three. *Diffusion of responsibility, everyone hoping that someone else would go first.*)",
+      "aText": "(*Эффект свидетеля*, — подумал Гарри, вспомнив эксперимент Латане и Дарли, показавший, что помощь скорее придёт, если у одного человека на глазах случится эпилептический припадок, чем у троих. *Диффузия ответственности: каждый надеется, что первым двинется кто-то другой.*)",
+      "bText": "*Эффект свидетеля, — подумал Гарри, вспоминая эксперимент Латана и\nДарли, доказавших, что в случае эпилептического припадка вы скорее\nполучите помощь, если рядом с вами будет один человек, нежели трое. —\nРассеивание ответственности: каждый думает, что кто-то другой начнёт\nдействовать первым.*",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶62-62"
+    },
+    {
+      "source": "The Death Eaters had followed in the Dark Lord’s wake and in his vanguard, carrion vultures to pick at wounds, or snakes to bite and weaken. The Death Eaters were not as terrible as the Dark Lord, but they were terrible, and they were many. And the Death Eaters wielded more than wands; there was wealth within those masked ranks, and political power, and secrets held in blackmail, to paralyse a society trying to protect itself.",
+      "aText": "По следу Тёмного Лорда — и впереди него — шли Пожиратели Смерти: то ли стервятники, слетающиеся клевать раны, то ли змеи, что жалят и ослабляют. Они были не столь страшны, как сам Тёмный Лорд, но и сами по себе внушали ужас — а главное, их было много. И владели они не только волшебными палочками: под этими масками скрывались деньги, политическая власть и тайны, удерживаемые шантажом, — всё, что могло парализовать общество, пытавшееся себя защитить.",
+      "bText": "Вокруг Тёмного Лорда собралась армия Пожирателей Смерти — стервятников,\nкормящихся ранеными, и змей, жалящих слабейших. Они были не так сильны и\nне так безжалостны, как сам Тёмный Лорд, но их было много. Пожиратели\nполагались не на одну только магию: некоторые из них были весьма\nсостоятельны, обладали политическим влиянием, владели искусством\nшантажа. Они делали всё возможное, чтобы парализовать любые попытки\nобщества защитить себя.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶63-63"
+    },
+    {
+      "source": "An old and respected journalist, Yermy Wibble, called for increased taxes and conscription. He shouted that it was absurd for the many to cower in fear of the few. His skin, only his skin, had been found nailed to the newsroom wall that next morning, next to the skins of his wife and two daughters. Everyone wished for something more to be done, and no-one dared take the lead to propose it. Whoever stood out the most became the next example.",
+      "aText": "Один старый, уважаемый журналист, Ерми Уиббл, призвал повысить налоги и ввести всеобщую мобилизацию. Он кричал, что нелепо — когда большинство трепещет перед горсткой людей. На следующее утро в редакции на стене нашли прибитой его кожу — только кожу, — а рядом кожи его жены и двух дочерей. Все хотели, чтобы было сделано больше, и никто не осмеливался первым сказать это вслух. Тот, кто выделялся сильнее других, становился следующим примером.",
+      "bText": "Старый уважаемый журналист, Йерми Виббл, призывавший к повышению налогов\nи введению воинской обязанности, заявил, что абсурдно всем бояться\nнескольких. Его кожа, только его кожа была найдена на следующее утро\nприбитой к стене в его кабинете рядом с кожей его жены и двух дочерей.\nВсе хотели решительных действий, но мало кто осмеливался сопротивляться\nв открытую. Тех, кто выделялся из толпы, ожидала схожая судьба.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶64-64"
+    },
+    {
+      "source": "Until the names of James and Lily Potter rose to the top of that list.\n\nAnd those two might have died with their wands in their hands and not regretted their choices, for they *were* heroes; but for that they had an infant child, their son, Harry Potter.",
+      "aText": "Пока вверху этого списка не оказались имена Джеймса и Лили Поттер.\n\nИ эти двое, пожалуй, приняли бы смерть с палочками в руках и не раскаялись бы в своём выборе, потому что они и в самом деле были героями. Но у них был маленький ребёнок — их сын, Гарри Поттер.",
+      "bText": "Среди них оказались Джеймс и Лили Поттеры. По своей природе они были\nгероями и, вероятно, умерли бы с волшебными палочками в руках, ни о чём\nне сожалея. Но у них был малютка-сын, Гарри Поттер, и ради его\nблагополучия они вели себя осторожно.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶65-65"
+    },
+    {
+      "source": "Tears were coming into Harry’s eyes. He wiped them away in anger or maybe desperation, *I didn’t know those people, not really, they aren’t my parents *now*, it would be pointless to feel so sad for them—*",
+      "aText": "У Гарри на глаза навернулись слёзы. Он с яростью — а может, от отчаяния — стёр их ладонью.\n*Я ведь не знал этих людей, не по-настоящему, они не мои родители *сейчас*, какой смысл так по ним горевать…*",
+      "bText": "В глазах Гарри показались слёзы. Он в гневе, а может, от отчаяния, вытер\nих.\n\n*Я совсем не знал этих людей, сейчас они не мои родители, бессмысленно\nтак сильно грустить из-за них...*",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶66-67"
+    },
+    {
+      "source": "When Harry was done sobbing into the witch’s robes, he looked up, and felt a little bit better to see tears in Professor McGonagall’s eyes as well.",
+      "aText": "Когда Гарри, уткнувшись в мантию ведьмы, наконец выплакался, он поднял голову — и ему стало чуточку легче оттого, что в глазах у профессора МакГонагалл тоже стояли слёзы.",
+      "bText": "Когда Гарри перестал плакать, уткнувшись в мантию МакГонагалл, он\nпосмотрел вверх и почувствовал себя немного лучше, увидев слёзы и в её\nглазах.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶68-68"
+    },
+    {
+      "source": "“So what happened?” Harry said, his voice trembling.",
+      "aText": "— И что было дальше? — спросил Гарри дрожащим голосом.",
+      "bText": "— Так что же произошло? — голос Гарри дрожал.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶69-69"
+    },
+    {
+      "source": "“The Dark Lord came to Godric’s Hollow,” Professor McGonagall said in a whisper. “You should have been hidden, but you were betrayed. The Dark Lord killed James, and he killed Lily, and he came in the end to you, to your cot. He cast the Killing Curse at you, and that was where it ended. The Killing Curse is formed of pure hate, and strikes directly at the soul, severing it from the body. It cannot be blocked, and whomever it strikes, they die. But you survived. You are the only person ever to survive. The Killing Curse rebounded and struck the Dark Lord, leaving only the burnt hulk of his body and a scar upon your forehead. That was the end of the terror, and we were free. That, Harry Potter, is why people want to see the scar on your forehead, and why they want to shake your hand.”",
+      "aText": "— Тёмный Лорд пришёл в Годрикову Впадину, — прошептала профессор МакГонагалл. — Вас должны были спрятать, но вас предали. Тёмный Лорд убил Джеймса, потом убил Лили и в конце концов подошёл к вам, к вашей колыбели. Он наложил на вас Смертельное проклятие — и на этом всё кончилось. Смертельное проклятие соткано из чистой ненависти; оно бьёт прямо по душе, отделяя её от тела. Его невозможно отразить, и тот, в кого оно попадает, умирает. Но вы выжили. Вы — единственный человек, который когда-либо выжил. Смертельное проклятие отскочило и ударило в самого Тёмного Лорда, оставив от его тела лишь обгорелую оболочку и шрам у вас на лбу. Так закончился террор, и мы стали свободны. Вот почему, Гарри Поттер, люди хотят увидеть шрам у вас на лбу. Вот почему они хотят пожать вам руку.",
+      "bText": "— Тёмный Лорд пришёл в Годрикову Лощину, — тихо сказала МакГонагалл, —\nвас должны были спрятать, но вас предали. Тёмный Лорд убил Джеймса,\nзатем Лили, а потом подошёл к вашей колыбели. Он бросил в вас\nСмертельное проклятие. На этом всё и кончилось. Это проклятие\nформируется из чистой ненависти и бьёт прямо в душу, отделяя её от тела.\nЕго нельзя блокировать. Единственный способ защиты — уклониться. Но вы\nсмогли выжить. Вы — единственный, кто когда-либо смог выжить.\nСмертельное проклятие отразилось и попало в Тёмного Лорда, оставив от\nнего лишь обгоревшее тело и шрам на вашем лбу. Так закончилась эпоха\nтеррора — мы стали свободны. Вот почему, Гарри Поттер, люди хотят\nувидеть этот шрам и пожать вам руку.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶70-70"
+    },
+    {
+      "source": "The storm of weeping that had washed through Harry had used up all his tears; he could not cry again, he was done.",
+      "aText": "Буря рыданий, прокатившаяся через Гарри, исчерпала все его слёзы; плакать он больше не мог.",
+      "bText": "Приступ плача выжал из Гарри все слёзы.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶71-71"
+    },
+    {
+      "source": "(And somewhere in the back of his mind was a small, small note of confusion, a sense of something wrong about that story; and it should have been a part of Harry’s art to notice that tiny note, but he was distracted. For it is a sad rule that whenever you are most in need of your art as a rationalist, that is when you are most likely to forget it.)",
+      "aText": "(А где-то на самом краю сознания жила крошечная, почти неслышная нотка недоумения — ощущение, что в этой истории что-то не так. И замечать такие нотки как раз и должно было быть частью Гарриева искусства. Но он отвлёкся. Таково печальное правило: именно тогда, когда искусство рационалиста нужно тебе больше всего, ты с наибольшей вероятностью о нём забываешь.)",
+      "bText": "(Где-то в глубине его сознания возникло едва заметное ощущение, будто в\nэтой истории что-то было не так. Обычно Гарри был способен замечать\nмельчайшие логические несоответствия, но в данный момент он был в\nсмятении — таково печальное правило: вы чаще всего забываете о вашей\nспособности мыслить здраво именно тогда, когда это больше всего\nнеобходимо.)",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶72-72"
+    },
+    {
+      "source": "Harry detached himself from Professor McGonagall’s side. “I’ll—have to think about this,” he said, trying to keep his voice under control. He stared at his shoes. “Um. You can go ahead and call them my parents, if you want, you don’t have to say ‘genetic parents’ or anything. I guess there’s no reason I can’t have two mothers and two fathers.”",
+      "aText": "Гарри чуть отстранился от профессора МакГонагалл.\n— Мне… надо это обдумать, — сказал он, стараясь удержать голос ровным.\nОн смотрел себе под ноги.\n— Э-э… можете, если хотите, называть их моими родителями. Не обязательно каждый раз говорить «биологические родители» и всё такое. Наверное, нет ничего невозможного в том, чтобы у человека было две матери и два отца.",
+      "bText": "Гарри отстранился от МакГонагалл.\n\n— Мне нужно всё обдумать, — сказал он, не поднимая головы и стараясь\nвернуть контроль над своим голосом. — Да, вы можете продолжать называть\nих моими родителями, если хотите. Не обязательно добавлять\n«биологические». У меня могут быть две матери и два отца.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶73-74"
+    },
+    {
+      "source": "There was no sound from Professor McGonagall.",
+      "aText": "Профессор МакГонагалл ничего не ответила.",
+      "bText": "МакГонагалл промолчала.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶75-75"
+    },
+    {
+      "source": "And they walked together in silence, until they came before a great white building with vast bronze doors, and carven words above saying *Gringotts Bank.*",
+      "aText": "И дальше они шли молча, пока не остановились перед огромным белым зданием с громадными бронзовыми дверями, над которыми было высечено: *Банк «Гринготтс».*",
+      "bText": "И так они шли, погружённые в свои мысли, пока впереди не показалось\nбольшое белое здание с широкими, обитыми бронзой дверями.\n\n— Гринготтс, — объявила МакГонагалл.",
+      "label": "Comparing Reality To Its Alternatives  · B ch 3, ¶76-77"
+    }
+  ]
+}

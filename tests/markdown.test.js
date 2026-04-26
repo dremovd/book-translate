@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderInlineMd } from '../js/markdown.js';
+import { renderInlineMd, renderBlockMd } from '../js/markdown.js';
 
 test('renderInlineMd: plain text passes through unchanged', () => {
   assert.equal(renderInlineMd('hello world'), 'hello world');
@@ -60,4 +60,52 @@ test('renderInlineMd: leaves unbalanced markers alone', () => {
 
 test('renderInlineMd: preserves newlines verbatim (CSS handles wrapping)', () => {
   assert.equal(renderInlineMd('line one\nline two'), 'line one\nline two');
+});
+
+// ---------- renderBlockMd ----------
+
+test('renderBlockMd: single paragraph wrapped in <p>', () => {
+  assert.equal(renderBlockMd('hello world'), '<p>hello world</p>');
+});
+
+test('renderBlockMd: blank-line-separated paragraphs each wrapped in <p>', () => {
+  assert.equal(
+    renderBlockMd('para one.\n\npara two.'),
+    '<p>para one.</p><p>para two.</p>'
+  );
+});
+
+test('renderBlockMd: applies inline markdown inside each paragraph', () => {
+  assert.equal(
+    renderBlockMd('he *whispered*.\n\nshe **shouted**.'),
+    '<p>he <em>whispered</em>.</p><p>she <strong>shouted</strong>.</p>'
+  );
+});
+
+test('renderBlockMd: HTML-escapes paragraph content (XSS guard)', () => {
+  assert.equal(
+    renderBlockMd('<script>x</script>'),
+    '<p>&lt;script&gt;x&lt;/script&gt;</p>'
+  );
+});
+
+test('renderBlockMd: preserves single newlines inside a paragraph', () => {
+  assert.equal(
+    renderBlockMd('line one\nline two'),
+    '<p>line one\nline two</p>'
+  );
+});
+
+test('renderBlockMd: collapses runs of 3+ blank lines, drops empty paragraphs', () => {
+  assert.equal(
+    renderBlockMd('a\n\n\n\nb'),
+    '<p>a</p><p>b</p>'
+  );
+});
+
+test('renderBlockMd: handles null / undefined / empty input', () => {
+  assert.equal(renderBlockMd(null), '');
+  assert.equal(renderBlockMd(undefined), '');
+  assert.equal(renderBlockMd(''), '');
+  assert.equal(renderBlockMd('   '), '');
 });

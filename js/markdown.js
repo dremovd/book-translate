@@ -8,6 +8,21 @@
 // **bold** (per the source LaTeX → pandoc gfm pipeline). A 30-line function
 // avoids a CDN dependency and keeps the editor cell render path obvious.
 
+// Multi-paragraph variant: split on blank-line breaks, render each
+// paragraph through `renderInlineMd`, wrap each in <p>. Used by the
+// A/B comparison view where a single side can span several paragraphs
+// joined with `\n\n`. Output is meant for `x-html`.
+export function renderBlockMd(text) {
+  if (text == null) return '';
+  const s = String(text).trim();
+  if (!s) return '';
+  return s.split(/\n\s*\n/)
+    .map(p => p.replace(/^\s+|\s+$/g, ''))
+    .filter(Boolean)
+    .map(p => `<p>${renderInlineMd(p)}</p>`)
+    .join('');
+}
+
 export function renderInlineMd(text) {
   if (text == null) return '';
   const escaped = String(text)

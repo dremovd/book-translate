@@ -3,9 +3,6 @@ import { store } from './store.js';
 import { createTranslator } from './translators/index.js';
 import { renderTranslationMarkdown } from './translators/format.js';
 import { renderInlineMd } from './markdown.js';
-import {
-  ABTESTS, pickRandomSample, assignSwaps, tallyAbResults,
-} from './abtest.js';
 
 export const SAMPLE = `# Chapter One
 
@@ -160,14 +157,6 @@ export function makeComponent() {
     // cleared in the finally of startFromRaw, reset, and on error.
     dictionaryProgress: null,
 
-    // ---- A/B test state (pre-aligned artifacts) ----
-    abActiveId: '',     // entry id from ABTESTS that's currently loaded
-    abArtifact: null,   // parsed JSON from samples/abtest-<id>.json
-    abPairs: [],        // current 9 sampled+swapped pairs
-    abChoices: [],      // 'a' | 'b' | 'tie' | null per pair
-    abIndex: 0,         // index into abPairs during running phase
-    abPhase: 'setup',   // 'setup' | 'running' | 'done'
-
     _persistTimer: null,
     _loaded: false,
 
@@ -220,7 +209,11 @@ export function makeComponent() {
       try {
         const saved = await store.load();
         if (saved && typeof saved === 'object') {
-          this.view = saved.view ?? 'setup';
+          // The A/B view used to live in this component; if a saved state
+          // still has view='abtest' (now served from abtest.html), fall
+          // back to the setup view so the editor isn't stuck on a tab
+          // that no longer exists.
+          this.view = saved.view === 'abtest' ? 'setup' : (saved.view ?? 'setup');
           this.rawBook = saved.rawBook ?? '';
           this.headingLevel = saved.headingLevel ?? 1;
           this.splitPercent = clampSplit(saved.splitPercent ?? 60);
@@ -285,9 +278,6 @@ export function makeComponent() {
     // populates the select; :style reads FONT_SIZES by current key).
     FONT_SIZE_KEYS,
     FONT_SIZES,
-    // Registry of pre-built A/B alignment artifacts (x-for populates the
-    // setup-view dropdown).
-    ABTESTS,
 
     // ---- actions ----
     // Load a demo book into the setup textarea. For inline samples, sets
@@ -467,55 +457,6 @@ export function makeComponent() {
 
     gotoSetup()      { this.view = 'setup'; },
     gotoDictionary() { if (this.dictionary.length) this.view = 'dictionary'; },
-
-    // ---- A/B test (pre-aligned) ----
-
-    async loadAbtest(id) {
-      const entry = ABTESTS.find(t => t.id === id);
-      if (!entry) { this.error = `Unknown A/B test: ${id}`; return; }
-      await this._runBusy(async () => {
-        const r = await fetch(entry.path);
-        if (!r.ok) throw new Error(`Failed to fetch ${entry.path}: HTTP ${r.status}`);
-        this.abArtifact = await r.json();
-        this.abActiveId = id;
-        this.abPhase = 'setup';
-      });
-    },
-
-    // Pick 9 random aligned blocks, randomly swap A/B labels per pair.
-    startAbtest() {
-      if (!this.abArtifact?.blocks?.length) return;
-      const sample = pickRandomSample(this.abArtifact.blocks, 9);
-      this.abPairs = assignSwaps(sample);
-      this.abChoices = new Array(this.abPairs.length).fill(null);
-      this.abIndex = 0;
-      this.abPhase = 'running';
-      this._scrollToTop();
-    },
-
-    recordAbtestChoice(c) {
-      if (this.abPhase !== 'running') return;
-      if (c !== 'a' && c !== 'b' && c !== 'tie') return;
-      this.abChoices[this.abIndex] = c;
-      if (this.abIndex + 1 >= this.abPairs.length) {
-        this.abPhase = 'done';
-      } else {
-        this.abIndex++;
-      }
-      this._scrollToTop();
-    },
-
-    get abResults() {
-      if (this.abPhase !== 'done') return { aWins: 0, bWins: 0, ties: 0 };
-      return tallyAbResults(this.abPairs, this.abChoices);
-    },
-
-    resetAbtest() {
-      this.abPairs = [];
-      this.abChoices = [];
-      this.abIndex = 0;
-      this.abPhase = 'setup';
-    },
 
     get canExport() {
       return !!(this.book || (this.rawBook && this.rawBook.trim()) || this.dictionary.length);

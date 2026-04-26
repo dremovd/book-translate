@@ -17,9 +17,16 @@
 //   --b-url <url>      fetch B from URL (skips --b file)
 //   --concurrency 10   POE concurrency for paragraph alignment
 //   --max-chapters N   stop after this many B chapters (debug)
+//   --source-chapters N-M    restrict source/A to a 1-based inclusive
+//                            range (lockstep — they're index-aligned)
+//   --b-chapters N-M         restrict B to a 1-based inclusive range
+//
+// Path resolution: --source/--a/--b accept either repo-relative or
+// absolute paths. Source files outside the repo are read as-is and the
+// artifact records the original path verbatim.
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,7 +34,9 @@ const REPO = resolve(dirname(__filename), '..');
 
 import { parseBook } from '../js/parse.js';
 import { PoeTranslator } from '../js/translators/poe.js';
-import { plainTextToMarkdown, buildAlignmentBlocks } from '../js/abtest.js';
+import {
+  plainTextToMarkdown, buildAlignmentBlocks, sliceChaptersInBook,
+} from '../js/abtest.js';
 
 // ---------- argv ----------
 const args = parseArgs(process.argv.slice(2));
@@ -40,6 +49,8 @@ const bUrl       = args['b-url'];
 const bFormat    = args['b-format'] || 'auto'; // 'plain' | 'markdown' | 'auto'
 const concurrency = Number(args.concurrency || 10);
 const maxChapters = args['max-chapters'] ? Number(args['max-chapters']) : Infinity;
+const sourceRange = args['source-chapters'] || null;
+const bRange      = args['b-chapters'] || null;
 
 if (!bPath && !bUrl) die('Need either --b <path> or --b-url <url>');
 
@@ -52,13 +63,13 @@ log(`Model: ${model}`);
 
 // ---------- inputs ----------
 log(`Reading source: ${sourcePath}`);
-const sourceMd = await readFile(`${REPO}/${sourcePath}`, 'utf8');
-const sourceBook = parseBook(sourceMd);
+const sourceMd = await readFile(resolveInput(sourcePath), 'utf8');
+let sourceBook = parseBook(sourceMd);
 log(`  ${sourceBook.chapters.length} chapters`);
 
 log(`Reading A: ${aPath}`);
-const aMd = await readFile(`${REPO}/${aPath}`, 'utf8');
-const aBook = parseBook(aMd);
+const aMd = await readFile(resolveInput(aPath), 'utf8');
+let aBook = parseBook(aMd);
 log(`  ${aBook.chapters.length} chapters`);
 
 let bRaw, bFormatResolved = bFormat;
@@ -69,17 +80,32 @@ if (bUrl) {
   bRaw = await r.text();
 } else {
   log(`Reading B: ${bPath}`);
-  bRaw = await readFile(bPath, 'utf8');
+  bRaw = await readFile(resolveInput(bPath), 'utf8');
 }
 if (bFormatResolved === 'auto') {
   bFormatResolved = looksLikeMarkdown(bRaw) ? 'markdown' : 'plain';
   log(`  detected format: ${bFormatResolved}`);
 }
 const bMd = bFormatResolved === 'plain' ? plainTextToMarkdown(bRaw) : bRaw;
-const bBook = parseBook(bMd);
+let bBook = parseBook(bMd);
 log(`  ${bBook.chapters.length} chapters`);
 
 if (bBook.chapters.length === 0) die('B parsed to zero chapters — check input format.');
+
+// ---------- chapter-range trimming ----------
+// `--source-chapters N-M` trims SOURCE and A in lockstep (they're
+// already index-aligned: A[i] is the user's translation of SOURCE[i],
+// so the trim preserves that correspondence). `--b-chapters` trims B
+// independently.
+if (sourceRange) {
+  sourceBook = sliceChaptersInBook(sourceBook, sourceRange);
+  aBook      = sliceChaptersInBook(aBook,      sourceRange);
+  log(`  source/A trimmed to chapters ${sourceRange}: ${sourceBook.chapters.length} / ${aBook.chapters.length} chapters`);
+}
+if (bRange) {
+  bBook = sliceChaptersInBook(bBook, bRange);
+  log(`  B trimmed to chapters ${bRange}: ${bBook.chapters.length} chapters`);
+}
 
 // ---------- alignment ----------
 const t = new PoeTranslator({
@@ -177,6 +203,7 @@ function parseArgs(argv) {
   return out;
 }
 function required(v, name) { if (!v || v === true) die(`Missing --${name}`); return v; }
+function resolveInput(p) { return isAbsolute(p) ? p : `${REPO}/${p}`; }
 function die(msg) { console.error('error:', msg); process.exit(1); }
 function log(msg) { console.error(msg); }
 function secs(ms) { return (ms / 1000).toFixed(1); }

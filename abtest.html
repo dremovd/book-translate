@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A/B translation comparison · Book Translate</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="favicon.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body x-data="abtest" x-cloak>
+  <header class="container">
+    <nav>
+      <ul><li><strong>A/B translation comparison</strong></li></ul>
+      <ul>
+        <li><a href="index.html">← Editor</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container">
+    <article x-show="phase === 'error'" x-cloak role="alert">
+      <strong>Error:</strong> <span x-text="error"></span>
+    </article>
+
+    <p x-show="phase === 'loading'" x-cloak><em>Loading…</em></p>
+
+    <!-- SETUP -->
+    <section x-show="phase === 'setup'" x-cloak>
+      <hgroup>
+        <h2 x-text="artifact?.label || 'A/B blind test'"></h2>
+        <p>Pre-aligned blind test: 9 randomly-selected paragraph blocks where two translations both cover the same source content. Pick the side that reads better. Stats and per-pair reveal at the end.</p>
+      </hgroup>
+      <p x-show="artifact" x-cloak>
+        <small>
+          <span x-text="artifact?.stats?.blocks"></span> aligned blocks ·
+          built <span x-text="(artifact?.builtAt || '').slice(0, 10)"></span>
+          with <span x-text="artifact?.model"></span>.
+        </small>
+      </p>
+      <button @click="start()" :disabled="!artifact || artifact.blocks.length < 1">
+        Start blind 9-pair test
+      </button>
+    </section>
+
+    <!-- RUNNING -->
+    <section x-show="phase === 'running'" x-cloak class="abtest-running">
+      <p><small>
+        Pair <strong x-text="index + 1"></strong> of <strong x-text="pairs.length"></strong>
+        <span x-show="pairs[index]?.label">— <span x-text="pairs[index]?.label"></span></span>
+      </small></p>
+
+      <article class="ab-source">
+        <header><small>Source</small></header>
+        <div class="ab-text" x-html="renderMd(pairs[index]?.source)"></div>
+      </article>
+
+      <div class="ab-pair">
+        <article class="ab-side">
+          <header><strong>A</strong></header>
+          <div class="ab-text" x-html="renderMd(pairs[index] ? (pairs[index].swapped ? pairs[index].bText : pairs[index].aText) : '')"></div>
+        </article>
+        <article class="ab-side">
+          <header><strong>B</strong></header>
+          <div class="ab-text" x-html="renderMd(pairs[index] ? (pairs[index].swapped ? pairs[index].aText : pairs[index].bText) : '')"></div>
+        </article>
+      </div>
+
+      <div class="ab-buttons" role="group">
+        <button @click="record('a')">Prefer A</button>
+        <button class="secondary" @click="record('tie')">Tie</button>
+        <button @click="record('b')">Prefer B</button>
+      </div>
+    </section>
+
+    <!-- DONE -->
+    <section x-show="phase === 'done'" x-cloak>
+      <h3>Results</h3>
+      <p>
+        A (your translation): <strong x-text="results.aWins"></strong>
+        · B (the comparison): <strong x-text="results.bWins"></strong>
+        · Ties: <strong x-text="results.ties"></strong>
+      </p>
+      <details>
+        <summary>Per-pair reveal</summary>
+        <ol class="ab-reveal">
+          <template x-for="(p, i) in pairs" :key="i">
+            <li>
+              <small x-text="p.label"></small> —
+              you picked <strong x-text="choices[i]"></strong>;
+              actual:
+              <span x-text="choices[i] === 'tie' ? 'tie' : (((choices[i] === 'a') !== p.swapped) ? 'A (yours)' : 'B (comparison)')"></span>
+            </li>
+          </template>
+        </ol>
+      </details>
+      <div role="group">
+        <button class="secondary" @click="reset()">Run another 9-pair set</button>
+        <a href="index.html" role="button" class="secondary outline">Back to editor</a>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="js/abtest-app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+</body>
+</html>
