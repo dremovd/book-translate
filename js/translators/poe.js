@@ -331,6 +331,93 @@ export class PoeTranslator {
       : unwrapOuterQuotes(unlabeled);
   }
 
+  // ---------- chapter / paragraph alignment ----------
+  //
+  // Two-phase alignment for the A/B comparison view:
+  //   1. alignChapters(source, b) — for each B chapter, which SOURCE
+  //      chapters does it adapt? Returns 0-based indices.
+  //   2. alignParagraphsInChapter(sourceParas, bParas) — within a single
+  //      chapter pair, return interval-to-interval matches (a single B
+  //      paragraph can adapt several source paragraphs and vice versa).
+  //
+  // Both run on `dictionaryModel` (cheaper than the main translation
+  // model) since this is structural matching, not literary judgment.
+
+  async alignChapters(sourceBook, bBook, { onProgress } = {}) {
+    onProgress?.({ stage: 'align-chapters', current: 0, total: 1 });
+
+    const summarize = (chapters) =>
+      (chapters || []).map((ch, i) => {
+        const snippet = (ch?.paragraphs?.[0]?.original || '').replace(/\s+/g, ' ').slice(0, 240);
+        return `[${i + 1}] ${ch?.title || ''}\n${snippet}`;
+      }).join('\n\n');
+
+    const content = await this.chat([
+      {
+        role: 'system',
+        content:
+          `You align chapter sets across two versions of the same book — SOURCE (the original) and B (a translation or adaptation that may reorganize, condense, or skip chapters). For each B chapter, identify which SOURCE chapters it adapts (one or several). If a B chapter has no clear SOURCE counterpart (e.g. a wholly invented introduction), return an empty array.\n\n` +
+          `Output ONLY a JSON array of {"b": N, "s": [M, ...]} entries, one per B chapter, in B order. All indices are 1-based as shown below. No prose, no code fences.`,
+      },
+      {
+        role: 'user',
+        content: `SOURCE chapters:\n\n${summarize(sourceBook?.chapters)}\n\n---\n\nB chapters:\n\n${summarize(bBook?.chapters)}`,
+      },
+    ], { model: this._dictionaryModel() });
+
+    onProgress?.({ stage: 'align-chapters', current: 1, total: 1 });
+
+    const arr = parseJsonArray(content);
+    return arr.map(e => {
+      const bIdx = Number(e?.b) - 1;
+      const sArr = Array.isArray(e?.s) ? e.s : [];
+      return {
+        bChapterIdx: bIdx,
+        sourceChapterIndices: sArr
+          .map(n => Number(n) - 1)
+          .filter(n => Number.isInteger(n) && n >= 0),
+      };
+    }).filter(e => Number.isInteger(e.bChapterIdx) && e.bChapterIdx >= 0);
+  }
+
+  async alignParagraphsInChapter(sourceParagraphs, bParagraphs, { onProgress } = {}) {
+    onProgress?.({ stage: 'align-paragraphs', current: 0, total: 1 });
+
+    const sText = (sourceParagraphs || []).map((p, i) => `[S${i + 1}] ${p?.text ?? ''}`).join('\n\n');
+    const bText = (bParagraphs || []).map((p, i) => `[B${i + 1}] ${p?.text ?? ''}`).join('\n\n');
+
+    const content = await this.chat([
+      {
+        role: 'system',
+        content:
+          `You align paragraph intervals within ONE chapter pair across SOURCE and B. The match may not be 1-to-1 — a single B paragraph can adapt several SOURCE paragraphs (the adaptation may condense), and one SOURCE paragraph can be expanded across several B paragraphs. Match interval-to-interval.\n\n` +
+          `For each contiguous block of B that adapts a contiguous range of SOURCE, output an entry. If part of B has no SOURCE counterpart (invented or unrelated), omit it.\n\n` +
+          `Output ONLY a JSON array of {"bStart": N, "bEnd": N, "sStart": M, "sEnd": M} entries, in order. All indices are 1-based and inclusive. No prose, no code fences.`,
+      },
+      {
+        role: 'user',
+        content:
+          `SOURCE paragraphs (S1..S${(sourceParagraphs || []).length}):\n\n${sText}\n\n` +
+          `---\n\nB paragraphs (B1..B${(bParagraphs || []).length}):\n\n${bText}`,
+      },
+    ], { model: this._dictionaryModel() });
+
+    onProgress?.({ stage: 'align-paragraphs', current: 1, total: 1 });
+
+    const arr = parseJsonArray(content);
+    return arr.map(e => ({
+      bStart: Number(e?.bStart) - 1,
+      bEnd:   Number(e?.bEnd) - 1,
+      sStart: Number(e?.sStart) - 1,
+      sEnd:   Number(e?.sEnd) - 1,
+    })).filter(iv =>
+      Number.isInteger(iv.bStart) && Number.isInteger(iv.bEnd) &&
+      Number.isInteger(iv.sStart) && Number.isInteger(iv.sEnd) &&
+      iv.bStart >= 0 && iv.sStart >= 0 &&
+      iv.bEnd >= iv.bStart && iv.sEnd >= iv.sStart
+    );
+  }
+
   // Compose the translation system prompt from three blocks:
   //   1. Style — a named preset (v1, v2, …) or the user's custom text with
   //      `${lang}` interpolated. Unknown preset or empty custom falls back

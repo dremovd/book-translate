@@ -832,6 +832,116 @@ test('PoeTranslator.translateParagraph: translationGuidance reaches the system p
   } finally { restore(); }
 });
 
+// ---------- chapter / paragraph alignment ----------
+
+test('PoeTranslator.alignChapters: parses {b, s[]} mapping into 0-based indices', async () => {
+  const restore = withFetch(async () => mockResponse({
+    body: { choices: [{ message: { content: '[{"b":1,"s":[2]},{"b":2,"s":[3,4]},{"b":3,"s":[]}]' } }] },
+  }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const sourceBook = { chapters: [
+      { title: 'S1', paragraphs: [{ original: 'a' }] },
+      { title: 'S2', paragraphs: [{ original: 'b' }] },
+      { title: 'S3', paragraphs: [{ original: 'c' }] },
+      { title: 'S4', paragraphs: [{ original: 'd' }] },
+    ]};
+    const bBook = { chapters: [
+      { title: 'B1', paragraphs: [{ original: 'x' }] },
+      { title: 'B2', paragraphs: [{ original: 'y' }] },
+      { title: 'B3', paragraphs: [{ original: 'z' }] },
+    ]};
+    const out = await t.alignChapters(sourceBook, bBook);
+    assert.deepEqual(out, [
+      { bChapterIdx: 0, sourceChapterIndices: [1] },
+      { bChapterIdx: 1, sourceChapterIndices: [2, 3] },
+      { bChapterIdx: 2, sourceChapterIndices: [] },
+    ]);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.alignChapters: uses dictionaryModel when set', async () => {
+  let usedModel;
+  const restore = withFetch(async (_u, opts) => {
+    usedModel = JSON.parse(opts.body).model;
+    return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'BIG', baseUrl: 'http://x',
+      dictionaryModel: 'CHEAP',
+    });
+    await t.alignChapters(
+      { chapters: [{ title: 'a', paragraphs: [{ original: 'x' }] }] },
+      { chapters: [{ title: 'b', paragraphs: [{ original: 'y' }] }] },
+    );
+    assert.equal(usedModel, 'CHEAP');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.alignChapters: drops entries with negative b or non-integer indices', async () => {
+  const restore = withFetch(async () => mockResponse({
+    body: { choices: [{ message: { content: '[{"b":1,"s":[1,-1,2]},{"b":-5,"s":[1]},{"b":2}]' } }] },
+  }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.alignChapters(
+      { chapters: [{ title: 'a', paragraphs: [{ original: 'x' }] }] },
+      { chapters: [{ title: 'b', paragraphs: [{ original: 'y' }] }, { title: 'c', paragraphs: [{ original: 'z' }] }] },
+    );
+    // Entry 1 keeps b=0, drops the -1 from s[]; entry 2 (b=-5) is dropped
+    // entirely; entry 3 has missing s → empty.
+    assert.equal(out.length, 2);
+    assert.deepEqual(out[0], { bChapterIdx: 0, sourceChapterIndices: [0, 1] });
+    assert.deepEqual(out[1], { bChapterIdx: 1, sourceChapterIndices: [] });
+  } finally { restore(); }
+});
+
+test('PoeTranslator.alignParagraphsInChapter: parses interval-to-interval matches into 0-based ranges', async () => {
+  const restore = withFetch(async () => mockResponse({
+    body: { choices: [{ message: { content: '[{"bStart":1,"bEnd":1,"sStart":1,"sEnd":3},{"bStart":2,"bEnd":2,"sStart":4,"sEnd":4}]' } }] },
+  }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.alignParagraphsInChapter(
+      [{ paragraphIdx: 0, text: 's1' }, { paragraphIdx: 1, text: 's2' },
+       { paragraphIdx: 2, text: 's3' }, { paragraphIdx: 3, text: 's4' }],
+      [{ paragraphIdx: 0, text: 'b1' }, { paragraphIdx: 1, text: 'b2' }],
+    );
+    assert.deepEqual(out, [
+      { bStart: 0, bEnd: 0, sStart: 0, sEnd: 2 },
+      { bStart: 1, bEnd: 1, sStart: 3, sEnd: 3 },
+    ]);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.alignParagraphsInChapter: drops malformed intervals (out-of-order or negative)', async () => {
+  const restore = withFetch(async () => mockResponse({
+    body: { choices: [{ message: { content: '[{"bStart":1,"bEnd":1,"sStart":2,"sEnd":4},{"bStart":3,"bEnd":1,"sStart":1,"sEnd":2},{"bStart":1,"bEnd":2,"sStart":-1,"sEnd":1}]' } }] },
+  }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.alignParagraphsInChapter([{ text: 's' }], [{ text: 'b' }]);
+    // Only the first survives: second has bEnd<bStart, third has negative sStart.
+    assert.equal(out.length, 1);
+    assert.deepEqual(out[0], { bStart: 0, bEnd: 0, sStart: 1, sEnd: 3 });
+  } finally { restore(); }
+});
+
+test('PoeTranslator.alignParagraphsInChapter: prompt mentions interval-to-interval (not 1:1)', async () => {
+  let sentBody;
+  const restore = withFetch(async (_u, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.alignParagraphsInChapter([{ text: 's' }], [{ text: 'b' }]);
+    const sys = sentBody.messages[0].content;
+    assert.match(sys, /interval[- ]to[- ]interval|range|may not be 1[- ]to[- ]1/i);
+  } finally { restore(); }
+});
+
 test('PoeTranslator.translateChapter: prompt includes Russian dialog conventions when target is Russian', async () => {
   let sentBody;
   const restore = withFetch(async (_url, opts) => {
