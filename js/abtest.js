@@ -154,6 +154,30 @@ function joinRange(paragraphs, start, end) {
     .join('\n\n');
 }
 
+// Within one paragraph body, turn pandoc-style soft wraps back into
+// spaces. A "soft wrap" here is a `\n` whose next non-whitespace char
+// continues a sentence — operationally, a lowercase letter (Latin /
+// Cyrillic). All other `\n`s are preserved: blank-line paragraph breaks
+// (the `\n` is bordered by another newline), dialog turns (next line
+// starts with `—`, `–`, a quote char, or an uppercase letter), and
+// anything else where the next line begins with non-letter punctuation.
+//
+// This matches the project's data invariant: paragraph bodies are
+// single lines as emitted by `renderTranslationMarkdown`; any extra
+// `\n` in the middle is presentation noise from a converter (e.g.
+// pandoc's default --wrap=auto) and should be removed before the text
+// reaches the artifact or the editor.
+export function unwrapSoftWraps(text) {
+  if (text == null) return '';
+  // Match a `\n` (possibly with surrounding spaces/tabs) bordered on
+  // BOTH sides by non-newline content, where the first non-whitespace
+  // char on the next line is a lowercase letter. Cyrillic block
+  // (U+0430..U+045F + Ёё U+0451) and basic Latin lowercase cover the
+  // languages in scope; extend if needed.
+  const SOFT_WRAP = /(?<=[^\n])[ \t]*\n[ \t]*(?=[a-zа-яё])/gu;
+  return String(text).replace(SOFT_WRAP, ' ');
+}
+
 // Take a 1-based inclusive range string ("3-5") and return a copy of the
 // book with only those chapters. Used by the offline build script to scope
 // alignment to a sub-range of source/A/B (e.g. "chapters 1-3 of HPMOR

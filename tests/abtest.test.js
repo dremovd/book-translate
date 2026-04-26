@@ -7,6 +7,7 @@ import {
   plainTextToMarkdown,
   buildAlignmentBlocks,
   sliceChaptersInBook,
+  unwrapSoftWraps,
 } from '../js/abtest.js';
 
 // ---------- pickRandomSample ----------
@@ -191,4 +192,65 @@ test('sliceChaptersInBook: invalid range throws', () => {
   const book = { chapters: [{ title: 'C1' }] };
   assert.throws(() => sliceChaptersInBook(book, 'garbage'), /range/i);
   assert.throws(() => sliceChaptersInBook(book, '5-3'), /range/i);
+});
+
+// ---------- unwrapSoftWraps ----------
+//
+// Pandoc's default markdown writer wraps at ~72 columns, which makes a
+// single paragraph land in the artifact as multiple lines glued by raw
+// `\n`s. The build pipeline normalizes those out so paragraph bodies
+// are single lines (matching what the editor's exporter produces and
+// what `pre-wrap` rendering expects). Dialog turns within one paragraph
+// (which begin with `—`, `–`, a quote char, or a capital letter — i.e.
+// are line-internal sentence boundaries) MUST stay as `\n`.
+
+test('unwrapSoftWraps: collapses \\n followed by a lowercase Latin letter', () => {
+  assert.equal(
+    unwrapSoftWraps('They were at our wedding, they\ncame for Christmas.'),
+    'They were at our wedding, they came for Christmas.'
+  );
+});
+
+test('unwrapSoftWraps: collapses \\n followed by lowercase Cyrillic too', () => {
+  assert.equal(
+    unwrapSoftWraps('были у нас на свадьбе, они\nприезжали на Рождество.'),
+    'были у нас на свадьбе, они приезжали на Рождество.'
+  );
+});
+
+test('unwrapSoftWraps: keeps \\n before an em-dash (Russian dialog turn)', () => {
+  const s = '— Это абсурд!\n— Они были у нас.';
+  assert.equal(unwrapSoftWraps(s), s);
+});
+
+test('unwrapSoftWraps: keeps \\n before a quote char (English dialog turn)', () => {
+  const s = '"Yes," she said.\n"No," he replied.';
+  assert.equal(unwrapSoftWraps(s), s);
+});
+
+test('unwrapSoftWraps: keeps \\n before an uppercase letter (sentence boundary)', () => {
+  const s = 'Goodbye.\nAnd hello.';
+  assert.equal(unwrapSoftWraps(s), s);
+});
+
+test('unwrapSoftWraps: handles run-on wraps and preserves blank-line paragraph breaks', () => {
+  // Two soft-wrapped lines inside one paragraph, then a real paragraph
+  // break (\n\n), then another soft-wrapped pair. The blank-line break
+  // is a NEWLINE-then-blank-then-NEWLINE — the helper must not touch it.
+  assert.equal(
+    unwrapSoftWraps('foo\nbar\nbaz\n\nqux\nquux'),
+    'foo bar baz\n\nqux quux'
+  );
+});
+
+test('unwrapSoftWraps: collapses any inter-line whitespace, not just a single space', () => {
+  // Pandoc sometimes leaves a leading space on the next physical line
+  // (rare but possible). Treat all surrounding whitespace as one space.
+  assert.equal(unwrapSoftWraps('foo\n  bar'), 'foo bar');
+});
+
+test('unwrapSoftWraps: handles null / undefined / empty', () => {
+  assert.equal(unwrapSoftWraps(null), '');
+  assert.equal(unwrapSoftWraps(undefined), '');
+  assert.equal(unwrapSoftWraps(''), '');
 });

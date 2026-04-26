@@ -24,6 +24,20 @@
 // Path resolution: --source/--a/--b accept either repo-relative or
 // absolute paths. Source files outside the repo are read as-is and the
 // artifact records the original path verbatim.
+//
+// Input format invariant: paragraph bodies must be single lines, with
+// `\n\n` separating paragraphs and bare `\n` reserved for in-paragraph
+// dialog turns. The editor's `renderTranslationMarkdown` exporter
+// already produces this shape. When converting from EPUB / FB2 / HTML
+// via pandoc, pass `--wrap=none` so output isn't wrapped at 72 cols
+// (pandoc's default would otherwise glue every paragraph as multiple
+// raw-`\n` lines and corrupt every alignment block):
+//
+//   pandoc hpmor_ru.fb2 -t gfm-raw_html --wrap=none \
+//     --shift-heading-level-by=-1 -o /tmp/hpmor-ru-fan.md
+//
+// As defense-in-depth, the script unwraps any soft-wrapped paragraphs
+// it finds in any of the three inputs (see `unwrapSoftWraps`).
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, dirname, isAbsolute } from 'node:path';
@@ -36,6 +50,7 @@ import { parseBook } from '../js/parse.js';
 import { PoeTranslator } from '../js/translators/poe.js';
 import {
   plainTextToMarkdown, buildAlignmentBlocks, sliceChaptersInBook,
+  unwrapSoftWraps,
 } from '../js/abtest.js';
 
 // ---------- argv ----------
@@ -91,6 +106,25 @@ let bBook = parseBook(bMd);
 log(`  ${bBook.chapters.length} chapters`);
 
 if (bBook.chapters.length === 0) die('B parsed to zero chapters — check input format.');
+
+// ---------- normalize: strip soft wraps in every paragraph ----------
+const unwrapStats = { source: 0, a: 0, b: 0 };
+const unwrapBook = (book, key) => {
+  for (const ch of book.chapters || []) {
+    for (const p of ch.paragraphs || []) {
+      const before = p.original;
+      p.original = unwrapSoftWraps(before);
+      if (p.original !== before) unwrapStats[key]++;
+    }
+  }
+};
+unwrapBook(sourceBook, 'source');
+unwrapBook(aBook,      'a');
+unwrapBook(bBook,      'b');
+const totalUnwrapped = unwrapStats.source + unwrapStats.a + unwrapStats.b;
+if (totalUnwrapped > 0) {
+  log(`  soft-wrap normalization: source=${unwrapStats.source}, A=${unwrapStats.a}, B=${unwrapStats.b} paragraphs unwrapped`);
+}
 
 // ---------- chapter-range trimming ----------
 // `--source-chapters N-M` trims SOURCE and A in lockstep (they're

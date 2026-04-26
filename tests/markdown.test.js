@@ -109,3 +109,16 @@ test('renderBlockMd: handles null / undefined / empty input', () => {
   assert.equal(renderBlockMd(''), '');
   assert.equal(renderBlockMd('   '), '');
 });
+
+test('renderBlockMd: preserves a single \\n inside a paragraph (dialog turns)', () => {
+  // PoeTranslator's prompt explicitly tells the model to use literal \n
+  // inside a paragraph slot to separate dialog speaker turns (Russian /
+  // Spanish / Polish dialog convention). The renderer must keep those.
+  // CSS `white-space: pre-wrap` on .ab-text turns them into visible
+  // line breaks. (Soft wraps from the source go away upstream — see
+  // unwrapSoftWraps in js/abtest.js.)
+  assert.equal(
+    renderBlockMd('— Это абсурд!\n— Они были у нас.'),
+    '<p>— Это абсурд!\n— Они были у нас.</p>'
+  );
+});
