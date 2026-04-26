@@ -2,6 +2,17 @@
 // Anything that touches the network or DOM lives in component.js or
 // translators/poe.js — these are testable in plain Node.
 
+// Registry of pre-built alignment artifacts the abtest view can load.
+// Each entry's `path` points to a JSON produced by scripts/build-abtest.mjs.
+// Add a new entry here when a new alignment artifact is committed.
+export const ABTESTS = [
+  {
+    id: 'munchausen',
+    label: 'Munchausen — yours vs. Chukovsky\'s classical adaptation',
+    path: 'samples/abtest-munchausen.json',
+  },
+];
+
 // Random sample of n items from arr, without replacement (Fisher-Yates).
 // Returns up to n items (fewer if arr.length < n). Pure given an injected rng.
 export function pickRandomSample(arr, n, rng = Math.random) {

@@ -170,6 +170,52 @@ article[role="alert"] .close {
   width: auto;
 }
 
+/* ---------- A/B test view ---------- */
+
+.abtest-running .ab-source {
+  background: var(--pico-card-background-color);
+  border-left: 3px solid var(--pico-muted-border-color);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.abtest-running .ab-source header { margin: 0 0 0.25rem 0; opacity: 0.6; }
+
+.abtest-running .ab-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.abtest-running .ab-side {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 6px;
+  background: transparent;
+}
+.abtest-running .ab-side header { margin: 0 0 0.4rem 0; }
+
+.abtest-running .ab-text {
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.abtest-running .ab-buttons {
+  margin-top: 1.25rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.abtest-running .ab-buttons button {
+  flex: 1;
+  max-width: 14rem;
+}
+
+.ab-reveal li { font-size: 0.85rem; line-height: 1.5; margin-bottom: 0.25rem; }
+
+@media (max-width: 700px) {
+  .abtest-running .ab-pair { grid-template-columns: 1fr; }
+}
+
 /* Editor toolbar (chapter info + font-size selectors) sits above the
    paragraph grid. Flex row that wraps on narrow viewports. */
 .editor-toolbar {
