@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Book Translate</title>
+  <title>Bilingual Translate · Book Translate</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <link rel="stylesheet" href="css/styles.css">
 </head>
-<body x-data="bookTranslator" x-cloak>
+<body x-data="bilingual" x-cloak>
   <header class="container">
     <nav>
-      <ul><li><strong>Book Translate</strong></li></ul>
+      <ul><li><strong>Bilingual Translate</strong></li></ul>
       <ul>
         <li><small x-show="book" x-text="(book?.chapters?.length || 0) + ' chapters · ' + (acceptedCount) + ' accepted'"></small></li>
         <li><a href="#" @click.prevent="gotoSetup()">Setup</a></li>
@@ -21,17 +21,18 @@
         <li>
           <button class="secondary outline" type="button"
                   @click="$refs.importFile.click()" :disabled="busy"
-                  title="Load a previously exported state file">Import…</button>
+                  title="Load a previously exported bilingual state file">Import…</button>
           <input type="file" accept=".json,application/json" x-ref="importFile"
                  style="display:none" @change="importState($event)">
         </li>
         <li>
           <button class="secondary outline" type="button"
                   @click="exportState()" :disabled="!canExport"
-                  title="Download the current book, dictionary, and settings as JSON (API key blanked)">
+                  title="Download the current bilingual book, dictionary, and settings as JSON (API key blanked)">
             Export
           </button>
         </li>
+        <li><a href="index.html">Single-source editor →</a></li>
         <li><button class="secondary outline" @click="reset()">Reset</button></li>
       </ul>
     </nav>
@@ -46,114 +47,120 @@
     <!-- SETUP -->
     <section x-show="view === 'setup'" x-cloak class="container">
       <hgroup>
-        <h2>Paste your book (Markdown)</h2>
-        <p>Chapters start with a heading line — <code># Title</code> for H1, <code>## Title</code> for H2. Paragraphs are blank-line separated. Convert other formats with pandoc: <code>pandoc input.tex -t gfm-raw_html -o book.md</code>.</p>
+        <h2>Bilingual translation</h2>
+        <p>Provide the same book in two languages: one you can read (you'll see this while editing), and the canonical original (kept behind the scenes — the model uses it as the source of truth).</p>
       </hgroup>
+
       <div class="grid">
-        <label>Chapter heading level
-          <select x-model.number="headingLevel">
-            <option :value="1"># chapter (H1)</option>
-            <option :value="2">## chapter (H2)</option>
-            <option :value="3">### chapter (H3)</option>
+        <label>Reading language
+          <input x-model="config.editorLanguage" placeholder="English">
+        </label>
+        <label>Original language
+          <input x-model="config.referenceLanguage" placeholder="Chinese">
+        </label>
+      </div>
+      <div class="grid">
+        <label>Chapter heading level (reading side)
+          <select x-model.number="editorHeadingLevel">
+            <option :value="1"># H1</option>
+            <option :value="2">## H2</option>
+            <option :value="3">### H3</option>
           </select>
         </label>
-        <label>Load a sample book
-          <select @change="loadSample($event.target.value); $event.target.value = ''">
-            <option value="" selected>— pick one to populate the textarea —</option>
-            <template x-for="s in SAMPLE_BOOKS" :key="s.id">
-              <option :value="s.id" x-text="s.label"></option>
-            </template>
+        <label>Chapter heading level (original side)
+          <select x-model.number="referenceHeadingLevel">
+            <option :value="1"># H1</option>
+            <option :value="2">## H2</option>
+            <option :value="3">### H3</option>
           </select>
         </label>
       </div>
-      <label>Book text
-        <small>— or drop a .md / .txt file onto the textarea.</small>
+
+      <label>
+        <strong>Paste the <span x-text="config.editorLanguage || 'reading'"></span> text</strong>
+        <small>— or drop a .md / .txt file. <span x-show="editorChapterCount > 0"><strong x-text="editorChapterCount"></strong> chapter(s) detected.</span></small>
         <input type="file" accept=".md,.txt,.markdown,text/plain,text/markdown"
-               @change="loadFile($event)">
-        <textarea rows="16" x-model="rawBook"
+               @change="loadFileIntoSide('editor', $event)">
+        <textarea rows="12" x-model="rawEditor"
                   @dragover.prevent
-                  @drop="loadFile($event)"
-                  placeholder="# Chapter One&#10;&#10;It was a bright cold day in April...&#10;&#10;# Chapter Two&#10;&#10;..."></textarea>
+                  @drop="loadFileIntoSide('editor', $event)"
+                  placeholder="Drop a file here or paste. Format: # Chapter Title, blank-line-separated paragraphs."></textarea>
+      </label>
+      <label>
+        <strong>Paste the <span x-text="config.referenceLanguage || 'original'"></span> text</strong>
+        <small>— or drop a .md / .txt file. <span x-show="referenceChapterCount > 0"><strong x-text="referenceChapterCount"></strong> chapter(s) detected.</span></small>
+        <input type="file" accept=".md,.txt,.markdown,text/plain,text/markdown"
+               @change="loadFileIntoSide('reference', $event)">
+        <textarea rows="12" x-model="rawReference"
+                  @dragover.prevent
+                  @drop="loadFileIntoSide('reference', $event)"
+                  placeholder="Drop a file here or paste. Same format as the reading side."></textarea>
       </label>
 
+      <article x-show="chapterCountMismatch" x-cloak role="alert" class="warning">
+        <strong>Chapter counts don't match.</strong>
+        Reading side: <strong x-text="editorChapterCount"></strong>;
+        original side: <strong x-text="referenceChapterCount"></strong>.
+        Translation will pair the first <strong x-text="Math.min(editorChapterCount, referenceChapterCount)"></strong> chapters by index — fix the heading level or the source files if these should match 1:1.
+      </article>
+
       <h3>Translator</h3>
-      <label>Backend
-        <select x-model="config.translator">
-          <option value="dummy">Dummy (returns original — for plumbing tests)</option>
-          <option value="poe">POE (OpenAI-compatible)</option>
-        </select>
-      </label>
-      <div x-show="config.translator === 'poe'" class="grid">
+      <div class="grid">
         <label>Base URL<input x-model="config.baseUrl"></label>
-        <label>Model (POE bot name)
-          <input x-model="config.model" list="poe-models" placeholder="gemini-3.1-pro"
-                 autocomplete="off" spellcheck="false">
+        <label>Model
+          <input x-model="config.model" list="poe-models" placeholder="gemini-3.1-pro" autocomplete="off" spellcheck="false">
         </label>
         <label>API key<input type="password" x-model="config.apiKey" autocomplete="off"></label>
       </div>
-      <label x-show="config.translator === 'poe'">
-        Dictionary model (optional override)
+      <label>Dictionary model (optional override)
         <input x-model="config.dictionaryModel" list="poe-models"
                placeholder="leave empty to reuse the main model"
                autocomplete="off" spellcheck="false">
-        <small>Used for both dictionary phases (term extraction + term translation). A cheaper model here cuts per-book cost while keeping chapter translation on the strong one.</small>
       </label>
-
-      <!-- Shared POE-bot suggestions for both model inputs. Not a restricted
-           list: any custom bot name still works; these are just type-ahead
-           hints in the dropdown. -->
       <datalist id="poe-models">
         <option value="claude-opus-4.7"></option>
         <option value="gpt-5.4"></option>
         <option value="gemini-3.1-pro"></option>
       </datalist>
-      <label x-show="config.translator === 'poe'">
-        Dictionary chunk size (characters per term-extraction call)
-        <input type="number" min="2000" step="10000" x-model.number="config.dictionaryChunkChars">
-        <small>Rough guideline: ~4 chars per token. Default 400 000 ≈ 100 k tokens — fits modern long-context models (Gemini, Claude, GPT-4o). Lower for small-window models.</small>
-      </label>
-      <label x-show="config.translator === 'poe'">
-        Dictionary guidance
+
+      <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
+
+      <label>Dictionary guidance
         <textarea rows="4" x-model="config.dictionaryGuidance"
-          placeholder="- Use a single, consistent transliteration scheme for proper names.&#10;- Normalize ALL CAPS in the source to title case.&#10;- For real-world references (book / film / song titles), use the canonical published translation; note it.&#10;- Include recurring invented words, technical terms, and forms of address."></textarea>
-        <small>Free-text instructions injected into both the term-extraction and translation prompts. Use for canonical translations, what to include/skip, and style rules.</small>
+          placeholder="- Use Palladius transliteration for Chinese names.&#10;- For real-world references, use the canonical published translation."></textarea>
+        <small>
+          Free-text instructions injected into both dictionary phases.
+          <a href="#" @click.prevent="insertPalladiusPrompt()">Insert Palladius (Chinese → Russian) preset</a>
+        </small>
       </label>
-      <label x-show="config.translator === 'poe'">
+      <label>
         <input type="checkbox" x-model="config.usePalladius">
-        Algorithmic Palladius (Палладий) for Chinese names
-        <small>When the source has Chinese characters, run each CJK term through the Palladius transliteration system and pass the result to the model as a per-term hint. Off by default — enable for Chinese-source books where you want canonical Russian renderings (Жуань Мянь, Чжан Сань) instead of model-invented ones.</small>
+        Algorithmic Palladius (Палладий) for Chinese reference forms
+        <small>When the dictionary's reference side is Chinese, run each CJK reference form through the Palladius transliteration system and pass the result to the model as a per-pair hint. Off by default.</small>
       </label>
-      <label x-show="config.translator === 'poe'">
-        Translation prompt
+      <label>Translation prompt
         <select x-model="config.translationPromptPreset">
           <option value="v1">v1 — natural &amp; idiomatic</option>
           <option value="v2">v2 — two-stage, native-writer rewrite (default)</option>
           <option value="custom">Custom (edit below)</option>
         </select>
       </label>
-      <label x-show="config.translator === 'poe' && config.translationPromptPreset === 'custom'">
+      <label x-show="config.translationPromptPreset === 'custom'">
         Custom translation prompt
-        <textarea rows="8" x-model="config.translationPromptCustom"
-          placeholder="Write your own style/instruction block. Use ${lang} where the target language should appear. The structural contract ([0]..[N] numbering) and the dictionary block are appended automatically."></textarea>
-        <small>You're editing the style/instruction part only — the structural contract and dictionary are always appended. Use <code>${'${lang}'}</code> as a placeholder for the target language.</small>
+        <textarea rows="6" x-model="config.translationPromptCustom"
+          placeholder="Use ${'${lang}'} for the target language."></textarea>
       </label>
-      <label x-show="config.translator === 'poe'">
-        Translation guidance (per-book)
-        <textarea rows="4" x-model="config.translationGuidance"
-          placeholder="- Use formal register throughout (e.g. вы / Sie / vous).&#10;- Preserve specific rhetorical figures (irony, anaphora).&#10;- Render nautical / period / technical terminology in the genre-appropriate register.&#10;- Keep the narrator's characteristic sentence rhythm."></textarea>
-        <small>Appended to whichever preset above is active, and used for per-paragraph retranslations too. For book-specific voice, register, or genre rules that should persist for every chapter.</small>
+      <label>Translation guidance (per-book)
+        <textarea rows="3" x-model="config.translationGuidance"
+          placeholder="- Use formal register throughout.&#10;- Preserve narrator's rhythm."></textarea>
       </label>
-      <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
-      <small x-show="config.translator === 'poe'">
-        The key is kept in your browser (localforage). If POE blocks direct browser calls via CORS, point Base URL at your own proxy.
-      </small>
 
-      <button @click="startFromRaw()" :disabled="busy || !rawBook.trim()" :aria-busy="busy && view === 'setup'">
-        <span x-text="busy ? 'Building dictionary…' : 'Parse book & build dictionary'"></span>
+      <button @click="startFromRaw()" :disabled="busy || !canStartFromRaw" :aria-busy="busy && view === 'setup'">
+        <span x-text="busy ? 'Building bilingual dictionary…' : 'Pair texts & build dictionary'"></span>
       </button>
       <div class="dict-progress" x-show="dictionaryProgress" x-cloak>
         <small>
-          <span x-text="dictionaryProgress?.stage === 'extract' ? 'Extracting terms per chapter' : 'Translating merged term list'"></span>
+          <span x-text="dictionaryProgress?.stage === 'extract' ? 'Extracting term pairs per chapter' : 'Translating merged term pairs'"></span>
           —
           <span x-text="`${dictionaryProgress?.current ?? 0} / ${dictionaryProgress?.total ?? 0}`"></span>
         </small>
@@ -164,16 +171,25 @@
     <!-- DICTIONARY -->
     <section x-show="view === 'dictionary'" x-cloak class="container">
       <hgroup>
-        <h2>Translation dictionary</h2>
-        <p>Edit terms that must stay consistent across chapters. The dictionary is passed to every chapter translation.</p>
+        <h2>Bilingual dictionary</h2>
+        <p>Three columns: the canonical form in the reference language (identity anchor), the rendering in the original language (what appears in the editor), and the target translation. Edits are passed to every chapter translation.</p>
       </hgroup>
       <div class="dict-table">
         <table>
-          <thead><tr><th>Term (original)</th><th>Translation</th><th>Notes</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <th><span x-text="config.referenceLanguage || 'Reference'"></span> form</th>
+              <th><span x-text="config.editorLanguage || 'Original'"></span> term</th>
+              <th>Translation (<span x-text="config.targetLanguage"></span>)</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
           <tbody>
             <template x-for="(t, i) in dictionary" :key="i">
               <tr>
-                <td><input x-model="t.term"></td>
+                <td><input x-model="t.originalForm" :placeholder="config.referenceLanguage || 'reference'"></td>
+                <td><input x-model="t.term"         :placeholder="config.editorLanguage || 'original'"></td>
                 <td><input x-model="t.translation"></td>
                 <td><input x-model="t.notes"></td>
                 <td><button class="secondary outline" @click="removeTerm(i)" aria-label="Remove">×</button></td>
@@ -186,11 +202,11 @@
         <button class="secondary" @click="addTerm()" type="button">Add term</button>
         <button class="secondary outline" @click="exportDictionary()" type="button"
                 :disabled="!dictionary.length"
-                title="Download the dictionary as a Markdown table (Term · translation · notes)">
+                title="Download the dictionary as a Markdown table (Chinese / English / Russian / Notes)">
           Export dictionary
         </button>
         <button @click="acceptDictionary()" :disabled="busy" :aria-busy="busy">
-          <span x-text="busy ? 'Translating chapter 1…' : 'Accept & translate chapter 1'"></span>
+          <span x-text="busy ? 'Translating chapter 1…' : 'Accept &amp; translate chapter 1'"></span>
         </button>
       </div>
     </section>
@@ -214,10 +230,9 @@
           <summary>
             Dictionary
             <small class="dict-count"
-                   :title="`${dictionary.length} entries total in this book`"
                    x-text="`(${_dictionarySubsetForChapter(currentChapterIndex).length} of ${dictionary.length})`"></small>
           </summary>
-          <p class="dict-hint">Filtered to terms extracted from this chapter. Use the full Dictionary view to see/edit everything.</p>
+          <p class="dict-hint">Filtered to this chapter. Edit in the full Dictionary view.</p>
           <div class="dict-mini">
             <template x-for="(t, i) in _dictionarySubsetForChapter(currentChapterIndex)" :key="i">
               <div class="dict-mini-entry">
@@ -240,7 +255,7 @@
           </p>
           <div class="font-size-controls">
             <label>
-              <small>Original</small>
+              <small x-text="config.editorLanguage || 'Original'"></small>
               <select x-model="originalFontSize">
                 <template x-for="s in FONT_SIZE_KEYS" :key="s">
                   <option :value="s" x-text="s"></option>
@@ -260,7 +275,6 @@
 
         <div class="paragraphs"
              :style="`--split-pct: ${splitPercent}%; --original-font-size: ${FONT_SIZES[originalFontSize]}; --translation-font-size: ${FONT_SIZES[translationFontSize]}`">
-          <!-- Title row: editable translation on the LEFT, original on the right. -->
           <input class="translation title-row" type="text"
                  :value="book?.chapters?.[currentChapterIndex]?.translatedTitle || ''"
                  @input="book.chapters[currentChapterIndex].translatedTitle = $event.target.value"
@@ -268,10 +282,6 @@
           <div class="original title-row" x-text="book?.chapters?.[currentChapterIndex]?.title"></div>
 
           <template x-for="(p, i) in (book?.chapters?.[currentChapterIndex]?.paragraphs || [])" :key="i">
-            <!-- Per-row local state: `editing` toggles between rendered
-                 markdown (italic / bold visible) and the raw textarea.
-                 Click the rendered cell to start editing; blur returns to
-                 the rendered view. -->
             <div class="pair" style="display:contents;" x-data="{ editing: false }">
               <div class="translation-wrap">
                 <div class="translation rendered" x-show="!editing"
@@ -286,30 +296,22 @@
                 <div class="paragraph-actions">
                   <button class="tiny" type="button"
                           @click="retranslateParagraph(i, 'default')"
-                          :disabled="busy || config.translator === 'dummy'"
-                          title="Re-translate this paragraph with the default prompt (no strict/natural bias)">
-                    ↻ retranslate
-                  </button>
+                          :disabled="busy"
+                          title="Re-translate this paragraph (default — no bias)">↻ retranslate</button>
                   <button class="tiny" type="button"
                           @click="retranslateParagraph(i, 'strict')"
-                          :disabled="busy || config.translator === 'dummy'"
-                          title="Retranslate this paragraph, biased toward literal fidelity">
-                    ↻ stricter
-                  </button>
+                          :disabled="busy"
+                          title="Retranslate biased toward literal fidelity">↻ stricter</button>
                   <button class="tiny" type="button"
                           @click="retranslateParagraph(i, 'natural')"
-                          :disabled="busy || config.translator === 'dummy'"
-                          title="Retranslate this paragraph, biased toward native-target naturalness">
-                    ↻ more natural
-                  </button>
+                          :disabled="busy"
+                          title="Retranslate biased toward native-target naturalness">↻ more natural</button>
                 </div>
               </div>
               <div class="original" x-html="renderMd(p.original)"></div>
             </div>
           </template>
 
-          <!-- Drag handle sits at the column boundary; absolutely positioned
-               so it doesn't take a grid slot of its own. -->
           <div class="resize-handle" @mousedown="startResize($event)"
                title="Drag to resize columns (20%–80%)"></div>
         </div>
@@ -332,15 +334,13 @@
         </div>
       </div>
     </section>
-
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/localforage@1/dist/localforage.min.js"></script>
-  <!-- pinyin-pro: Han characters → Pinyin. Used by js/palladius.js
-       to drive algorithmic Russian transliteration of Chinese terms
-       during dictionary build. UMD attaches to globalThis.pinyinPro. -->
+  <!-- pinyin-pro: Han characters → Pinyin, feeds algorithmic
+       Palladius transliteration during dictionary build. -->
   <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.28.1/dist/index.js"></script>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/bilingual-app.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
 </body>
 </html>

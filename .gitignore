@@ -4,6 +4,19 @@
 node_modules/
 .DS_Store
 
+# Browser-extracted session cookies (rotate often, never commit).
+cookies/
+
+# Generated chapter bodies for manual paste into rulate's CKEditor.
+rulate-bodies/
+
+# Per-book translation .md sources (personal — not committed).
+translations/
+
+# Python bytecode caches.
+__pycache__/
+*.pyc
+
 # editor swap/backup files
 *.swp
 *.swo

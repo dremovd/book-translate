@@ -164,6 +164,87 @@ test('formatDictionary: empty dictionary returns "(empty)"', () => {
   assert.equal(formatDictionary([]), '(empty)');
 });
 
+test('formatDictionary: bilingual entry renders "(originally X)" before notes', () => {
+  // The model translating English-side paragraphs benefits from seeing
+  // the canonical Chinese form of each name in the glossary line — both
+  // for disambiguation and so canonical-rendering instructions in the
+  // notes have something to attach to.
+  const s = formatDictionary([
+    { term: 'Ruan Mian', translation: 'Жуань Мянь', originalForm: '阮眠', notes: 'protagonist' },
+    { term: 'Pingjiang', translation: 'Пинцзян', originalForm: '平江', notes: '' },
+  ]);
+  assert.match(s, /Ruan Mian → Жуань Мянь.*originally 阮眠.*protagonist/);
+  assert.match(s, /Pingjiang → Пинцзян.*originally 平江/);
+  // Without notes, "originally X" still appears on its own.
+  assert.doesNotMatch(s, /Pingjiang.*protagonist/);
+});
+
+test('formatDictionary: entry without originalForm keeps the single-source format', () => {
+  const s = formatDictionary([{ term: 'X', translation: 'Х', notes: 'a note' }]);
+  assert.match(s, /X → Х\s+\(a note\)/);
+  assert.doesNotMatch(s, /originally/);
+});
+
+// ---------- renderDictionaryMarkdown ----------
+
+import { renderDictionaryMarkdown } from '../js/translators/format.js';
+
+test('renderDictionaryMarkdown: produces a 4-column markdown table (no chapters column)', () => {
+  const dict = [
+    { term: 'Ruan Mian', originalForm: '阮眠', translation: 'Жуань Мянь', notes: 'protagonist', chapters: [0, 1, 2] },
+    { term: 'Pingjiang', originalForm: '平江', translation: 'Пинцзян',     notes: '',            chapters: [0] },
+  ];
+  const md = renderDictionaryMarkdown(dict, {
+    editorLanguage: 'English', referenceLanguage: 'Chinese', targetLanguage: 'Russian',
+  });
+  assert.match(md, /Chinese.*English.*Russian/);
+  // Header row uses the language names — Notes only, no Chapters column.
+  assert.match(md, /\| Chinese \| English \| Russian \| Notes \|/);
+  assert.doesNotMatch(md, /Chapters/i);
+  // Body rows include the term data.
+  assert.match(md, /\| 阮眠 \| Ruan Mian \| Жуань Мянь \| protagonist \|/);
+  assert.match(md, /\| 平江 \| Pingjiang \| Пинцзян \|  \|/);
+});
+
+test('renderDictionaryMarkdown: empty dictionary still emits the header line', () => {
+  const md = renderDictionaryMarkdown([], { editorLanguage: 'English', referenceLanguage: 'Chinese', targetLanguage: 'Russian' });
+  assert.match(md, /^#/m);
+  assert.match(md, /English.*Russian/);
+  assert.doesNotMatch(md, /\|.*\|/);
+});
+
+test('renderDictionaryMarkdown: escapes pipe characters in cell content (table-safety)', () => {
+  const md = renderDictionaryMarkdown([
+    { term: 'Foo|Bar', originalForm: 'A|B', translation: 'X|Y', notes: 'split: a|b' },
+  ], { editorLanguage: 'EN', referenceLanguage: 'ZH', targetLanguage: 'RU' });
+  assert.match(md, /A\\\|B/);
+  assert.match(md, /Foo\\\|Bar/);
+  assert.match(md, /X\\\|Y/);
+  assert.match(md, /split: a\\\|b/);
+});
+
+test('renderDictionaryMarkdown: omitting referenceLanguage produces a 3-column table for the single-source editor', () => {
+  const dict = [
+    { term: 'Hogwarts', translation: 'Хогвартс', notes: 'school', chapters: [0] },
+    { term: 'Quidditch', translation: 'квиддич', notes: '', chapters: [1] },
+  ];
+  const md = renderDictionaryMarkdown(dict, { targetLanguage: 'Russian' });
+  // Header line drops the Reference column entirely — three columns only.
+  assert.match(md, /\| Term \| Russian \| Notes \|/);
+  assert.doesNotMatch(md, /Reference/i);
+  assert.doesNotMatch(md, /Chinese/);
+  // Each body row also has three pipe-delimited cells, not four.
+  assert.match(md, /\| Hogwarts \| Хогвартс \| school \|/);
+  assert.match(md, /\| Quidditch \| квиддич \|  \|/);
+});
+
+test('renderDictionaryMarkdown: chapter provenance is never emitted, even when present', () => {
+  const dict = [{ term: 'X', originalForm: '一', translation: 'Икс', notes: '', chapters: [0, 1, 2, 3] }];
+  const md = renderDictionaryMarkdown(dict, { editorLanguage: 'EN', referenceLanguage: 'ZH', targetLanguage: 'RU' });
+  assert.doesNotMatch(md, /Chapters/i);
+  assert.doesNotMatch(md, /1, 2, 3, 4/);
+});
+
 // ---------- chunkBookText ----------
 
 test('chunkBookText: single chapter becomes one chunk with its chapter index', () => {

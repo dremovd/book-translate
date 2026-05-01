@@ -54,6 +54,103 @@ test('dummy flow: setup → dictionary → editor → accept-next → final acce
   assert.equal(c.acceptedCount, 3);
 });
 
+// ---------- translation stats footer ----------
+
+test('currentChapterStats: zero when no book is loaded', async () => {
+  const c = await initFresh();
+  assert.deepEqual(c.currentChapterStats, { words: 0, chars: 0 });
+});
+
+test('currentChapterStats: counts words and non-space chars across title + translated paragraphs', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptDictionary();
+  // Dummy copies original to translation, so ch1 has translatedTitle='Chapter 1'
+  // and paragraphs[0].translation='para A1', paragraphs[1].translation='para A2'.
+  const stats = c.currentChapterStats;
+  // 'Chapter 1' (2 words, 8 non-space chars) + 'para A1' (2/6) + 'para A2' (2/6).
+  assert.equal(stats.words, 6);
+  assert.equal(stats.chars, 20);
+});
+
+test('loadFile: <input type="file"> change event populates rawBook', async () => {
+  const c = await initFresh();
+  await c.loadFile({
+    target: {
+      tagName: 'INPUT',
+      type: 'file',
+      files: [{ async text() { return '# Chapter One\n\nHello.'; } }],
+      value: '_will_be_cleared_',
+    },
+  });
+  assert.equal(c.rawBook, '# Chapter One\n\nHello.');
+});
+
+test('loadFile: drag-and-drop drop event populates rawBook and calls preventDefault', async () => {
+  const c = await initFresh();
+  let prevented = false;
+  await c.loadFile({
+    preventDefault: () => { prevented = true; },
+    dataTransfer: { files: [{ async text() { return 'dropped content'; } }] },
+    target: { tagName: 'TEXTAREA' },  // drop fires with the textarea as target
+  });
+  assert.equal(prevented, true, 'must call preventDefault on the drop event');
+  assert.equal(c.rawBook, 'dropped content');
+});
+
+test('loadFile: surfaces a file-read error without clobbering rawBook', async () => {
+  const c = await initFresh();
+  c.rawBook = 'kept';
+  await c.loadFile({
+    target: {
+      tagName: 'INPUT', type: 'file',
+      files: [{ async text() { throw new Error('disk gone'); } }],
+    },
+  });
+  assert.equal(c.rawBook, 'kept');
+  assert.match(c.error || '', /disk gone/);
+});
+
+test('exportDictionary: produces a 3-column markdown table for the singular editor', async () => {
+  const c = await initFresh();
+  c.config.targetLanguage = 'Russian';
+  c.dictionary = [
+    { term: 'Hogwarts', translation: 'Хогвартс', notes: 'school', chapters: [0] },
+    { term: 'Quidditch', translation: 'квиддич', notes: '', chapters: [1] },
+  ];
+  // Capture what the component would download instead of actually clicking.
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportDictionary();
+  assert.equal(captured.filename, 'dictionary.md');
+  assert.match(captured.md, /\| Term \| Russian \| Notes \|/);
+  assert.doesNotMatch(captured.md, /Reference/i);
+  assert.match(captured.md, /\| Hogwarts \| Хогвартс \| school \|/);
+});
+
+test('exportDictionary: no-ops on empty dictionary', async () => {
+  const c = await initFresh();
+  let called = false;
+  c._downloadMarkdown = () => { called = true; };
+  c.exportDictionary();
+  assert.equal(called, false, 'must not download an empty dictionary');
+});
+
+test('currentChapterStats: ignores leading/trailing whitespace and treats newlines as separators', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptDictionary();
+  c.book.chapters[0].translatedTitle = '  Заголовок  ';
+  c.book.chapters[0].paragraphs[0].translation = 'два слова';
+  c.book.chapters[0].paragraphs[1].translation = 'строка\nещё строка';
+  const stats = c.currentChapterStats;
+  // 'Заголовок' (1 word, 9 chars) + 'два слова' (2/8) + 'строка ещё строка' (3/15).
+  assert.equal(stats.words, 6);
+  assert.equal(stats.chars, 32);
+});
+
 // ---------- chapter gate ----------
 
 test('acceptAndNext: does NOT re-translate an already-translated next chapter', async () => {

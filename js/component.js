@@ -1,7 +1,7 @@
 import { parseBook } from './parse.js';
 import { store } from './store.js';
 import { createTranslator } from './translators/index.js';
-import { renderTranslationMarkdown } from './translators/format.js';
+import { renderTranslationMarkdown, renderDictionaryMarkdown } from './translators/format.js';
 import { renderInlineMd } from './markdown.js';
 
 export const SAMPLE = `# Chapter One
@@ -112,6 +112,13 @@ export function defaultConfig() {
     // per-book dictionary cost down without compromising chapter translation.
     dictionaryModel: '',
     baseUrl: 'https://api.poe.com/v1',
+    // Inject the algorithmic Palladius (Палладий) Russian
+    // transliteration as a per-CJK-term hint into the translate-terms
+    // prompt. Off by default — Palladius is the canonical scheme for
+    // Russian renderings of Mandarin, but for some books a
+    // less-strict / character-fitted transliteration is preferred.
+    // Enable in the setup view to opt in for the current book.
+    usePalladius: false,
     targetLanguage: 'Russian',
     // Max chars per chunk when extracting terms for the dictionary.
     // ~400 000 chars ≈ ~100 k tokens. Smaller chunks → more API calls;
@@ -135,6 +142,19 @@ export function defaultConfig() {
     // both chapter translation and per-paragraph retranslation.
     translationGuidance: '',
   };
+}
+
+// Word + non-space character count for one chapter's translated text
+// (title + every paragraph translation, joined). Whitespace-separated
+// tokens for words; `\s` for the chars filter, so newlines don't count.
+export function chapterTranslationStats(chapter) {
+  if (!chapter) return { words: 0, chars: 0 };
+  const parts = [chapter.translatedTitle || ''];
+  for (const p of chapter.paragraphs || []) parts.push(p?.translation || '');
+  const text = parts.join('\n').trim();
+  const words = text ? text.split(/\s+/).length : 0;
+  const chars = text.replace(/\s/g, '').length;
+  return { words, chars };
 }
 
 export function makeComponent() {
@@ -245,6 +265,9 @@ export function makeComponent() {
       if (next?.status && next.status !== 'pending') return 'Accept & go to next chapter';
       return 'Accept & translate next chapter';
     },
+    get currentChapterStats() {
+      return chapterTranslationStats(this.book?.chapters?.[this.currentChapterIndex]);
+    },
 
     // ---- persistence ----
     schedulePersist() {
@@ -280,6 +303,33 @@ export function makeComponent() {
     FONT_SIZES,
 
     // ---- actions ----
+    // Load a file into the rawBook textarea. Driven both by
+    // <input type="file"> change events AND by drag-and-drop onto the
+    // textarea — same handler covers both, since drop events expose
+    // the file via dataTransfer.files while change events expose it
+    // via target.files.
+    async loadFile(ev) {
+      const file =
+        ev?.target?.files?.[0] ??              // <input type="file">
+        ev?.dataTransfer?.files?.[0];          // drag-and-drop drop event
+      if (!file) return;
+      if (typeof ev?.preventDefault === 'function') ev.preventDefault();
+      try {
+        this.rawBook = await file.text();
+      } catch (e) {
+        this.error = `Failed to read file: ${e?.message ?? e}`;
+      } finally {
+        // Reset only true file <input>s so re-selecting the same file
+        // fires `change` again. Never clear a textarea — drop events
+        // fire with target = the textarea, and clearing its .value
+        // would erase what x-model just bound to.
+        const tgt = ev?.target;
+        if (tgt && tgt.tagName === 'INPUT' && tgt.type === 'file') {
+          tgt.value = '';
+        }
+      }
+    },
+
     // Load a demo book into the setup textarea. For inline samples, sets
     // rawBook synchronously; for remote ones, fetches the file relative to
     // the site root (samples/<id>.md) and assigns on completion.
@@ -574,6 +624,16 @@ export function makeComponent() {
       const md = renderTranslationMarkdown(this.book, this.currentChapterIndex);
       const n = String(this.currentChapterIndex + 1).padStart(3, '0');
       const filename = `translation-through-chapter-${n}.md`;
+      this._downloadMarkdown(md, filename);
+    },
+    exportDictionary() {
+      if (!this.dictionary?.length) return;
+      const md = renderDictionaryMarkdown(this.dictionary, {
+        targetLanguage: this.config.targetLanguage,
+      });
+      this._downloadMarkdown(md, 'dictionary.md');
+    },
+    _downloadMarkdown(md, filename) {
       if (typeof document === 'undefined' || typeof URL === 'undefined') return;
       const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
       const url = URL.createObjectURL(blob);

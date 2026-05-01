@@ -1,7 +1,13 @@
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { withFetch, mockResponse } from './_setup.js';
+import { withFetch, mockResponse, clearStore } from './_setup.js';
 import { PoeTranslator } from '../js/translators/poe.js';
+
+// PoeTranslator.buildDictionary caches responses in localforage keyed by
+// hash(model, messages). Without this hook, a chunk + prompt + model
+// reused across tests would hit cache from the previous test's mock and
+// the inline mock here would never run.
+beforeEach(() => clearStore());
 
 // Parsing/formatting helpers used by PoeTranslator are tested in format.test.js.
 // This file covers what PoeTranslator itself is responsible for: HTTP shape,
@@ -65,10 +71,16 @@ test('PoeTranslator.chat: rejects on malformed response shape', async () => {
   } finally { restore(); }
 });
 
-// Helper for the 3-phase dictionary flow: extract calls echo a JSON array of
-// strings; translate calls (recognized by "Terms:" at the user message start)
-// echo a JSON array of {term, translation, notes}.
-function dictFetchMock({ extractResponses = [], translateResponse = '[]' } = {}) {
+// Helper for the 3-phase dictionary flow. Extract calls echo a JSON array
+// of strings; translate calls (recognized by "Terms:" at the user message
+// start) echo a JSON array of {term, translation, notes}.
+//
+// Responses can be supplied as an array (assigned in the order extract
+// calls *arrive*) or as a `byContent` map (matched against a substring of
+// the user message). With dictionary caching plus extract concurrency,
+// the arrival order isn't strictly the chapter order, so tests that care
+// about per-chapter responses should use `byContent`.
+function dictFetchMock({ extractResponses = [], extractByContent = null, translateResponse = '[]' } = {}) {
   const calls = { extract: [], translate: [] };
   let extractIdx = 0;
   const impl = async (_url, opts) => {
@@ -79,7 +91,13 @@ function dictFetchMock({ extractResponses = [], translateResponse = '[]' } = {})
       return mockResponse({ body: { choices: [{ message: { content: translateResponse } }] } });
     }
     calls.extract.push(userMsg);
-    const content = extractResponses[extractIdx++] ?? extractResponses[extractResponses.length - 1] ?? '[]';
+    let content;
+    if (extractByContent) {
+      const hit = Object.entries(extractByContent).find(([needle]) => userMsg.includes(needle));
+      content = hit ? hit[1] : '[]';
+    } else {
+      content = extractResponses[extractIdx++] ?? extractResponses[extractResponses.length - 1] ?? '[]';
+    }
     return mockResponse({ body: { choices: [{ message: { content } }] } });
   };
   return { impl, calls };
@@ -107,8 +125,15 @@ test('PoeTranslator.buildDictionary: small book → 1 extract + 1 translate, ent
 });
 
 test('PoeTranslator.buildDictionary: multiple chapters → one extract call per chapter, entries carry their chapter origin', async () => {
+  // Match by chunk content rather than arrival order — extract calls are
+  // dispatched concurrently and may resolve out of input order once the
+  // dictionary cache adds an extra await before the network call.
   const { impl, calls } = dictFetchMock({
-    extractResponses: ['["A"]', '["B"]', '["A", "C"]'],
+    extractByContent: {
+      [`# One\n\n${'x'.repeat(150)}`]:   '["A"]',
+      [`# Two\n\n${'y'.repeat(150)}`]:   '["B"]',
+      [`# Three\n\n${'z'.repeat(150)}`]: '["A", "C"]',
+    },
     translateResponse: '[{"term":"A","translation":"а"},{"term":"B","translation":"б"},{"term":"C","translation":"в"}]',
   });
   const restore = withFetch(impl);
@@ -257,18 +282,221 @@ test('PoeTranslator.translateParagraph: always uses the main model, ignores dict
   } finally { restore(); }
 });
 
-test('PoeTranslator.buildDictionary: extract prompt explicitly asks for real-world references', async () => {
-  const { impl, calls } = dictFetchMock({ extractResponses: ['[]'] });
-  const restore = withFetch(impl);
+// Set up an in-process pinyin-pro stub on globalThis so the offline
+// Palladius pipeline (palladius.js → pinyin-pro → syllable table) has
+// the data it needs in Node tests. Browser code uses real pinyin-pro
+// from the CDN script tag.
+function withPinyinPro(fixture) {
+  const prev = globalThis.pinyinPro;
+  globalThis.pinyinPro = {
+    pinyin: (text) => fixture[text] ?? text,
+  };
+  return () => { globalThis.pinyinPro = prev; };
+}
+
+test('PoeTranslator.buildDictionary: Palladius is OFF by default — no hints injected, no pinyin-pro consulted', async () => {
+  // Stub pinyin-pro to fail loudly if it's invoked; the gate must
+  // short-circuit before we ever look it up.
+  const restorePinyin = withPinyinPro(new Proxy({}, {
+    get() { throw new Error('pinyin-pro should not be invoked when usePalladius is off'); },
+  }));
+  let translateUserMsg = null;
+  let translateSystemMsg = null;
+  const restore = withFetch(async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (user.startsWith('Terms:')) {
+      translateUserMsg = user;
+      translateSystemMsg = body.messages.find(m => m.role === 'system')?.content ?? '';
+      return mockResponse({ body: { choices: [{ message: { content:
+        '[{"term":"阮眠","translation":"Жуань","notes":""}]'
+      } }] } });
+    }
+    return mockResponse({ body: { choices: [{ message: { content: '["阮眠"]' } }] } });
+  });
+  try {
+    // No usePalladius set → falsy → Palladius gate is closed.
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: '阮眠.' }] }]);
+    assert.doesNotMatch(translateUserMsg, /Palladius:/);
+    assert.doesNotMatch(translateSystemMsg, /Palladius/);
+  } finally { restore(); restorePinyin(); }
+});
+
+test('PoeTranslator.buildDictionary: with usePalladius=true, transliterations land in the translate-prompt as hints', async () => {
+  const restorePinyin = withPinyinPro({ '阮眠': 'ruan mian', '方茹清': 'fang ru qing' });
+  let translateUserMsg = null;
+  let translateSystemMsg = null;
+  const restore = withFetch(async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (user.startsWith('Terms:')) {
+      translateUserMsg = user;
+      translateSystemMsg = body.messages.find(m => m.role === 'system')?.content ?? '';
+      return mockResponse({ body: { choices: [{ message: { content:
+        '[{"term":"阮眠","translation":"Жуань Мянь","notes":""},{"term":"方茹清","translation":"Фан Жу Цин","notes":""}]'
+      } }] } });
+    }
+    return mockResponse({ body: { choices: [{ message: { content: '["阮眠", "方茹清"]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x', usePalladius: true });
+    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: '阮眠 met 方茹清.' }] }]);
+    // Each CJK term is annotated with its Palladius output in the user msg.
+    assert.match(translateUserMsg, /阮眠 \(Palladius: Жуань Мянь\)/);
+    assert.match(translateUserMsg, /方茹清 \(Palladius: Фан Жу Цин\)/);
+    // System prompt acquires the Palladius-usage instructions when hints exist.
+    assert.match(translateSystemMsg, /Palladius/);
+  } finally { restore(); restorePinyin(); }
+});
+
+test('PoeTranslator.buildDictionary: no Palladius call and no annotation when there are no CJK terms', async () => {
+  let pinyinCalled = 0;
+  const restorePinyin = withPinyinPro(new Proxy({}, {
+    get() { pinyinCalled++; throw new Error('pinyin-pro should not be invoked when no CJK terms'); },
+  }));
+  let translateUserMsg = null;
+  let translateSystemMsg = null;
+  const restore = withFetch(async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (user.startsWith('Terms:')) {
+      translateUserMsg = user;
+      translateSystemMsg = body.messages.find(m => m.role === 'system')?.content ?? '';
+      return mockResponse({ body: { choices: [{ message: { content:
+        '[{"term":"Hogwarts","translation":"Хогвартс","notes":"school"}]'
+      } }] } });
+    }
+    return mockResponse({ body: { choices: [{ message: { content: '["Hogwarts"]' } }] } });
+  });
   try {
     const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
-    await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'text' }] }]);
-    // Which *system* prompt triggered this extract call — we need to look
-    // at the messages, but dictFetchMock collects the user msg. Build our
-    // own inspector here.
-  } finally { restore(); }
+    const dict = await t.buildDictionary([{ title: 'c', paragraphs: [{ original: 'Hogwarts is a school.' }] }]);
+    assert.equal(dict[0].translation, 'Хогвартс');
+    assert.equal(pinyinCalled, 0);
+    assert.doesNotMatch(translateUserMsg, /Palladius:/);
+    assert.doesNotMatch(translateSystemMsg, /Palladius/);
+  } finally { restore(); restorePinyin(); }
+});
 
-  // Use an inline mock to peek at the system prompt.
+test('PoeTranslator.buildDictionary: with usePalladius=true but pinyin-pro missing, gracefully falls back to no hints', async () => {
+  // Simulate the "pinyin-pro hasn't loaded yet" failure mode.
+  const prev = globalThis.pinyinPro;
+  delete globalThis.pinyinPro;
+  let translateUserMsg = null;
+  const restore = withFetch(async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (user.startsWith('Terms:')) {
+      translateUserMsg = user;
+      return mockResponse({ body: { choices: [{ message: { content:
+        '[{"term":"阮眠","translation":"Жуань","notes":""}]'
+      } }] } });
+    }
+    return mockResponse({ body: { choices: [{ message: { content: '["阮眠"]' } }] } });
+  });
+  const prevWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x', usePalladius: true });
+    const dict = await t.buildDictionary([{ title: 'c', paragraphs: [{ original: '阮眠.' }] }]);
+    // No Palladius annotation in the prompt — fallback to the bare term form.
+    assert.doesNotMatch(translateUserMsg, /Palladius:/);
+    // LLM result survives intact.
+    assert.equal(dict[0].translation, 'Жуань');
+  } finally {
+    console.warn = prevWarn;
+    restore();
+    globalThis.pinyinPro = prev;
+  }
+});
+
+test('PoeTranslator.buildBilingualDictionary: Palladius hints reference (Chinese) form into the translate-pairs prompt', async () => {
+  const restorePinyin = withPinyinPro({ '阮眠': 'ruan mian' });
+  let translateUserMsg = null;
+  const restore = withFetch(async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (user.startsWith('Pairs:')) {
+      translateUserMsg = user;
+      return mockResponse({ body: { choices: [{ message: { content:
+        '[{"term":"Ruan Mian","originalForm":"阮眠","translation":"Жуань Мянь","notes":""}]'
+      } }] } });
+    }
+    return mockResponse({ body: { choices: [{ message: { content: '[{"original":"Ruan Mian","reference":"阮眠"}]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x',
+      editorLanguage: 'English', referenceLanguage: 'Chinese', targetLanguage: 'Russian',
+      usePalladius: true });
+    const dict = await t.buildBilingualDictionary([{
+      title: 'Chapter One', paragraphs: [{ original: 'Ruan Mian arrived.' }],
+      referenceText: '# 第01章\n\n阮眠到了。',
+    }]);
+    // Pair line carries the Palladius annotation (offline-computed:
+    // pinyin-pro stub returns "ruan mian" → Palladius rules → "Жуань Мянь").
+    assert.match(translateUserMsg, /Ruan Mian {2}↔ {2}阮眠 \(Palladius: Жуань Мянь\)/);
+    assert.equal(dict[0].translation, 'Жуань Мянь');
+    assert.equal(dict[0].originalForm, '阮眠');
+  } finally { restore(); restorePinyin(); }
+});
+
+test('PoeTranslator.buildDictionary: identical input → second build hits cache, no fetches', async () => {
+  let fetchCalls = 0;
+  const restore = withFetch(async (_u, opts) => {
+    fetchCalls++;
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    const content = user.startsWith('Terms:')
+      ? '[{"term":"X","translation":"Х"}]'
+      : '["X"]';
+    return mockResponse({ body: { choices: [{ message: { content } }] } });
+  });
+  try {
+    const chapters = [{ title: 'c', paragraphs: [{ original: 'X is a thing.' }] }];
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const dict1 = await t.buildDictionary(chapters);
+    assert.equal(fetchCalls, 2, 'first build: 1 extract + 1 translate');
+    const dict2 = await t.buildDictionary(chapters);
+    assert.equal(fetchCalls, 2, 'second build: served from cache, no new fetches');
+    assert.deepEqual(dict1, dict2, 'cached result must match the original');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildDictionary: different model invalidates cache', async () => {
+  let fetchCalls = 0;
+  const restore = withFetch(async (_u, opts) => {
+    fetchCalls++;
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    return mockResponse({ body: { choices: [{ message: { content: user.startsWith('Terms:') ? '[]' : '[]' } }] } });
+  });
+  try {
+    const chapters = [{ title: 'c', paragraphs: [{ original: 'X is a thing.' }] }];
+    await new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' }).buildDictionary(chapters);
+    const after1 = fetchCalls;
+    await new PoeTranslator({ apiKey: 'k', model: 'M2', baseUrl: 'http://x' }).buildDictionary(chapters);
+    assert.ok(fetchCalls > after1, 'switching model must miss cache');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildDictionary: changing dictionaryGuidance invalidates cache', async () => {
+  let fetchCalls = 0;
+  const restore = withFetch(async () => {
+    fetchCalls++;
+    return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+  });
+  try {
+    const chapters = [{ title: 'c', paragraphs: [{ original: 'text' }] }];
+    await new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' }).buildDictionary(chapters);
+    const after1 = fetchCalls;
+    await new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x', dictionaryGuidance: 'NEW RULES' }).buildDictionary(chapters);
+    assert.ok(fetchCalls > after1, 'changing guidance changes the system prompt and must miss cache');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildDictionary: extract prompt explicitly asks for real-world references', async () => {
+  // Inline mock that captures the system prompt for the extract call.
   let extractSystem;
   const restore2 = withFetch(async (_u, opts) => {
     const body = JSON.parse(opts.body);
@@ -1034,6 +1262,254 @@ test('PoeTranslator.translateChapter: default preset is v2 — two-stage, native
     assert.match(all, /original Russian novel/);         // the target standard
     assert.match(all, /author's voice/);
     assert.match(all, /Never skip/);
+  } finally { restore(); }
+});
+
+// ---------- reference-text (bilingual mode) ----------
+//
+// When a chapter carries a `referenceText` field (the same chapter in a
+// second language, full blob), the translator passes it to the model as
+// an authoritative cross-check while still rendering output paragraph-
+// numbered against the chapter's own .paragraphs (the "original" side).
+// Used by the bilingual tool — the existing single-source editor never
+// sets the field, so its prompts must stay byte-identical.
+
+test('PoeTranslator.translateChapter: with referenceText — adds a user message labeling it source of truth', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateChapter(
+      { title: 'Ch', paragraphs: [{ original: 'Ruan Mian walked.' }],
+        referenceText: '阮眠走了过来。' },
+      [], []
+    );
+    const userMsgs = sentBody.messages.filter(m => m.role === 'user').map(m => m.content);
+    const refMsg = userMsgs.find(c => c.includes('阮眠走了过来。'));
+    assert.ok(refMsg, 'reference content must appear in a user message');
+    assert.match(refMsg, /reference|source of truth|authoritative/i);
+    // Numbered original still goes through verbatim.
+    const all = userMsgs.join('\n');
+    assert.match(all, /\[1\] Ruan Mian walked\./);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateChapter: WITHOUT referenceText — prompts are byte-identical to single-source mode', async () => {
+  // Capture both shapes and make sure the no-reference run looks exactly
+  // the same as it did before this feature existed (regression guard).
+  const captures = [];
+  const restore = withFetch(async (_url, opts) => {
+    captures.push(JSON.parse(opts.body));
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateChapter({ title: 'Ch', paragraphs: [{ original: 'Foo.' }] }, [], []);
+    const userContents = captures[0].messages.filter(m => m.role === 'user').map(m => m.content);
+    // No "REFERENCE"-labelled or "source of truth" message should leak.
+    for (const c of userContents) assert.doesNotMatch(c, /source of truth|REFERENCE \(/);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateChapter: empty/whitespace referenceText is treated as absent', async () => {
+  const captures = [];
+  const restore = withFetch(async (_url, opts) => {
+    captures.push(JSON.parse(opts.body));
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateChapter(
+      { title: 'Ch', paragraphs: [{ original: 'Foo.' }], referenceText: '   \n  ' },
+      [], []
+    );
+    const userContents = captures[0].messages.filter(m => m.role === 'user').map(m => m.content);
+    for (const c of userContents) assert.doesNotMatch(c, /source of truth/);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: with context.referenceText — adds a chapter-blob reference message', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '.' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateParagraph(
+      { original: 'Ruan Mian walked.' },
+      'default', [],
+      { referenceText: '阮眠走了过来。这一刻。' }
+    );
+    const userMsgs = sentBody.messages.filter(m => m.role === 'user').map(m => m.content);
+    const refMsg = userMsgs.find(c => c.includes('阮眠走了过来。这一刻。'));
+    assert.ok(refMsg, 'reference content must appear in a user message');
+    assert.match(refMsg, /reference|source of truth|authoritative/i);
+  } finally { restore(); }
+});
+
+// ---------- buildBilingualDictionary ----------
+//
+// Two-source dictionary build: the user's "original" side (e.g. English)
+// is what model paragraphs are numbered against; the reference side
+// (e.g. Chinese) is the canonical/identity anchor for names. Each
+// chapter passes BOTH blobs through the extract phase, asking the model
+// for {english, chinese} term pairs. Merge dedupes pairs across chapters
+// (one entry per pair, with chapter origins). Translate-pairs phase
+// produces final {term, originalForm, translation, notes, chapters}.
+//
+// Helper for the bilingual flow: extract calls echo a JSON array of
+// {original, reference} (or whatever shape implementation chooses);
+// translate calls (recognized by the "Pairs:" or "Terms:" prefix in the
+// user message) echo the translated objects.
+function bilingualDictFetchMock({ extractResponses = [], translateResponse = '[]' } = {}) {
+  const calls = { extract: [], translate: [] };
+  let extractIdx = 0;
+  const impl = async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    const userMsg = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (userMsg.startsWith('Pairs:') || userMsg.startsWith('Terms:')) {
+      calls.translate.push(userMsg);
+      return mockResponse({ body: { choices: [{ message: { content: translateResponse } }] } });
+    }
+    calls.extract.push({ user: userMsg, system: body.messages.find(m => m.role === 'system')?.content ?? '' });
+    const content = extractResponses[extractIdx++] ?? extractResponses[extractResponses.length - 1] ?? '[]';
+    return mockResponse({ body: { choices: [{ message: { content } }] } });
+  };
+  return { impl, calls };
+}
+
+test('PoeTranslator.buildBilingualDictionary: extract sees both original chunk and reference blob', async () => {
+  const { impl, calls } = bilingualDictFetchMock({
+    extractResponses: ['[{"original":"Ruan Mian","reference":"阮眠"}]'],
+    translateResponse: '[{"term":"Ruan Mian","originalForm":"阮眠","translation":"Жуань Мянь","notes":"protagonist"}]',
+  });
+  const restore = withFetch(impl);
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x',
+      targetLanguage: 'Russian', originalLanguage: 'English', referenceLanguage: 'Chinese',
+    });
+    const dict = await t.buildBilingualDictionary([{
+      title: 'Ch 1',
+      paragraphs: [{ original: 'Ruan Mian arrived.' }],
+      referenceText: '阮眠到了。',
+    }]);
+    assert.equal(calls.extract.length, 1);
+    assert.equal(calls.translate.length, 1);
+    // Extract call's user message must contain BOTH sides.
+    assert.match(calls.extract[0].user, /Ruan Mian arrived/);
+    assert.match(calls.extract[0].user, /阮眠到了/);
+    // Result has the bilingual shape.
+    assert.equal(dict.length, 1);
+    assert.equal(dict[0].term, 'Ruan Mian');
+    assert.equal(dict[0].originalForm, '阮眠');
+    assert.equal(dict[0].translation, 'Жуань Мянь');
+    assert.deepEqual(dict[0].chapters, [0]);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildBilingualDictionary: pairs are deduped across chapters; chapters[] aggregates', async () => {
+  const { impl, calls } = bilingualDictFetchMock({
+    extractResponses: [
+      '[{"original":"Ruan Mian","reference":"阮眠"}]',
+      '[{"original":"Ruan Mian","reference":"阮眠"},{"original":"Pingjiang","reference":"平江"}]',
+    ],
+    translateResponse: '[{"term":"Ruan Mian","originalForm":"阮眠","translation":"Жуань Мянь","notes":""},{"term":"Pingjiang","originalForm":"平江","translation":"Пинцзян","notes":""}]',
+  });
+  const restore = withFetch(impl);
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const dict = await t.buildBilingualDictionary([
+      { title: 'Ch 1', paragraphs: [{ original: 'Ruan Mian arrived.' }], referenceText: '阮眠到了。' },
+      { title: 'Ch 2', paragraphs: [{ original: 'Ruan Mian in Pingjiang.' }], referenceText: '阮眠在平江。' },
+    ]);
+    // Translate call must list each pair only once (deduped).
+    assert.equal((calls.translate[0].match(/Ruan Mian/g) || []).length, 1, 'merged list must dedupe');
+    assert.equal(dict.length, 2);
+    const byTerm = Object.fromEntries(dict.map(e => [e.term, e]));
+    assert.deepEqual(byTerm['Ruan Mian'].chapters, [0, 1]);
+    assert.deepEqual(byTerm['Pingjiang'].chapters, [1]);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildBilingualDictionary: extract prompt mentions BOTH languages and asks for pair output', async () => {
+  let extractSystem;
+  const restore = withFetch(async (_u, opts) => {
+    const body = JSON.parse(opts.body);
+    const user = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (user.startsWith('Pairs:') || user.startsWith('Terms:')) {
+      return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+    }
+    extractSystem = body.messages.find(m => m.role === 'system')?.content;
+    return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x',
+      originalLanguage: 'English', referenceLanguage: 'Chinese',
+    });
+    await t.buildBilingualDictionary([{ title: 'c', paragraphs: [{ original: 'x' }], referenceText: '中' }]);
+    assert.match(extractSystem, /English/);
+    assert.match(extractSystem, /Chinese/);
+    // Output schema mentions both keys.
+    assert.match(extractSystem, /original.*reference|both.*forms/i);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildBilingualDictionary: no pairs extracted → no translate call, empty dict', async () => {
+  const { impl, calls } = bilingualDictFetchMock({ extractResponses: ['[]'] });
+  const restore = withFetch(impl);
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const dict = await t.buildBilingualDictionary([{
+      title: 'c', paragraphs: [{ original: 'x' }], referenceText: '中',
+    }]);
+    assert.equal(dict.length, 0);
+    assert.equal(calls.translate.length, 0);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.buildBilingualDictionary: dictionaryGuidance is forwarded to both phases', async () => {
+  const sys = { extract: null, translate: null };
+  const restore = withFetch(async (_u, opts) => {
+    const body = JSON.parse(opts.body);
+    const userMsg = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (userMsg.startsWith('Pairs:')) {
+      sys.translate = body.messages.find(m => m.role === 'system')?.content;
+      return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+    }
+    sys.extract = body.messages.find(m => m.role === 'system')?.content;
+    return mockResponse({ body: { choices: [{ message: { content: '[{"original":"X","reference":"Y"}]' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x',
+      dictionaryGuidance: 'Use Palladius for transliteration.',
+    });
+    await t.buildBilingualDictionary([{
+      title: 'c', paragraphs: [{ original: 'x' }], referenceText: '中',
+    }]);
+    assert.match(sys.extract, /Palladius/);
+    assert.match(sys.translate, /Palladius/);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: WITHOUT context.referenceText — no reference message in prompt', async () => {
+  let sentBody;
+  const restore = withFetch(async (_url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '.' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    await t.translateParagraph({ original: 'Foo.' }, 'default', []);
+    for (const m of sentBody.messages) {
+      if (m.role === 'user') assert.doesNotMatch(m.content, /source of truth|REFERENCE \(/);
+    }
   } finally { restore(); }
 });
 

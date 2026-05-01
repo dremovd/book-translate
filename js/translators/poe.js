@@ -17,8 +17,10 @@ import {
   formatDictionary,
   chunkBookText,
   mergeTermsWithSources,
+  mergeBilingualPairsWithSources,
   dialogConventionsFor,
 } from './format.js';
+import { palladiusTransliterate, isMostlyCJK } from '../palladius.js';
 
 // Default chunk size for dictionary term extraction, in characters.
 // ~400 000 chars ≈ ~100 k tokens at 4 chars/token — sized for modern
@@ -80,6 +82,32 @@ export class PoeTranslator {
     return content;
   }
 
+  // Same as chat(), but caches the model response in localforage keyed
+  // by SHA-256 of (model, messages). Used by the four dictionary phases
+  // (extract / translate-terms, plus their bilingual variants), where
+  // the same chunk + prompt + model deterministically produces the same
+  // JSON output. Re-running a dictionary build (e.g. after refining
+  // guidance for a different chapter, or pasting the same book again)
+  // should not re-hit the API for chunks that haven't changed.
+  //
+  // The cache key includes the full messages payload, so any change to
+  // the system prompt (target language, guidance, prompt template) or
+  // the user content (chunk text) invalidates the entry automatically.
+  // Falls through to plain chat() when localforage / crypto.subtle is
+  // unavailable.
+  async _chatCached(messages, opts = {}) {
+    const model = opts.model || this.config.model;
+    const lf = globalThis.localforage;
+    const subtle = globalThis.crypto?.subtle;
+    if (!lf || !subtle) return this.chat(messages, opts);
+    const key = `poe-dict-cache:v1:${await sha256Hex(JSON.stringify({ model, messages }))}`;
+    const cached = await lf.getItem(key);
+    if (cached != null) return cached;
+    const content = await this.chat(messages, opts);
+    await lf.setItem(key, content);
+    return content;
+  }
+
   // Dictionary phases (extract + translate-terms) can use a separate,
   // optionally cheaper/faster model. Falls back to the main model if
   // `dictionaryModel` is unset or blank.
@@ -128,8 +156,19 @@ export class PoeTranslator {
     const merged = mergeTermsWithSources(results);
     if (merged.length === 0) return [];
 
+    // Run algorithmic Palladius BEFORE the translate call so its output
+    // can be fed to the model as a hint per-term. The LLM is then asked
+    // to start from the Palladius transliteration for proper nouns and
+    // override only when a canonical published rendering exists. This
+    // beats the LLM's habit of inventing fresh transliterations that
+    // drift from the standard scheme.
+    const palladius = await this._safePalladius(merged.map(m => m.term));
+
     onProgress?.({ stage: 'translate', current: 0, total: 1 });
-    const translated = await this._translateTerms(merged.map(m => m.term), lang);
+    const translated = await this._translateTerms(
+      merged.map(m => ({ term: m.term, palladius: palladius.get(m.term) || '' })),
+      lang,
+    );
     onProgress?.({ stage: 'translate', current: 1, total: 1 });
 
     // Attach chapter provenance to each translated entry. Entries whose
@@ -141,8 +180,175 @@ export class PoeTranslator {
     }));
   }
 
+  // Bilingual dictionary build: like buildDictionary but each chapter
+  // carries a `referenceText` blob (the same chapter in a second
+  // language). Extract phase asks the model for {original, reference}
+  // pairs by reading both blobs side-by-side; translate phase produces
+  // {term, originalForm, translation, notes}. The result feeds the
+  // bilingual translator's prompts (formatDictionary surfaces
+  // `originalForm` in the glossary line).
+  async buildBilingualDictionary(chapters, { onProgress } = {}) {
+    const lang     = this.config.targetLanguage      || 'the target language';
+    // editorLang = the language whose paragraphs the user reads/edits.
+    // refLang    = the canonical source-of-truth language (chapter blob).
+    const editorLang = this.config.editorLanguage   || this.config.originalLanguage || 'the editor language';
+    const refLang  = this.config.referenceLanguage   || 'the reference language';
+
+    const work = (chapters || []).filter(ch => ch && ch.paragraphs?.length);
+    const total = work.length;
+    onProgress?.({ stage: 'extract', current: 0, total });
+
+    let done = 0;
+    const chunkResults = await mapBatched(
+      work, DICT_EXTRACT_CONCURRENCY,
+      async (ch) => {
+        const idx = chapters.indexOf(ch);
+        const heading = `# ${ch.title}`;
+        const body = ch.paragraphs.map(p => p.original).join('\n\n');
+        const originalChunk  = `${heading}\n\n${body}`;
+        const referenceChunk = (ch.referenceText || '').trim();
+        const pairs = await this._extractBilingualPairs(originalChunk, referenceChunk, editorLang, refLang);
+        done++;
+        onProgress?.({ stage: 'extract', current: done, total });
+        return { pairs, chapterIndices: [idx] };
+      },
+    );
+
+    const merged = mergeBilingualPairsWithSources(chunkResults);
+    if (merged.length === 0) return [];
+
+    // Same Palladius-first pattern as buildDictionary, but applied to
+    // the Chinese `reference` side (the bilingual term identity is the
+    // pair, but the transliteration always belongs to the CJK form).
+    const palladius = await this._safePalladius(merged.map(m => m.reference));
+
+    onProgress?.({ stage: 'translate', current: 0, total: 1 });
+    const translated = await this._translateBilingualPairs(
+      merged.map(({ original, reference }) => ({
+        original, reference,
+        palladius: palladius.get(reference) || '',
+      })),
+      lang, editorLang, refLang,
+    );
+    onProgress?.({ stage: 'translate', current: 1, total: 1 });
+
+    // Re-attach chapter provenance, keyed on the (term, originalForm)
+    // identity since either side alone could collide (e.g. one English
+    // form that two distinct Chinese names share, or vice versa).
+    const chaptersByPair = new Map(
+      merged.map(m => [`${m.original}|${m.reference}`, m.chapters])
+    );
+    return translated.map(e => ({
+      ...e,
+      chapters: chaptersByPair.get(`${e.term}|${e.originalForm}`) ?? [],
+    }));
+  }
+
+  // Best-effort Palladius lookup over a list of source strings. Returns
+  // a Map (possibly empty) of input → Cyrillic transliteration. Gated
+  // on the `usePalladius` config flag (off by default) — Palladius is
+  // a strong opinion about how Chinese names should look in Russian,
+  // and not every translation project wants it imposed before the
+  // model has even seen the term.
+  //
+  // Palladius runs offline (pinyin-pro on the page + the syllable table
+  // in palladius.js); the try/catch covers the case where pinyin-pro
+  // hasn't loaded yet, so the dictionary build degrades to no-hint
+  // rather than crashing.
+  async _safePalladius(sources) {
+    if (!this.config.usePalladius) return new Map();
+    const cjkOnly = (sources || []).filter(s => s && isMostlyCJK(s));
+    if (cjkOnly.length === 0) return new Map();
+    try {
+      return await palladiusTransliterate(cjkOnly);
+    } catch (e) {
+      if (typeof console !== 'undefined') {
+        console.warn('Palladius lookup failed; LLM will translate without algorithmic hints.', e);
+      }
+      return new Map();
+    }
+  }
+
+  async _extractBilingualPairs(originalChunk, referenceChunk, editorLang, refLang) {
+    const content = await this._chatCached([
+      {
+        role: 'system',
+        content:
+          `You extract terms that need consistent translation across chapters of a novel. ` +
+          `The same chapter is provided in TWO languages — ${editorLang} (the user's working text) and ${refLang} (the canonical reference). ` +
+          `For each term, provide BOTH forms: the ${editorLang} form (as it appears in the ${editorLang} text) and the ${refLang} form (as it appears in the ${refLang} text). ` +
+          `Include:\n` +
+          `- Proper nouns (characters, places, organizations).\n` +
+          `- Invented words, neologisms, fictional species.\n` +
+          `- Recurring technical, academic, or stylistic terms.\n` +
+          `- Titles, honorifics, and forms of address.\n` +
+          `- Real-world references embedded in the text: titles of books, films, songs, plays, papers, institutions, theories, and names of historical or public figures.\n\n` +
+          this._guidanceSection() +
+          `Respond with ONLY a JSON array of objects {"original": "...", "reference": "..."} where "original" is the ${editorLang} form and "reference" is the ${refLang} form. No prose, no code fences.`,
+      },
+      {
+        role: 'user',
+        content:
+          `${editorLang.toUpperCase()} CHUNK:\n\n${originalChunk}\n\n` +
+          `---\n\n${refLang.toUpperCase()} REFERENCE (same chapter):\n\n${referenceChunk || '(none provided)'}`,
+      },
+    ], { model: this._dictionaryModel() });
+    const arr = parseJsonArray(content);
+    return arr
+      .map(x => ({
+        original:  String(x?.original  ?? '').trim(),
+        reference: String(x?.reference ?? '').trim(),
+      }))
+      .filter(p => p.original);
+  }
+
+  // Pairs shape: [{ original, reference, palladius? }]. The palladius
+  // field is the Cyrillic Palladius transliteration of `reference` (the
+  // CJK side) and is shown to the model as a per-pair default for
+  // character / place names.
+  async _translateBilingualPairs(pairs, lang, editorLang, refLang) {
+    const list = pairs || [];
+    const hasPalladius = list.some(p => p.palladius);
+    const palladiusBlock = hasPalladius
+      ? `Some pairs include a "Palladius:" annotation — that is the algorithmic ${lang} Palladius transliteration of the ${refLang} form. Use it as the default translation for character / place names. Override only when a canonical published ${lang} rendering exists (real-world books, films, historical figures, well-known foreign-language proper names). Do not invent a fresh transliteration when a Palladius hint is present.\n\n`
+      : '';
+    const content = await this._chatCached([
+      {
+        role: 'system',
+        content:
+          `You produce a translation dictionary into ${lang} for a novel. ` +
+          `Each input is a {original, reference} pair — "original" is the ${editorLang} form, "reference" is the canonical ${refLang} form. ` +
+          `For each pair, provide a single best translation into ${lang} and optional short notes (gender, transliteration scheme, role). ` +
+          `Use the ${refLang} form as the identity anchor for transliteration: prefer the canonical ${lang} rendering of the ${refLang} term over a fresh transliteration of the ${editorLang} form. ` +
+          `For real-world references (titles of books / films / songs / papers, institutions, theories, historical or public figures), use the canonical published ${lang} translation when one exists. ` +
+          palladiusBlock +
+          this._guidanceSection() +
+          `Respond with ONLY a JSON array of objects {"term": string, "originalForm": string, "translation": string, "notes": string}, ` +
+          `where "term" is the ${editorLang} form (copied from input.original) and "originalForm" is the ${refLang} form (copied from input.reference). No prose, no code fences.`,
+      },
+      {
+        role: 'user',
+        content:
+          `Pairs:\n\n` +
+          list.map(p => p.palladius
+            ? `- ${p.original}  ↔  ${p.reference} (Palladius: ${p.palladius})`
+            : `- ${p.original}  ↔  ${p.reference}`
+          ).join('\n'),
+      },
+    ], { model: this._dictionaryModel() });
+    const arr = parseJsonArray(content);
+    return arr
+      .map(e => ({
+        term:         String(e?.term         ?? '').trim(),
+        originalForm: String(e?.originalForm ?? '').trim(),
+        translation:  String(e?.translation  ?? '').trim(),
+        notes:        String(e?.notes        ?? '').trim(),
+      }))
+      .filter(e => e.term && e.translation);
+  }
+
   async _extractTerms(chunkText, lang) {
-    const content = await this.chat([
+    const content = await this._chatCached([
       {
         role: 'system',
         content:
@@ -161,20 +367,35 @@ export class PoeTranslator {
     return arr.map(x => (x == null ? '' : String(x))).filter(Boolean);
   }
 
-  async _translateTerms(terms, lang) {
-    const content = await this.chat([
+  // Items shape: [{ term: string, palladius?: string }]. The palladius
+  // field carries the raw Cyrillic transliteration produced by the
+  // Palladius post-processor for CJK terms; it shows up in the prompt
+  // as a per-term hint the model should adopt for proper nouns unless
+  // a canonical published translation exists.
+  async _translateTerms(items, lang) {
+    const list = (items || []).map(x =>
+      typeof x === 'string' ? { term: x, palladius: '' } : x
+    );
+    const hasPalladius = list.some(x => x.palladius);
+    const palladiusBlock = hasPalladius
+      ? `Some terms include a "Palladius:" annotation — that is the algorithmic Russian Palladius transliteration of the Chinese form. Use it as the default translation for character / place names. Override only when a canonical published translation exists in ${lang} (e.g. real-world books, films, historical figures, well-known foreign-language proper names). Do not invent a fresh transliteration when a Palladius hint is present.\n\n`
+      : '';
+    const content = await this._chatCached([
       {
         role: 'system',
         content:
           `You produce a translation dictionary for book translation into ${lang}. ` +
           `For each input term, provide a single best translation and optional short notes (gender, transliteration scheme, role). ` +
           `For real-world references (titles of books / films / songs / papers, institutions, theories, historical or public figures), use the canonical published translation into ${lang} when one exists — prefer the standard rendering over a fresh translation, and note it (e.g. "canonical", "standard published title", "Росмэн"). ` +
+          palladiusBlock +
           this._guidanceSection() +
           `Respond with ONLY a JSON array of objects {"term": string, "translation": string, "notes": string}. No prose, no code fences.`,
       },
       {
         role: 'user',
-        content: `Terms:\n\n${terms.map(t => `- ${t}`).join('\n')}`,
+        content: `Terms:\n\n${list.map(x =>
+          x.palladius ? `- ${x.term} (Palladius: ${x.palladius})` : `- ${x.term}`
+        ).join('\n')}`,
       },
     ], { model: this._dictionaryModel() });
     return normalizeDictionary(parseJsonArray(content));
@@ -227,6 +448,19 @@ export class PoeTranslator {
       messages.push({
         role: 'user',
         content: `Previously accepted chapters (for style and terminology reference):\n\n${priorStr}`,
+      });
+    }
+    // Bilingual mode: when a reference-language version of the same chapter
+    // is supplied, it's the model's source of truth for meaning, names,
+    // and idioms — but the output still mirrors the .paragraphs side's
+    // numbering, so the editable column lines up with what the user sees.
+    const refText = (chapter.referenceText || '').trim();
+    if (refText) {
+      messages.push({
+        role: 'user',
+        content:
+          `REFERENCE (source of truth for meaning, names, idioms — full chapter, ` +
+          `consult while translating but do NOT mirror its phrasing in your output):\n\n${refText}`,
       });
     }
     messages.push({
@@ -307,6 +541,19 @@ export class PoeTranslator {
       messages.push({
         role: 'user',
         content: `Preceding paragraphs in this chapter (for tone and continuity):\n\n${priorStr}`,
+      });
+    }
+    // Bilingual mode: full reference-language chapter as source-of-truth
+    // context. Lets the model find the corresponding passage on the
+    // reference side and translate from its meaning, while the output
+    // still corresponds to the original-side paragraph being retranslated.
+    const refText = (context.referenceText || '').trim();
+    if (refText) {
+      messages.push({
+        role: 'user',
+        content:
+          `REFERENCE (source of truth for meaning, names, idioms — full chapter, ` +
+          `find the passage that corresponds to the paragraph below and translate from it):\n\n${refText}`,
       });
     }
     messages.push({
@@ -494,6 +741,15 @@ function isWrappedInMatchingQuotes(text) {
     if (text[0] === open && text[text.length - 1] === close) return true;
   }
   return false;
+}
+
+// SHA-256 hex digest of a string. Used as the dictionary-cache key —
+// short, stable, collision-resistant. Available in browsers and Node
+// 19+ via globalThis.crypto.subtle; the caller checks before invoking.
+async function sha256Hex(str) {
+  const buf = new TextEncoder().encode(str);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // Promise.all with a concurrency cap. Preserves input order.

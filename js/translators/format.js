@@ -64,7 +64,18 @@ export function chapterTranslationText(chapter) {
 export function formatDictionary(dictionary) {
   if (!dictionary.length) return '(empty)';
   return dictionary
-    .map(d => `- ${d.term} → ${d.translation}${d.notes ? `  (${d.notes})` : ''}`)
+    .map(d => {
+      // Bilingual entries carry `originalForm` — the canonical form in
+      // the reference language (e.g. the Chinese characters when the
+      // user's "original" side is English). Surface it before notes so
+      // the model can pin canonical names without being confused by the
+      // English transliteration's spelling.
+      const parts = [];
+      if (d.originalForm) parts.push(`originally ${d.originalForm}`);
+      if (d.notes)        parts.push(d.notes);
+      const tail = parts.length ? `  (${parts.join('; ')})` : '';
+      return `- ${d.term} → ${d.translation}${tail}`;
+    })
     .join('\n');
 }
 
@@ -153,6 +164,55 @@ export function chunkBookText(chapters, maxChars) {
   return chunks;
 }
 
+// Render the bilingual dictionary as a Markdown table for export. Columns
+// are named by the user's actual languages (e.g. Chinese / English /
+// Russian) so the file is self-describing. Chapter provenance is
+// internal bookkeeping for the model's per-chapter prompt filtering —
+// not useful in the exported file, so it's not emitted.
+export function renderDictionaryMarkdown(dictionary, opts = {}) {
+  const target    = opts.targetLanguage    || 'Translation';
+  // Bilingual dictionaries pass `referenceLanguage` and carry per-entry
+  // `originalForm` (the canonical reference-language form). Single-source
+  // dictionaries pass neither — render a 3-column table (Term · target ·
+  // Notes) so the export reflects the data the user actually has.
+  const isBilingual = !!opts.referenceLanguage;
+  if (isBilingual) {
+    const editor    = opts.editorLanguage    || 'Editor';
+    const reference = opts.referenceLanguage;
+    const lines = [`# Dictionary — ${reference} / ${editor} → ${target}`, ''];
+    if (!dictionary?.length) return lines.join('\n') + '\n';
+    const headerCols = [reference, editor, target, 'Notes'];
+    lines.push('| ' + headerCols.join(' | ') + ' |');
+    lines.push('| ' + headerCols.map(() => '---').join(' | ') + ' |');
+    for (const d of dictionary) {
+      lines.push('| ' + [
+        cell(d.originalForm),
+        cell(d.term),
+        cell(d.translation),
+        cell(d.notes),
+      ].join(' | ') + ' |');
+    }
+    return lines.join('\n') + '\n';
+  }
+  const lines = [`# Dictionary — ${target}`, ''];
+  if (!dictionary?.length) return lines.join('\n') + '\n';
+  const headerCols = ['Term', target, 'Notes'];
+  lines.push('| ' + headerCols.join(' | ') + ' |');
+  lines.push('| ' + headerCols.map(() => '---').join(' | ') + ' |');
+  for (const d of dictionary) {
+    lines.push('| ' + [
+      cell(d.term),
+      cell(d.translation),
+      cell(d.notes),
+    ].join(' | ') + ' |');
+  }
+  return lines.join('\n') + '\n';
+}
+
+// Pipe is the table-cell separator; escape any inside cell content so a
+// stray `|` in a name or note doesn't blow up the row.
+const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n+/g, ' ');
+
 // Render translated chapters from indices 0..uptoIndex as a single Markdown
 // document of the same shape the parser accepts (so the output can be
 // re-imported round-trip). Chapters still in `status: 'pending'` are
@@ -200,6 +260,40 @@ export function mergeTermsWithSources(chunkResults) {
     .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
     .map(([term, { count, chapters }]) => ({
       term,
+      chapters: [...chapters].sort((a, b) => a - b),
+      frequency: count,
+    }));
+}
+
+// Bilingual sibling of mergeTermsWithSources: each chunk yielded a list
+// of {original, reference} pairs (the same term in two languages); this
+// dedupes the merged pair set and accumulates each pair's chapter set.
+// Identity is the (original, reference) tuple — two different reference
+// forms for the same original (or vice versa) stay as separate entries.
+// Input:  [{ pairs: [{original, reference}], chapterIndices: number[] }]
+// Output: [{ original, reference, chapters: number[], frequency }]
+//         sorted by frequency desc, ties broken alphabetically by original.
+export function mergeBilingualPairsWithSources(chunkResults) {
+  const byKey = new Map();
+  for (const r of chunkResults) {
+    if (!r || !Array.isArray(r.pairs)) continue;
+    for (const raw of r.pairs) {
+      const original  = String(raw?.original  ?? '').trim();
+      const reference = String(raw?.reference ?? '').trim();
+      if (!original) continue;
+      const key = `${original}|${reference}`;
+      let entry = byKey.get(key);
+      if (!entry) { entry = { original, reference, count: 0, chapters: new Set() }; byKey.set(key, entry); }
+      entry.count++;
+      if (Array.isArray(r.chapterIndices)) {
+        for (const ci of r.chapterIndices) entry.chapters.add(ci);
+      }
+    }
+  }
+  return [...byKey.values()]
+    .sort((a, b) => b.count - a.count || a.original.localeCompare(b.original))
+    .map(({ original, reference, count, chapters }) => ({
+      original, reference,
       chapters: [...chapters].sort((a, b) => a - b),
       frequency: count,
     }));

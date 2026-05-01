@@ -216,6 +216,14 @@ article[role="alert"] .close {
 
 .ab-reveal li { font-size: 0.85rem; line-height: 1.5; margin-bottom: 0.25rem; }
 
+/* Bilingual setup: chapter-count mismatch warning. Pico's role="alert"
+   defaults to error red; soften to amber for a non-blocking heads-up. */
+article[role="alert"].warning {
+  background: #fff8e1;
+  border-color: #ffb74d;
+  color: #855600;
+}
+
 @media (max-width: 700px) {
   .abtest-running .ab-pair { grid-template-columns: 1fr; }
 }
@@ -446,6 +454,13 @@ input.translation.title-row:focus {
 }
 
 .editor-actions button { margin: 0; }
+
+.translation-stats {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--pico-muted-color);
+  text-align: right;
+}
 
 /* ---------- dictionary table ---------- */
 
