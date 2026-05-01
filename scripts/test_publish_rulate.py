@@ -183,8 +183,8 @@ class TestRenderHtml(unittest.TestCase):
         out = publish_rulate.render_paragraph_html('x')
         self.assertEqual(
             out,
-            '<p style="margin-left:0cm; margin-right:0cm; text-align:justify;">'
-            '<span style="color:#000000">x</span></p>',
+            '<p style="margin:0; margin-bottom:8.0pt; line-height:normal; text-align:justify;">'
+            '<span style="font-family:Calibri,sans-serif; font-size:11.0pt; color:#000000;">x</span></p>',
         )
 
     def test_render_chapter_concatenates_with_no_separator(self):

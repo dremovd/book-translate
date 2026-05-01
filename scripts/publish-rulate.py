@@ -158,12 +158,26 @@ Steps:
 
   11. Translation editor — the panel that opens is a WYSIWYG editor
       with a "Источник" / "Source" toggle that accepts raw HTML.
-      Use that toggle and submit the chapter body as HTML. Each
-      paragraph from the .md is wrapped in the uniform template:
+      Use that toggle and submit the chapter body as HTML. The shape
+      mirrors what Word emits when you copy a Calibri-11pt body
+      paragraph into a contenteditable area:
 
-          <p style="margin-left:0cm; margin-right:0cm; text-align:justify;">
-            <span style="color:#000000">{escaped text}</span>
+          <p style="margin:0; margin-bottom:8.0pt; line-height:normal; text-align:justify;">
+            <span style="font-family:Calibri,sans-serif; font-size:11.0pt; color:#000000;">{escaped text}</span>
           </p>
+
+      Style choices (matched to Word defaults):
+        - font-family: Calibri (sans-serif fallback)
+        - font-size:   11pt
+        - text-align:  justify
+        - color:       black
+        - margin:      0 on three sides, 8pt below — the standard
+                       Word "after-paragraph" spacing for the body
+                       style; gives air between paragraphs without
+                       relying on the reader's CSS.
+        - line-height: normal (= 1.0)
+        - text-indent: 0 (default; no first-line indent)
+        - background:  none (default; no fill)
 
       (single line in the actual payload — line breaks here are for
       readability). Escaping rules for `{escaped text}`:
@@ -382,8 +396,8 @@ def build_upload_queue(chapters: list[dict], target: int) -> list[dict]:
 # Phase B HTML rendering (per algorithm step 11)
 # ----------------------------------------------------------------------
 PARA_TEMPLATE = (
-    '<p style="margin-left:0cm; margin-right:0cm; text-align:justify;">'
-    '<span style="color:#000000">{}</span>'
+    '<p style="margin:0; margin-bottom:8.0pt; line-height:normal; text-align:justify;">'
+    '<span style="font-family:Calibri,sans-serif; font-size:11.0pt; color:#000000;">{}</span>'
     '</p>'
 )
 
@@ -568,6 +582,12 @@ def main(argv: list[str]) -> int:
                         help='Limit processing to the first N SOURCE chapters of the .md '
                              '(applied BEFORE the long-chapter splitting, so e.g. --up-to 3 '
                              'still uploads all parts of source chapters 1..3).')
+    parser.add_argument('--force-update', action='store_true',
+                        help='Treat every existing-and-text-matching chapter as "update_body" '
+                             'instead of "skip". Re-uploads the body for chapters whose text '
+                             'is identical — useful after a PARA_TEMPLATE / formatting change '
+                             'when you want to push the new HTML to chapters that were already '
+                             'on rulate.')
     args = parser.parse_args(argv[1:])
 
     repo = Path(__file__).resolve().parent.parent
@@ -639,6 +659,31 @@ def _csrf_from_cookie(cookie_str: str) -> "str | None":
             decoded = up.unquote(pair.split('=', 1)[1])
             m = re.search(r'"([^"]+)"', decoded)
             return m.group(1) if m else None
+    return None
+
+
+def _user_id_from_cookie(cookie_str: str) -> "str | None":
+    """Extract the rulate user_id from Yii's auth cookie. The cookie
+    has a 32-hex name (app-specific) and a URL-encoded PHP-serialize
+    value embedding the login session, e.g.:
+        ...s:4:{i:0;i:<user_id>;i:1;s:<n>:"<login>";...}
+    Returns the integer user_id as a string, or None if the cookie
+    isn't present in the auth string.
+    """
+    import urllib.parse as up
+    for pair in cookie_str.split('; '):
+        if '=' not in pair:
+            continue
+        name, _, value = pair.partition('=')
+        # Yii's auth cookie uses a 32-hex name derived from the app
+        # secret + state key. Match that shape so we don't accidentally
+        # parse a different cookie.
+        if not re.fullmatch(r'[0-9a-f]{32}', name):
+            continue
+        decoded = up.unquote(value)
+        m = re.search(r'i:0;i:(\d+);', decoded)
+        if m:
+            return m.group(1)
     return None
 
 
@@ -818,6 +863,108 @@ def classify_queue_item(s, book_id: str, item: dict, existing: dict) -> dict:
     }
 
 
+def _existing_translation_versions(s, book_id: str, chapter_id: str) -> list:
+    """Inspect the chapter page and return one record per translation
+    version present:
+        {tr_id: str, user_id: str | None, is_empty: bool}
+
+    Each version is wrapped as
+        `<div id='t<tr_id>' class='u<user_id> ...'>
+            <div class='text'>...</div>
+         </div>`
+    `is_empty` is True when the body div has no visible text content
+    (the auto-created system stub renders as `<div class='text'><p></p></div>`).
+    """
+    from bs4 import BeautifulSoup
+    r = s.get(f'https://tl.rulate.ru/book/{book_id}/{chapter_id}',
+              headers={'Referer': f'https://tl.rulate.ru/book/{book_id}'}, timeout=20)
+    if r.status_code != 200:
+        return []
+    soup = BeautifulSoup(r.text, 'html.parser')
+    out = []
+    for div in soup.select('div[id^="t"]'):
+        m = re.match(r't(\d+)$', div.get('id') or '')
+        if not m:
+            continue
+        tr_id = m.group(1)
+        cls = ' '.join(div.get('class') or [])
+        um = re.search(r'\bu(\d+)\b', cls)
+        user_id = um.group(1) if um else None
+        text_div = div.select_one('div.text')
+        body = text_div.get_text(strip=True) if text_div else ''
+        out.append({'tr_id': tr_id, 'user_id': user_id, 'is_empty': not body})
+    return out
+
+
+def _delete_tr_version(s, book_id: str, chapter_id: str,
+                       fragment_id: str, tr_id: str):
+    """POST `tr_rm` to delete one translation version from a fragment."""
+    url = f'https://tl.rulate.ru/book/{book_id}/{chapter_id}/{fragment_id}/tr_rm'
+    return s.post(
+        url,
+        headers={
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Origin': 'https://tl.rulate.ru',
+            'Referer': f'https://tl.rulate.ru/book/{book_id}/{chapter_id}',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        data=f'tr_id={tr_id}', allow_redirects=False, timeout=20,
+    )
+
+
+def _prune_versions(s, book_id: str, chapter_id: str, fragment_id: str,
+                    user_id: str, keep_newest_ours: bool) -> int:
+    """Remove housekeeping versions from a fragment so the chapter
+    ends up with at most one of OUR translations and zero stubs.
+
+    Always deletes:
+      - empty versions (auto-stub `<p></p>` from chapter creation, or
+        any later stub). They never carry useful content.
+
+    Conditionally deletes our own versions (matched by `user_id`):
+      - `keep_newest_ours=True` → keep the most recent (highest
+        tr_id) version, drop all older ones. Used in the `skip`
+        path so accumulated duplicates from prior buggy runs get
+        cleaned up without losing the live content.
+      - `keep_newest_ours=False` → drop ALL of our versions. Used
+        in `create` / `update_body` paths because we're about to
+        POST a fresh version that will become the only one.
+
+    Other translators' (non-empty) versions are NEVER touched.
+    Returns the number of versions deleted.
+    """
+    versions = _existing_translation_versions(s, book_id, chapter_id)
+    if not versions:
+        return 0
+    ours = sorted(
+        (v for v in versions if v['user_id'] == user_id),
+        key=lambda v: int(v['tr_id']),
+    )
+    keep_id = ours[-1]['tr_id'] if (keep_newest_ours and ours) else None
+
+    to_delete = []
+    for v in versions:
+        if v['is_empty']:
+            to_delete.append(v)
+            continue
+        if v['user_id'] == user_id and v['tr_id'] != keep_id:
+            to_delete.append(v)
+
+    deleted = 0
+    for v in to_delete:
+        try:
+            r = _delete_tr_version(s, book_id, chapter_id, fragment_id, v['tr_id'])
+            if r.status_code in (200, 204, 302):
+                deleted += 1
+                print(f'  pruned tr_id={v["tr_id"]} (user={v["user_id"]}, empty={v["is_empty"]})')
+            else:
+                print(f'  prune failed for tr_id={v["tr_id"]}: status {r.status_code}')
+        except Exception as e:
+            print(f'  prune error for tr_id={v["tr_id"]}: {e}')
+    return deleted
+
+
 def _phase_b_post(s, html_body: str, book_id: str, chapter_id: str,
                   fragment_id: str, csrf: str):
     """Multipart POST that saves the translation HTML for the
@@ -855,19 +1002,45 @@ def _phase_b_post(s, html_body: str, book_id: str, chapter_id: str,
 # Live full first: Phase A + Phase B for queue[0]
 # ----------------------------------------------------------------------
 def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
-                        csrf: str, existing: dict) -> str:
+                        csrf: str, user_id: "str | None", existing: dict) -> str:
     """Classify one queue item against rulate and execute the matching
     action. Mutates `existing` after a successful create so subsequent
     items see the new chapter. Returns one of:
         'created' | 'updated' | 'skipped'
     Raises on any HTTP / parse error (caller decides whether to keep
     going through the rest of the queue).
+
+    All write paths (`create` / `update_body`) prune empty stubs and
+    obsolete copies of our own translation BEFORE posting the fresh
+    body — so each chapter ends up with exactly one of our versions
+    and no system stub. The `skip` path also prunes (housekeeping —
+    keeps the newest of our versions, drops empty stubs and any
+    older accumulated duplicates from prior buggy runs).
     """
     decision = classify_queue_item(s, book_id, item, existing)
-    print(f'  decision: {decision["action"]}'
-          + (f"  (chapter_id={decision.get('chapter_id')})" if decision.get('chapter_id') else ''))
+    if getattr(args, 'force_update', False) and decision['action'] == 'skip':
+        # Force a body re-upload even though text matches — used after
+        # PARA_TEMPLATE / format changes that don't show up in a text
+        # diff but do change what rulate stores.
+        chapter_id = decision['chapter_id']
+        fragment_id = _find_first_fragment_id(s, book_id, chapter_id)
+        decision = {
+            'action': 'update_body',
+            'chapter_id': chapter_id,
+            'fragment_id': fragment_id,
+        }
+        print(f'  decision: skip → forced to update_body  (chapter_id={chapter_id})')
+    else:
+        print(f'  decision: {decision["action"]}'
+              + (f"  (chapter_id={decision.get('chapter_id')})" if decision.get('chapter_id') else ''))
 
     if decision['action'] == 'skip':
+        if user_id:
+            chapter_id = decision['chapter_id']
+            fragment_id = _find_first_fragment_id(s, book_id, chapter_id)
+            if fragment_id:
+                _prune_versions(s, book_id, chapter_id, fragment_id, user_id,
+                                keep_newest_ours=True)
         return 'skipped'
 
     if decision['action'] == 'update_body':
@@ -875,6 +1048,9 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
         fragment_id = decision['fragment_id']
         if not fragment_id:
             raise RuntimeError(f'no fragment_id for existing chapter {chapter_id}')
+        if user_id:
+            _prune_versions(s, book_id, chapter_id, fragment_id, user_id,
+                            keep_newest_ours=False)
         body_html = render_chapter_body_html(item['paragraphs'])
         b_resp = _phase_b_post(s, body_html, book_id, chapter_id, fragment_id, csrf)
         if b_resp.status_code not in (200, 302):
@@ -892,6 +1068,11 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
     fragment_id = _find_first_fragment_id(s, book_id, chapter_id)
     if not fragment_id:
         raise RuntimeError(f'could not locate fragment id for new chapter {chapter_id}')
+    if user_id:
+        # New chapter ships with an auto-created empty stub. Drop it
+        # before our POST so the chapter ends up with one version.
+        _prune_versions(s, book_id, chapter_id, fragment_id, user_id,
+                        keep_newest_ours=False)
     body_html = render_chapter_body_html(item['paragraphs'])
     b_resp = _phase_b_post(s, body_html, book_id, chapter_id, fragment_id, csrf)
     if b_resp.status_code not in (200, 302):
@@ -914,6 +1095,11 @@ def live_full_first(queue: list[dict], env: dict, args) -> int:
     if not csrf:
         print('Could not extract CSRF token from cookies.', file=sys.stderr)
         return 1
+    user_id = _user_id_from_cookie(cookies)
+    if user_id:
+        print(f'rulate user_id: {user_id}')
+    else:
+        print('warning: could not extract user_id from cookies — version pruning disabled.')
 
     s = _make_session(env, cookies)
     if not _warm_up(s, book_id):
@@ -926,7 +1112,7 @@ def live_full_first(queue: list[dict], env: dict, args) -> int:
     item = queue[0]
     print(f'\n=== [1/1] {item["title"]!r} ===')
     try:
-        outcome = _process_queue_item(s, book_id, item, env, args, csrf, existing)
+        outcome = _process_queue_item(s, book_id, item, env, args, csrf, user_id, existing)
     except Exception as e:
         print(f'  error: {e}', file=sys.stderr)
         return 1
@@ -947,6 +1133,11 @@ def live_full_all(queue: list[dict], env: dict, args) -> int:
     if not csrf:
         print('Could not extract CSRF token from cookies.', file=sys.stderr)
         return 1
+    user_id = _user_id_from_cookie(cookies)
+    if user_id:
+        print(f'rulate user_id: {user_id}')
+    else:
+        print('warning: could not extract user_id from cookies — version pruning disabled.')
 
     s = _make_session(env, cookies)
     if not _warm_up(s, book_id):
@@ -964,7 +1155,7 @@ def live_full_all(queue: list[dict], env: dict, args) -> int:
         print(f'\n=== [{i}/{len(queue)}] {item["title"]!r} '
               f'(part {item["part_index"]}/{item["total_parts"]} of source ch {item["source_chapter_index"]}) ===')
         try:
-            outcome = _process_queue_item(s, book_id, item, env, args, csrf, existing)
+            outcome = _process_queue_item(s, book_id, item, env, args, csrf, user_id, existing)
             stats[outcome] += 1
             if outcome in ('created', 'updated'):
                 touched.append(item)
