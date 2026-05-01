@@ -157,27 +157,28 @@ Steps:
      ready for the translation-side editor (CKEditor).
 
   11. Translation editor — the panel that opens is a WYSIWYG editor
-      with a "Источник" / "Source" toggle that accepts raw HTML.
-      Use that toggle and submit the chapter body as HTML. The shape
-      mirrors what Word emits when you copy a Calibri-11pt body
-      paragraph into a contenteditable area:
+      (CKEditor) with a "Источник" / "Source" toggle that accepts
+      raw HTML. CKEditor whitelists a SUBSET of CSS on save; it
+      strips `font-family`, `margin-bottom`, `line-height` and
+      similar from inline `style` blocks. The shape we send is the
+      already-normalised form rulate ends up storing — so a
+      sent → saved → re-fetched roundtrip is byte-stable:
 
-          <p style="margin:0; margin-bottom:8.0pt; line-height:normal; text-align:justify;">
-            <span style="font-family:Calibri,sans-serif; font-size:11.0pt; color:#000000;">{escaped text}</span>
+          <p style="margin-left:0px; margin-right:0px; text-align:justify">
+            <span style="color:#000000; font-size:11pt">{escaped text}</span>
           </p>
 
-      Style choices (matched to Word defaults):
-        - font-family: Calibri (sans-serif fallback)
+      Style choices that survive the sanitiser:
         - font-size:   11pt
         - text-align:  justify
         - color:       black
-        - margin:      0 on three sides, 8pt below — the standard
-                       Word "after-paragraph" spacing for the body
-                       style; gives air between paragraphs without
-                       relying on the reader's CSS.
-        - line-height: normal (= 1.0)
-        - text-indent: 0 (default; no first-line indent)
-        - background:  none (default; no fill)
+        - margin-l/r:  0px (no side gutter)
+
+      Style choices the user might want but rulate WILL DROP:
+        - font-family (e.g. Calibri) — site enforces its own font.
+        - margin-bottom / paragraph "after" spacing — controlled by
+          the site's reader CSS, not per-paragraph inline.
+        - line-height — same.
 
       (single line in the actual payload — line breaks here are for
       readability). Escaping rules for `{escaped text}`:
@@ -396,8 +397,8 @@ def build_upload_queue(chapters: list[dict], target: int) -> list[dict]:
 # Phase B HTML rendering (per algorithm step 11)
 # ----------------------------------------------------------------------
 PARA_TEMPLATE = (
-    '<p style="margin:0; margin-bottom:8.0pt; line-height:normal; text-align:justify;">'
-    '<span style="font-family:Calibri,sans-serif; font-size:11.0pt; color:#000000;">{}</span>'
+    '<p style="margin-left:0px; margin-right:0px; text-align:justify">'
+    '<span style="color:#000000; font-size:11pt">{}</span>'
     '</p>'
 )
 
