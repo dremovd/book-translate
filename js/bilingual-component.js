@@ -81,6 +81,9 @@ function defaultConfig() {
     apiKey: '',
     model: 'gemini-3.1-pro',
     dictionaryModel: '',
+    // Optional second model for chapter-level retranslation. See
+    // component.js's `model2` for behavior.
+    model2: '',
     baseUrl: 'https://api.poe.com/v1',
     // See component.js: opt-in algorithmic Palladius transliteration
     // hint during dictionary build (off by default).
@@ -343,13 +346,14 @@ export function makeBilingualComponent() {
       });
     },
 
-    async _translateChapter(i) {
+    async _translateChapter(i, modelOverride = null) {
       const ch = this.book.chapters[i];
       if (!ch) return;
       const prior = this.book.chapters
         .slice(0, i)
         .filter(c => c.status === 'accepted');
-      const t = createTranslator(this.config);
+      const cfg = modelOverride ? { ...this.config, model: modelOverride } : this.config;
+      const t = createTranslator(cfg);
       const out = await t.translateChapter(ch, this.dictionary, prior);
       ch.translatedTitle = out.titleTranslation;
       ch.paragraphs = out.paragraphs;
@@ -371,7 +375,7 @@ export function makeBilingualComponent() {
       });
     },
 
-    async retranslateCurrent() {
+    async retranslateCurrent(modelOverride = null) {
       if (!this.book || this.busy) return;
       await this._runBusy(async () => {
         const ch = this.book.chapters[this.currentChapterIndex];
@@ -383,8 +387,13 @@ export function makeBilingualComponent() {
           ...p, translation: '', status: 'pending',
         }));
         ch.status = 'pending';
-        await this._translateChapter(this.currentChapterIndex);
+        await this._translateChapter(this.currentChapterIndex, modelOverride);
       });
+    },
+    async retranslateCurrentWithModel2() {
+      const m2 = (this.config.model2 || '').trim();
+      if (!m2) return;
+      await this.retranslateCurrent(m2);
     },
 
     // Per-paragraph retranslate. Sends the full reference chapter as

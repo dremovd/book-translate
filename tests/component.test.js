@@ -659,6 +659,46 @@ test('retranslateCurrent: regenerates current chapter using prior accepted as co
     'dummy retranslate should overwrite edits with the original text');
 });
 
+test('retranslateCurrentWithModel2: no-op when config.model2 is empty', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptDictionary();
+  c.book.chapters[0].paragraphs[0].translation = 'edited';
+  // model2 is unset by default; should not run, leaving the edit alone.
+  await c.retranslateCurrentWithModel2();
+  assert.equal(c.book.chapters[0].paragraphs[0].translation, 'edited');
+});
+
+test('retranslateCurrentWithModel2: swaps config.model for config.model2 in the translate call', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptDictionary();
+
+  // Switch to POE so we can see the model name in the outgoing request.
+  c.config.translator = 'poe';
+  c.config.apiKey = 'k';
+  c.config.baseUrl = 'http://x';
+  c.config.model = 'Primary-Model';
+  c.config.model2 = 'Secondary-Model';
+
+  let usedModel;
+  const restore = withFetch(async (_u, opts) => {
+    usedModel = JSON.parse(opts.body).model;
+    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+  });
+  try {
+    await c.retranslateCurrentWithModel2();
+    assert.equal(usedModel, 'Secondary-Model');
+    // Sanity: persisted config.model is unchanged after the override.
+    assert.equal(c.config.model, 'Primary-Model');
+    // And a plain retranslate goes back to the primary.
+    await c.retranslateCurrent();
+    assert.equal(usedModel, 'Primary-Model');
+  } finally { restore(); }
+});
+
 test('retranslateCurrent: respects a cancelling _confirm', async () => {
   const c = await initFresh();
   setDummyBook(c);

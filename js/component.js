@@ -111,6 +111,12 @@ export function defaultConfig() {
     // Empty → use `model` for everything. A cheaper/faster model here keeps
     // per-book dictionary cost down without compromising chapter translation.
     dictionaryModel: '',
+    // Optional second model for chapter-level retranslation. When set,
+    // surfaces an extra "Re-translate via <model2>" button next to the
+    // standard one in the editor; the button reuses the default mode
+    // and current dictionary, only swapping `config.model` for this
+    // value. Empty → no extra button shown.
+    model2: '',
     baseUrl: 'https://api.poe.com/v1',
     // Inject the algorithmic Palladius (Палладий) Russian
     // transliteration as a per-CJK-term hint into the translate-terms
@@ -448,12 +454,18 @@ export function makeComponent() {
       );
     },
 
-    async retranslateCurrent() {
+    async retranslateCurrent(modelOverride = null) {
       const idx = this.currentChapterIndex;
       const ch = this.book?.chapters?.[idx];
       if (!ch) return;
-      if (!this._confirm(`Re-translate "${ch.title}"? Current edits in this chapter will be lost.`)) return;
-      await this._runBusy(() => this._translateChapterAt(idx));
+      const via = modelOverride ? ` via ${modelOverride}` : '';
+      if (!this._confirm(`Re-translate "${ch.title}"${via}? Current edits in this chapter will be lost.`)) return;
+      await this._runBusy(() => this._translateChapterAt(idx, modelOverride));
+    },
+    async retranslateCurrentWithModel2() {
+      const m2 = (this.config.model2 || '').trim();
+      if (!m2) return;
+      await this.retranslateCurrent(m2);
     },
 
     // Wraps an async operation that manipulates `book`/`dictionary`/`view`:
@@ -475,10 +487,15 @@ export function makeComponent() {
     // Translates chapters[idx] in place, using all previously accepted
     // chapters as context. Throws on translator failure so callers can roll
     // back state if they need to.
-    async _translateChapterAt(idx) {
+    //
+    // `modelOverride` (optional): when truthy, swap `config.model` for it
+    // for the duration of this call. Used by the "Re-translate via
+    // <model2>" button without mutating persisted config.
+    async _translateChapterAt(idx, modelOverride = null) {
       const ch = this.book.chapters[idx];
       const prior = this.book.chapters.slice(0, idx).filter(c => c.status === 'accepted');
-      const { titleTranslation, paragraphs } = await createTranslator(this.config)
+      const cfg = modelOverride ? { ...this.config, model: modelOverride } : this.config;
+      const { titleTranslation, paragraphs } = await createTranslator(cfg)
         .translateChapter(ch, this.dictionary, prior);
       ch.paragraphs = paragraphs;
       ch.translatedTitle = titleTranslation;

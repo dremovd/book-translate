@@ -117,6 +117,12 @@
                placeholder="leave empty to reuse the main model"
                autocomplete="off" spellcheck="false">
       </label>
+      <label>Second translation model (optional)
+        <input x-model="config.model2" list="poe-models"
+               placeholder="leave empty for no extra button"
+               autocomplete="off" spellcheck="false">
+        <small>When set, adds a "Re-translate via &lt;name&gt;" button next to the standard one for quick A/B comparison across two models.</small>
+      </label>
       <datalist id="poe-models">
         <option value="claude-opus-4.7"></option>
         <option value="gpt-5.4"></option>
@@ -327,6 +333,13 @@
           </button>
           <button class="secondary outline" @click="retranslateCurrent()" :disabled="busy" type="button">
             Re-translate this chapter
+          </button>
+          <button class="secondary outline" @click="retranslateCurrentWithModel2()"
+                  :disabled="busy" type="button"
+                  x-show="(config.model2 || '').trim()"
+                  x-cloak
+                  :title="`Re-translate this chapter via ${config.model2}`">
+            ↻ <span x-text="(config.model2 || '').trim().slice(0, 15)"></span>
           </button>
           <button @click="acceptAndNext()" :disabled="busy" :aria-busy="busy">
             <span x-text="nextButtonLabel"></span>

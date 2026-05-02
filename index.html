@@ -98,6 +98,13 @@
                autocomplete="off" spellcheck="false">
         <small>Used for both dictionary phases (term extraction + term translation). A cheaper model here cuts per-book cost while keeping chapter translation on the strong one.</small>
       </label>
+      <label x-show="config.translator === 'poe'">
+        Second translation model (optional)
+        <input x-model="config.model2" list="poe-models"
+               placeholder="leave empty for no extra button"
+               autocomplete="off" spellcheck="false">
+        <small>When set, the editor shows an extra "Re-translate via &lt;name&gt;" button alongside the standard one — handy for A/B-comparing chapter translations across two models without re-typing the model name each time.</small>
+      </label>
 
       <!-- Shared POE-bot suggestions for both model inputs. Not a restricted
            list: any custom bot name still works; these are just type-ahead
@@ -325,6 +332,13 @@
           </button>
           <button class="secondary outline" @click="retranslateCurrent()" :disabled="busy" type="button">
             Re-translate this chapter
+          </button>
+          <button class="secondary outline" @click="retranslateCurrentWithModel2()"
+                  :disabled="busy" type="button"
+                  x-show="(config.model2 || '').trim()"
+                  x-cloak
+                  :title="`Re-translate this chapter via ${config.model2}`">
+            ↻ <span x-text="(config.model2 || '').trim().slice(0, 15)"></span>
           </button>
           <button @click="acceptAndNext()" :disabled="busy" :aria-busy="busy">
             <span x-text="nextButtonLabel"></span>
