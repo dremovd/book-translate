@@ -79,17 +79,16 @@ Steps:
      rulate-side translation-progress flag. The script should send
      this value unless overridden via `--status <value>`.
 
-  4. "Особые права доступа" checkbox — checked (true). This gates
-     the chapter behind the paid / patron tier on rulate. Always
-     enabled by this script; no CLI override planned for now.
+  4. "Особые права доступа" checkbox — OPT-IN via the
+     `--moderators-only` CLI flag. Off by default: the chapter
+     inherits the book-level access settings, no per-chapter override
+     is sent. When the flag is set: `Chapter[has_override]=1`.
 
-  5. Access-rights matrix — every per-role / per-tier control inside
-     the "Особые права доступа" panel is set to "Модераторы". This is
-     the most restrictive level: only moderators can read the chapter
-     while it's in this state. (Used as a publish-as-draft mode — the
-     uploader posts the body, leaves the chapter visible only to
-     moderators, and the user later relaxes access manually once a
-     chapter is reviewed.)
+  5. Access-rights matrix — only sent when `--moderators-only` is
+     active. In that case every per-action level (`ac_read`,
+     `ac_trread`, `ac_gen`, `ac_rate`, `ac_comment`, `ac_tr`) is set
+     to "Модераторы" (`m`) — moderator-only draft mode. With
+     `--moderators-only` off, these fields are omitted entirely.
 
   6. "Подписка" toggle — driven by the .env variable
      RULATE_SUBSCRIPTION_FROM_CHAPTER:
@@ -481,9 +480,13 @@ def build_phase_a_form(item: dict, env: dict, args) -> list[tuple[str, str]]:
     fields.append(('Chapter[volume]', args.volume or ''))
     status_value = STATUS_CODES.get(args.status, args.status)
     fields.append(('Chapter[status]', status_value))
-    fields.append(('Chapter[has_override]', '1'))
-    for ac in ACCESS_FIELDS:
-        fields.append((f'Chapter[{ac}]', ACCESS_LEVEL_MODERATORS))
+    # "Особые права доступа" is opt-in via --moderators-only. Without
+    # it we don't send the override flag or the per-action levels at
+    # all; the chapter inherits the book-level access settings.
+    if getattr(args, 'moderators_only', False):
+        fields.append(('Chapter[has_override]', '1'))
+        for ac in ACCESS_FIELDS:
+            fields.append((f'Chapter[{ac}]', ACCESS_LEVEL_MODERATORS))
     # post_open: keep off (chapter not auto-published).
     fields.append(('Chapter[post_open]', '0'))
     # Subscription: send hidden=0 always; if rule says enable, ALSO
@@ -589,6 +592,16 @@ def main(argv: list[str]) -> int:
                              'is identical — useful after a PARA_TEMPLATE / formatting change '
                              'when you want to push the new HTML to chapters that were already '
                              'on rulate.')
+    parser.add_argument('--moderators-only', action='store_true',
+                        help='Enable "Особые права доступа" and set every per-action access '
+                             'level to "Модераторы" — i.e. publish chapters as moderator-only '
+                             'drafts. Off by default, in which case the chapter inherits the '
+                             'book-level access settings (no per-chapter override is sent).')
+    parser.add_argument('--yes-to-all', action='store_true',
+                        help='Skip the per-chapter overwrite confirmation that fires when '
+                             'rulate\'s current body differs from the local .md. Use to keep '
+                             '--live-full-all non-interactive when you are sure you want to '
+                             'overwrite every diverged chapter.')
     args = parser.parse_args(argv[1:])
 
     repo = Path(__file__).resolve().parent.parent
@@ -842,8 +855,10 @@ def classify_queue_item(s, book_id: str, item: dict, existing: dict) -> dict:
     """Decide what action a queue item needs against rulate:
         {'action': 'create'}                    — title not present
         {'action': 'skip',          'chapter_id': ...}  — title and body match
-        {'action': 'update_body',   'chapter_id': ..., 'fragment_id': ...} —
-            title present, body differs
+        {'action': 'update_body',   'chapter_id': ..., 'fragment_id': ...,
+                                    'rulate_text': str, 'local_text': str}
+            — title present, body differs. The two texts are returned so
+            the caller can show a diff before overwriting.
     The classification is read-only — it does NOT mutate anything on
     rulate; it just decides what `live_full_first`/`live_full_all`
     should do.
@@ -861,7 +876,147 @@ def classify_queue_item(s, book_id: str, item: dict, existing: dict) -> dict:
         'action': 'update_body',
         'chapter_id': chapter_id,
         'fragment_id': fragment_id,
+        'rulate_text': current or '',
+        'local_text': expected,
     }
+
+
+# ----------------------------------------------------------------------
+# State manifest — local record of `{chapter_id → hash_of_last_pushed_body}`
+# so we can tell apart "rulate body == our last push" (safe overwrite,
+# no third party touched the chapter) from "rulate body was edited since
+# our last push" (someone else changed it; require explicit confirmation).
+# ----------------------------------------------------------------------
+import hashlib
+import json
+
+MANIFEST_NAME = '.rulate-state.json'
+
+
+def _manifest_path() -> Path:
+    return Path(__file__).resolve().parent.parent / MANIFEST_NAME
+
+
+def _load_manifest() -> dict:
+    p = _manifest_path()
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+
+
+def _save_manifest(manifest: dict) -> None:
+    _manifest_path().write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True),
+        encoding='utf-8',
+    )
+
+
+def _body_hash(text: str) -> str:
+    """Stable hash of the normalised chapter text. Same input string
+    that drives the skip/update_body classification, so a manifest
+    entry and a `_existing_chapter_text(...)` reading hash to the
+    same value when nothing changed."""
+    return hashlib.sha256((text or '').encode('utf-8')).hexdigest()
+
+
+def _format_first_n_hunks(rulate_text: str, local_text: str, n: int = 5):
+    """Generate up to `n` unified-diff hunks. Each hunk is the lines
+    between two `@@` markers (inclusive of the leading `@@`). Returns
+    `(hunks_list, total_hunks_count)` so the caller can show "first
+    5 of 12 changes"."""
+    import difflib
+    raw = list(difflib.unified_diff(
+        rulate_text.splitlines(),
+        local_text.splitlines(),
+        fromfile='rulate (current)',
+        tofile='local (.md)',
+        lineterm='',
+    ))
+    hunks = []
+    current = None
+    for line in raw:
+        if line.startswith('@@'):
+            if current is not None:
+                hunks.append(current)
+            current = [line]
+        elif current is not None:
+            current.append(line)
+    if current is not None:
+        hunks.append(current)
+    return hunks[:n], len(hunks)
+
+
+def _confirm_overwrite(item: dict, decision: dict, manifest: dict,
+                       state: dict) -> bool:
+    """Decide whether to proceed with an `update_body` POST.
+
+    Always-overwrite case (no prompt): rulate's current body hash
+    matches our manifest entry — rulate hasn't been touched since our
+    last push, so we are the only ones who could have produced the
+    diff and can safely overwrite.
+
+    Prompt cases: manifest mismatch (someone edited rulate after our
+    last push) OR no manifest entry (first time we touch this
+    chapter — be cautious). The user sees a conflict header + the
+    first 5 diff hunks and answers y / n / a / Y / N.
+    """
+    chapter_id = str(decision['chapter_id'])
+    rulate_hash = _body_hash(decision['rulate_text'])
+    entry = manifest.get(chapter_id) or {}
+    last_pushed_hash = entry.get('hash')
+
+    if last_pushed_hash == rulate_hash:
+        # We pushed this exact body; rulate hasn't changed since.
+        # Local .md changed → just push the new local body.
+        print(f'  manifest match: safe to overwrite (no external edits since last push)')
+        return True
+
+    if state.get('all_yes'):
+        return True
+    if state.get('all_no'):
+        return False
+
+    reason = 'no manifest entry — first push of this chapter via the script' \
+             if last_pushed_hash is None else \
+             'manifest mismatch — rulate body has changed since our last push'
+    print(f'\n  ⚠ Confirm overwrite of {item["title"]!r}: {reason}')
+    if last_pushed_hash:
+        when = entry.get('last_pushed_at', '?')
+        print(f'    our last push: {last_pushed_hash[:12]}… at {when}')
+        print(f'    rulate now:    {rulate_hash[:12]}…')
+
+    hunks, total = _format_first_n_hunks(
+        decision['rulate_text'], decision['local_text'], n=5,
+    )
+    if not hunks:
+        print('  (no textual diff at line level — whitespace-only change?)')
+    else:
+        print(f'  --- diff (- rulate, + local), first {len(hunks)} of {total} change(s) ---')
+        for hunk in hunks:
+            for line in hunk:
+                print('  ' + line.rstrip())
+        if total > len(hunks):
+            print(f'  … (and {total - len(hunks)} more change(s) not shown)')
+
+    if not sys.stdin.isatty():
+        print('  stdin is not a TTY — cannot prompt. Skipping this chapter to be safe. '
+              'Re-run with --yes-to-all if you want unattended overwrites.', file=sys.stderr)
+        return False
+    while True:
+        ans = input('  Overwrite? [y]es / [n]o / [a]bort / [Y]es-to-all / [N]o-to-all: ').strip()
+        if ans == 'y': return True
+        if ans == 'n': return False
+        if ans == 'a': raise SystemExit('aborted by user')
+        if ans == 'Y':
+            state['all_yes'] = True
+            return True
+        if ans == 'N':
+            state['all_no'] = True
+            return False
+        print('  unknown answer; expected y / n / a / Y / N')
 
 
 def _existing_translation_versions(s, book_id: str, chapter_id: str) -> list:
@@ -1003,20 +1158,32 @@ def _phase_b_post(s, html_body: str, book_id: str, chapter_id: str,
 # Live full first: Phase A + Phase B for queue[0]
 # ----------------------------------------------------------------------
 def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
-                        csrf: str, user_id: "str | None", existing: dict) -> str:
+                        csrf: str, user_id: "str | None", existing: dict,
+                        manifest: dict, state: dict) -> str:
     """Classify one queue item against rulate and execute the matching
-    action. Mutates `existing` after a successful create so subsequent
-    items see the new chapter. Returns one of:
+    action. Mutates `existing` after a successful create and `manifest`
+    after every successful body push. Returns one of:
         'created' | 'updated' | 'skipped'
     Raises on any HTTP / parse error (caller decides whether to keep
     going through the rest of the queue).
 
-    All write paths (`create` / `update_body`) prune empty stubs and
-    obsolete copies of our own translation BEFORE posting the fresh
-    body — so each chapter ends up with exactly one of our versions
-    and no system stub. The `skip` path also prunes (housekeeping —
-    keeps the newest of our versions, drops empty stubs and any
-    older accumulated duplicates from prior buggy runs).
+    Conflict handling (option D + manifest A):
+      - On `update_body`, compare the rulate-current body hash to the
+        manifest entry. If they match, we know we're the only one who
+        touched the chapter since our last push → safe to overwrite.
+      - If they don't match (or no manifest entry exists), prompt the
+        user with the first 5 diff hunks before overwriting.
+      - `--yes-to-all` short-circuits the prompt.
+
+    Version housekeeping:
+      - `create` / `update_body` prune empty stubs and obsolete copies
+        of our own translation BEFORE posting the fresh body — so each
+        chapter ends with exactly one of our versions and no system
+        stub. Other translators' real (non-empty) versions are never
+        touched.
+      - `skip` also prunes (keeps the newest of our versions; drops
+        stubs and any older accumulated duplicates from prior buggy
+        runs).
     """
     decision = classify_queue_item(s, book_id, item, existing)
     if getattr(args, 'force_update', False) and decision['action'] == 'skip':
@@ -1025,10 +1192,14 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
         # diff but do change what rulate stores.
         chapter_id = decision['chapter_id']
         fragment_id = _find_first_fragment_id(s, book_id, chapter_id)
+        rulate_text = _existing_chapter_text(s, book_id, chapter_id) or ''
+        local_text = _our_chapter_text(item['paragraphs'])
         decision = {
             'action': 'update_body',
             'chapter_id': chapter_id,
             'fragment_id': fragment_id,
+            'rulate_text': rulate_text,
+            'local_text': local_text,
         }
         print(f'  decision: skip → forced to update_body  (chapter_id={chapter_id})')
     else:
@@ -1036,8 +1207,12 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
               + (f"  (chapter_id={decision.get('chapter_id')})" if decision.get('chapter_id') else ''))
 
     if decision['action'] == 'skip':
+        chapter_id = decision['chapter_id']
+        # Record the manifest hash even for skip — rulate's body
+        # already matches our local text, so logging this push-level
+        # state lets future runs short-circuit the conflict prompt.
+        _record_manifest(manifest, chapter_id, _our_chapter_text(item['paragraphs']))
         if user_id:
-            chapter_id = decision['chapter_id']
             fragment_id = _find_first_fragment_id(s, book_id, chapter_id)
             if fragment_id:
                 _prune_versions(s, book_id, chapter_id, fragment_id, user_id,
@@ -1049,6 +1224,14 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
         fragment_id = decision['fragment_id']
         if not fragment_id:
             raise RuntimeError(f'no fragment_id for existing chapter {chapter_id}')
+
+        # Conflict gate — manifest match → no prompt; otherwise prompt
+        # (unless `--yes-to-all`).
+        if not getattr(args, 'yes_to_all', False):
+            if not _confirm_overwrite(item, decision, manifest, state):
+                print('  declined; chapter left as-is')
+                return 'skipped'
+
         if user_id:
             _prune_versions(s, book_id, chapter_id, fragment_id, user_id,
                             keep_newest_ours=False)
@@ -1056,6 +1239,7 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
         b_resp = _phase_b_post(s, body_html, book_id, chapter_id, fragment_id, csrf)
         if b_resp.status_code not in (200, 302):
             raise RuntimeError(f'Phase B (update) failed: status {b_resp.status_code}')
+        _record_manifest(manifest, chapter_id, decision['local_text'])
         print(f'  updated body of chapter {chapter_id} (fragment {fragment_id})')
         return 'updated'
 
@@ -1079,8 +1263,20 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
     if b_resp.status_code not in (200, 302):
         raise RuntimeError(f'Phase B (create) failed: status {b_resp.status_code}')
     existing[item['title']] = chapter_id
+    _record_manifest(manifest, chapter_id, _our_chapter_text(item['paragraphs']))
     print(f'  created chapter {chapter_id} (fragment {fragment_id})')
     return 'created'
+
+
+def _record_manifest(manifest: dict, chapter_id: str, local_text: str) -> None:
+    """Write our last-pushed body hash for `chapter_id` into the
+    manifest dict in-memory. The caller persists the file to disk
+    after each batch."""
+    from datetime import datetime, timezone
+    manifest[str(chapter_id)] = {
+        'hash': _body_hash(local_text),
+        'last_pushed_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    }
 
 
 def live_full_first(queue: list[dict], env: dict, args) -> int:
@@ -1110,13 +1306,19 @@ def live_full_first(queue: list[dict], env: dict, args) -> int:
     existing = _existing_chapter_index(s, book_id)
     print(f'Existing chapters on rulate: {len(existing)}')
 
+    manifest = _load_manifest()
+    state: dict = {}
+
     item = queue[0]
     print(f'\n=== [1/1] {item["title"]!r} ===')
     try:
-        outcome = _process_queue_item(s, book_id, item, env, args, csrf, user_id, existing)
+        outcome = _process_queue_item(s, book_id, item, env, args, csrf, user_id,
+                                      existing, manifest, state)
     except Exception as e:
         print(f'  error: {e}', file=sys.stderr)
         return 1
+    finally:
+        _save_manifest(manifest)
     print(f'\nOutcome: {outcome}')
     return 0
 
@@ -1149,6 +1351,9 @@ def live_full_all(queue: list[dict], env: dict, args) -> int:
     print(f'Existing chapters on rulate: {len(existing)}')
     print('Queue: ' + _queue_size_summary(queue))
 
+    manifest = _load_manifest()
+    state: dict = {}
+
     import time
     stats = {'created': 0, 'updated': 0, 'skipped': 0, 'failed': 0}
     touched: list[dict] = []  # items actually pushed (created or updated)
@@ -1156,13 +1361,19 @@ def live_full_all(queue: list[dict], env: dict, args) -> int:
         print(f'\n=== [{i}/{len(queue)}] {item["title"]!r} '
               f'(part {item["part_index"]}/{item["total_parts"]} of source ch {item["source_chapter_index"]}) ===')
         try:
-            outcome = _process_queue_item(s, book_id, item, env, args, csrf, user_id, existing)
+            outcome = _process_queue_item(s, book_id, item, env, args, csrf, user_id,
+                                          existing, manifest, state)
             stats[outcome] += 1
             if outcome in ('created', 'updated'):
                 touched.append(item)
         except Exception as e:
             print(f'  error: {e}', file=sys.stderr)
             stats['failed'] += 1
+        finally:
+            # Persist manifest after every iteration — a later failure
+            # mustn't lose the entries we already populated, and
+            # `skip`-path entries also need to land on disk.
+            _save_manifest(manifest)
         # Be polite to rulate / DDoS-Guard between writes; this is
         # cheap and keeps long-running uploads from getting throttled.
         if i < len(queue):

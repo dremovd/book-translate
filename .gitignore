@@ -13,6 +13,11 @@ rulate-bodies/
 # Per-book translation .md sources (personal — not committed).
 translations/
 
+# Local push manifest for the rulate uploader. Tracks
+# `{chapter_id → hash_of_last_pushed_body}` so re-uploads can detect
+# external edits. Personal state, never committed.
+.rulate-state.json
+
 # Python bytecode caches.
 __pycache__/
 *.pyc
