@@ -127,8 +127,15 @@ Steps:
                                     Other allowed: "a"=Все,
                                     "g"=Группа, "o"=Никто,
                                     ""=Как в переводе (default).
-      Chapter[post_open]          — "0" (hidden) plus optional
-                                    "1" (checkbox). Leave at "0".
+      Chapter[post_open]          — "Отложенная публикация" toggle.
+                                    Always "0" hidden + "1" checkbox
+                                    by default (deferred publishing
+                                    enabled). Pass
+                                    --no-deferred-publish to drop the
+                                    "1" and publish immediately.
+                                    The actual release schedule is
+                                    configured on the book itself
+                                    (not per-chapter).
       Chapter[subscription]       — "0" (hidden) plus optional
                                     "1" (checkbox). Driven by
                                     RULATE_SUBSCRIPTION_FROM_CHAPTER
@@ -487,8 +494,14 @@ def build_phase_a_form(item: dict, env: dict, args) -> list[tuple[str, str]]:
         fields.append(('Chapter[has_override]', '1'))
         for ac in ACCESS_FIELDS:
             fields.append((f'Chapter[{ac}]', ACCESS_LEVEL_MODERATORS))
-    # post_open: keep off (chapter not auto-published).
+    # `Chapter[post_open]` is rulate's "Отложенная публикация" toggle:
+    # when on (and a release schedule is configured on the book), the
+    # chapter goes live on schedule rather than immediately. The
+    # hidden=0 default is always sent so the field is unambiguous; the
+    # opt-in checkbox=1 is added when --deferred-publish is set.
     fields.append(('Chapter[post_open]', '0'))
+    if getattr(args, 'deferred_publish', False):
+        fields.append(('Chapter[post_open]', '1'))
     # Subscription: send hidden=0 always; if rule says enable, ALSO
     # send the checkbox=1 value, which Yii merges as the final.
     sub = subscription_for(item['source_chapter_index'], env)
@@ -597,6 +610,12 @@ def main(argv: list[str]) -> int:
                              'level to "Модераторы" — i.e. publish chapters as moderator-only '
                              'drafts. Off by default, in which case the chapter inherits the '
                              'book-level access settings (no per-chapter override is sent).')
+    parser.add_argument('--deferred-publish', action=argparse.BooleanOptionalAction, default=True,
+                        help='Tick "Отложенная публикация" on every chapter — rulate will '
+                             'release them on the schedule configured in the book settings. '
+                             'On by default; pass --no-deferred-publish to publish chapters '
+                             'immediately. Without a deferred schedule on the book, the flag '
+                             'has no visible effect either way.')
     parser.add_argument('--yes-to-all', action='store_true',
                         help='Skip the per-chapter overwrite confirmation that fires when '
                              'rulate\'s current body differs from the local .md. Use to keep '
