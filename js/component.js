@@ -172,6 +172,8 @@ export function makeComponent() {
     splitPercent: 60,            // editor column split — % of width given to translation, clamped 20..80
     originalFontSize: 'medium',    // key into FONT_SIZES — font of the read-only original column
     translationFontSize: 'big',    // key into FONT_SIZES — font of the editable translation column
+    showAdvanced: false,         // setup view: collapse advanced fields by default
+                                 // (assumes user arrived with a pre-filled URL)
     book: null,                  // { chapters: [{ title, paragraphs, status }] }
     dictionary: [],              // [{ term, translation, notes }]
     currentChapterIndex: 0,
@@ -208,6 +210,7 @@ export function makeComponent() {
         this.$watch('splitPercent',        schedule);
         this.$watch('originalFontSize',    schedule);
         this.$watch('translationFontSize', schedule);
+        this.$watch('showAdvanced',        schedule);
 
         // Resize all translation textareas whenever the editor becomes
         // visible or the shown chapter changes — these are the two moments
@@ -245,6 +248,7 @@ export function makeComponent() {
           this.splitPercent = clampSplit(saved.splitPercent ?? 60);
           this.originalFontSize    = clampFontSize(saved.originalFontSize,    'medium');
           this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
+          this.showAdvanced = !!saved.showAdvanced;
           this.book = saved.book ?? null;
           this.dictionary = saved.dictionary ?? [];
           this.currentChapterIndex = saved.currentChapterIndex ?? 0;
@@ -291,6 +295,7 @@ export function makeComponent() {
           splitPercent: this.splitPercent,
           originalFontSize: this.originalFontSize,
           translationFontSize: this.translationFontSize,
+          showAdvanced: this.showAdvanced,
           book: this.book,
           dictionary: this.dictionary,
           currentChapterIndex: this.currentChapterIndex,

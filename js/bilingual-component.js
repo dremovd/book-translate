@@ -129,6 +129,7 @@ export function makeBilingualComponent() {
     splitPercent: 60,
     originalFontSize: 'medium',
     translationFontSize: 'big',
+    showAdvanced: false,          // setup view: collapse advanced fields by default
     book: null,                   // { chapters: [{ title, translatedTitle, status, paragraphs:[{original,translation,status}], referenceText }] }
     dictionary: [],               // [{ term, originalForm, translation, notes, chapters[] }]
     currentChapterIndex: 0,
@@ -158,6 +159,7 @@ export function makeBilingualComponent() {
         this.$watch('referenceHeadingLevel',  schedule);
         this.$watch('splitPercent',        schedule);
         this.$watch('originalFontSize',    schedule);
+        this.$watch('showAdvanced',        schedule);
         this.$watch('translationFontSize', schedule);
 
         this.$watch('view', v => {
@@ -188,6 +190,7 @@ export function makeBilingualComponent() {
           this.splitPercent          = clampSplit(saved.splitPercent ?? 60);
           this.originalFontSize    = clampFontSize(saved.originalFontSize,    'medium');
           this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
+          this.showAdvanced        = !!saved.showAdvanced;
           this.book                = saved.book ?? null;
           this.dictionary          = saved.dictionary ?? [];
           this.currentChapterIndex = saved.currentChapterIndex ?? 0;
@@ -212,6 +215,7 @@ export function makeBilingualComponent() {
           splitPercent: this.splitPercent,
           originalFontSize: this.originalFontSize,
           translationFontSize: this.translationFontSize,
+          showAdvanced: this.showAdvanced,
           book: this.book,
           dictionary: this.dictionary,
           currentChapterIndex: this.currentChapterIndex,

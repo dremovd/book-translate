@@ -51,28 +51,13 @@
         <p>Provide the same book in two languages: one you can read (you'll see this while editing), and the canonical original (kept behind the scenes — the model uses it as the source of truth).</p>
       </hgroup>
 
+      <!-- ===== Simple fields (always visible) ===== -->
       <div class="grid">
         <label>Reading language
           <input x-model="config.editorLanguage" placeholder="English">
         </label>
         <label>Original language
           <input x-model="config.referenceLanguage" placeholder="Chinese">
-        </label>
-      </div>
-      <div class="grid">
-        <label>Chapter heading level (reading side)
-          <select x-model.number="editorHeadingLevel">
-            <option :value="1"># H1</option>
-            <option :value="2">## H2</option>
-            <option :value="3">### H3</option>
-          </select>
-        </label>
-        <label>Chapter heading level (original side)
-          <select x-model.number="referenceHeadingLevel">
-            <option :value="1"># H1</option>
-            <option :value="2">## H2</option>
-            <option :value="3">### H3</option>
-          </select>
         </label>
       </div>
 
@@ -104,31 +89,6 @@
         Translation will pair the first <strong x-text="Math.min(editorChapterCount, referenceChapterCount)"></strong> chapters by index — fix the heading level or the source files if these should match 1:1.
       </article>
 
-      <h3>Translator</h3>
-      <div class="grid">
-        <label>Base URL<input x-model="config.baseUrl"></label>
-        <label>Model
-          <input x-model="config.model" list="poe-models" placeholder="gemini-3.1-pro" autocomplete="off" spellcheck="false">
-        </label>
-        <label>API key<input type="password" x-model="config.apiKey" autocomplete="off"></label>
-      </div>
-      <label>Dictionary model (optional override)
-        <input x-model="config.dictionaryModel" list="poe-models"
-               placeholder="leave empty to reuse the main model"
-               autocomplete="off" spellcheck="false">
-      </label>
-      <label>Second translation model (optional)
-        <input x-model="config.model2" list="poe-models"
-               placeholder="leave empty for no extra button"
-               autocomplete="off" spellcheck="false">
-        <small>When set, adds a "Re-translate via &lt;name&gt;" button next to the standard one for quick A/B comparison across two models.</small>
-      </label>
-      <datalist id="poe-models">
-        <option value="claude-opus-4.7"></option>
-        <option value="gpt-5.4"></option>
-        <option value="gemini-3.1-pro"></option>
-      </datalist>
-
       <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
 
       <label>Dictionary guidance
@@ -139,29 +99,83 @@
           <a href="#" @click.prevent="insertPalladiusPrompt()">Insert Palladius (Chinese → Russian) preset</a>
         </small>
       </label>
-      <label>
-        <input type="checkbox" x-model="config.usePalladius">
-        Algorithmic Palladius (Палладий) for Chinese reference forms
-        <small>When the dictionary's reference side is Chinese, run each CJK reference form through the Palladius transliteration system and pass the result to the model as a per-pair hint. Off by default.</small>
-      </label>
-      <label>Translation prompt
-        <select x-model="config.translationPromptPreset">
-          <option value="v1">v1 — natural &amp; idiomatic</option>
-          <option value="v2">v2 — two-stage, native-writer rewrite (default)</option>
-          <option value="custom">Custom (edit below)</option>
-        </select>
-      </label>
-      <label x-show="config.translationPromptPreset === 'custom'">
-        Custom translation prompt
-        <textarea rows="6" x-model="config.translationPromptCustom"
-          placeholder="Use ${'${lang}'} for the target language."></textarea>
-      </label>
       <label>Translation guidance (per-book)
         <textarea rows="3" x-model="config.translationGuidance"
           placeholder="- Use formal register throughout.&#10;- Preserve narrator's rhythm."></textarea>
       </label>
 
-      <button @click="startFromRaw()" :disabled="busy || !canStartFromRaw" :aria-busy="busy && view === 'setup'">
+      <!-- ===== Toggle for advanced fields ===== -->
+      <button class="secondary outline" type="button"
+              @click="showAdvanced = !showAdvanced"
+              style="margin-top: 0.5rem;">
+        <span x-text="showAdvanced ? '▾ Hide advanced options' : '▸ Show advanced options'"></span>
+      </button>
+
+      <!-- ===== Advanced fields (hidden by default; assumes user came with a pre-filled URL) ===== -->
+      <div x-show="showAdvanced" x-cloak>
+        <div class="grid" style="margin-top: 1rem;">
+          <label>Chapter heading level (reading side)
+            <select x-model.number="editorHeadingLevel">
+              <option :value="1"># H1</option>
+              <option :value="2">## H2</option>
+              <option :value="3">### H3</option>
+            </select>
+          </label>
+          <label>Chapter heading level (original side)
+            <select x-model.number="referenceHeadingLevel">
+              <option :value="1"># H1</option>
+              <option :value="2">## H2</option>
+              <option :value="3">### H3</option>
+            </select>
+          </label>
+        </div>
+
+        <h3>Translator</h3>
+        <div class="grid">
+          <label>Base URL<input x-model="config.baseUrl"></label>
+          <label>Model
+            <input x-model="config.model" list="poe-models" placeholder="gemini-3.1-pro" autocomplete="off" spellcheck="false">
+          </label>
+          <label>API key<input type="password" x-model="config.apiKey" autocomplete="off"></label>
+        </div>
+        <label>Dictionary model (optional override)
+          <input x-model="config.dictionaryModel" list="poe-models"
+                 placeholder="leave empty to reuse the main model"
+                 autocomplete="off" spellcheck="false">
+        </label>
+        <label>Second translation model (optional)
+          <input x-model="config.model2" list="poe-models"
+                 placeholder="leave empty for no extra button"
+                 autocomplete="off" spellcheck="false">
+          <small>When set, adds a "Re-translate via &lt;name&gt;" button next to the standard one for quick A/B comparison across two models.</small>
+        </label>
+        <datalist id="poe-models">
+          <option value="claude-opus-4.7"></option>
+          <option value="gpt-5.4"></option>
+          <option value="gemini-3.1-pro"></option>
+        </datalist>
+
+        <label>
+          <input type="checkbox" x-model="config.usePalladius">
+          Algorithmic Palladius (Палладий) for Chinese reference forms
+          <small>When the dictionary's reference side is Chinese, run each CJK reference form through the Palladius transliteration system and pass the result to the model as a per-pair hint. Off by default.</small>
+        </label>
+        <label>Translation prompt
+          <select x-model="config.translationPromptPreset">
+            <option value="v1">v1 — natural &amp; idiomatic</option>
+            <option value="v2">v2 — two-stage, native-writer rewrite (default)</option>
+            <option value="custom">Custom (edit below)</option>
+          </select>
+        </label>
+        <label x-show="config.translationPromptPreset === 'custom'">
+          Custom translation prompt
+          <textarea rows="6" x-model="config.translationPromptCustom"
+            placeholder="Use ${'${lang}'} for the target language."></textarea>
+        </label>
+      </div>
+
+      <button @click="startFromRaw()" :disabled="busy || !canStartFromRaw" :aria-busy="busy && view === 'setup'"
+              style="margin-top: 1rem;">
         <span x-text="busy ? 'Building bilingual dictionary…' : 'Pair texts & build dictionary'"></span>
       </button>
       <div class="dict-progress" x-show="dictionaryProgress" x-cloak>
