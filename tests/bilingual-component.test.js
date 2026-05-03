@@ -99,7 +99,7 @@ test('importFromText: round-trips state and preserves the receiver\'s local apiK
     'receiver must keep its own apiKey, not adopt the (blanked) one from the envelope');
 });
 
-test('retranslateCurrentWithModel2: no-op when config.model2 is empty', async () => {
+test('retranslateParagraphWithModel2: no-op when config.model2 is empty', async () => {
   const c = makeBilingualComponent();
   c._loaded = true;
   c.book = { chapters: [{
@@ -109,12 +109,11 @@ test('retranslateCurrentWithModel2: no-op when config.model2 is empty', async ()
     status: 'translated',
   }]};
   c.currentChapterIndex = 0;
-  // model2 is unset; method should short-circuit and leave the edit alone.
-  await c.retranslateCurrentWithModel2();
+  await c.retranslateParagraphWithModel2(0);
   assert.equal(c.book.chapters[0].paragraphs[0].translation, 'edited');
 });
 
-test('retranslateCurrentWithModel2: swaps in config.model2 for the chapter translate request', async () => {
+test('retranslateParagraphWithModel2: swaps in config.model2 for the per-paragraph translate request', async () => {
   clearStore();
   const c = makeBilingualComponent();
   c._loaded = true;
@@ -123,20 +122,20 @@ test('retranslateCurrentWithModel2: swaps in config.model2 for the chapter trans
   c.config.model = 'Primary-Model';
   c.config.model2 = 'Secondary-Model';
   c.book = { chapters: [{
-    title: 'Chapter One', translatedTitle: '',
-    paragraphs: [{ original: 'A', translation: '', status: 'pending' }],
+    title: 'Chapter One', translatedTitle: 'Глава 1',
+    paragraphs: [{ original: 'A', translation: 'old', status: 'translated' }],
     referenceText: '阮眠',
-    status: 'pending',
+    status: 'translated',
   }]};
   c.currentChapterIndex = 0;
 
   let usedModel;
   const restore = withFetch(async (_u, opts) => {
     usedModel = JSON.parse(opts.body).model;
-    return mockResponse({ body: { choices: [{ message: { content: '[0] Глава 1\n\n[1] перевод' } }] } });
+    return mockResponse({ body: { choices: [{ message: { content: 'переведено' } }] } });
   });
   try {
-    await c.retranslateCurrentWithModel2();
+    await c.retranslateParagraphWithModel2(0);
     assert.equal(usedModel, 'Secondary-Model');
     assert.equal(c.config.model, 'Primary-Model', 'persisted config.model must not mutate');
   } finally { restore(); }

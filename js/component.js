@@ -419,13 +419,14 @@ export function makeComponent() {
     // toward literal fidelity ('strict') or toward native-target fluency
     // ('natural'). Passes only the dictionary entries whose provenance
     // includes the current chapter — keeps the prompt focused.
-    async retranslateParagraph(pIdx, mode) {
+    async retranslateParagraph(pIdx, mode, modelOverride = null) {
       const chIdx = this.currentChapterIndex;
       const ch = this.book?.chapters?.[chIdx];
       const p = ch?.paragraphs?.[pIdx];
       if (!p) return;
       await this._runBusy(async () => {
-        const translator = createTranslator(this.config);
+        const cfg = modelOverride ? { ...this.config, model: modelOverride } : this.config;
+        const translator = createTranslator(cfg);
         if (typeof translator.translateParagraph !== 'function') {
           throw new Error('This backend does not support per-paragraph retranslation.');
         }
@@ -442,6 +443,12 @@ export function makeComponent() {
         this._autosizeAll();
       });
     },
+    async retranslateParagraphWithModel2(pIdx) {
+      const m2 = (this.config.model2 || '').trim();
+      if (!m2) return;
+      // Default mode + the alt model — see `config.model2` for use case.
+      await this.retranslateParagraph(pIdx, 'default', m2);
+    },
 
     // Dictionary entries whose provenance includes the given chapter index.
     // Entries without `chapters` (e.g. from a dictionary built before the
@@ -454,18 +461,12 @@ export function makeComponent() {
       );
     },
 
-    async retranslateCurrent(modelOverride = null) {
+    async retranslateCurrent() {
       const idx = this.currentChapterIndex;
       const ch = this.book?.chapters?.[idx];
       if (!ch) return;
-      const via = modelOverride ? ` via ${modelOverride}` : '';
-      if (!this._confirm(`Re-translate "${ch.title}"${via}? Current edits in this chapter will be lost.`)) return;
-      await this._runBusy(() => this._translateChapterAt(idx, modelOverride));
-    },
-    async retranslateCurrentWithModel2() {
-      const m2 = (this.config.model2 || '').trim();
-      if (!m2) return;
-      await this.retranslateCurrent(m2);
+      if (!this._confirm(`Re-translate "${ch.title}"? Current edits in this chapter will be lost.`)) return;
+      await this._runBusy(() => this._translateChapterAt(idx));
     },
 
     // Wraps an async operation that manipulates `book`/`dictionary`/`view`:
@@ -487,15 +488,10 @@ export function makeComponent() {
     // Translates chapters[idx] in place, using all previously accepted
     // chapters as context. Throws on translator failure so callers can roll
     // back state if they need to.
-    //
-    // `modelOverride` (optional): when truthy, swap `config.model` for it
-    // for the duration of this call. Used by the "Re-translate via
-    // <model2>" button without mutating persisted config.
-    async _translateChapterAt(idx, modelOverride = null) {
+    async _translateChapterAt(idx) {
       const ch = this.book.chapters[idx];
       const prior = this.book.chapters.slice(0, idx).filter(c => c.status === 'accepted');
-      const cfg = modelOverride ? { ...this.config, model: modelOverride } : this.config;
-      const { titleTranslation, paragraphs } = await createTranslator(cfg)
+      const { titleTranslation, paragraphs } = await createTranslator(this.config)
         .translateChapter(ch, this.dictionary, prior);
       ch.paragraphs = paragraphs;
       ch.translatedTitle = titleTranslation;

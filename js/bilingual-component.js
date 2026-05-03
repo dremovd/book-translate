@@ -346,14 +346,13 @@ export function makeBilingualComponent() {
       });
     },
 
-    async _translateChapter(i, modelOverride = null) {
+    async _translateChapter(i) {
       const ch = this.book.chapters[i];
       if (!ch) return;
       const prior = this.book.chapters
         .slice(0, i)
         .filter(c => c.status === 'accepted');
-      const cfg = modelOverride ? { ...this.config, model: modelOverride } : this.config;
-      const t = createTranslator(cfg);
+      const t = createTranslator(this.config);
       const out = await t.translateChapter(ch, this.dictionary, prior);
       ch.translatedTitle = out.titleTranslation;
       ch.paragraphs = out.paragraphs;
@@ -375,7 +374,7 @@ export function makeBilingualComponent() {
       });
     },
 
-    async retranslateCurrent(modelOverride = null) {
+    async retranslateCurrent() {
       if (!this.book || this.busy) return;
       await this._runBusy(async () => {
         const ch = this.book.chapters[this.currentChapterIndex];
@@ -387,19 +386,14 @@ export function makeBilingualComponent() {
           ...p, translation: '', status: 'pending',
         }));
         ch.status = 'pending';
-        await this._translateChapter(this.currentChapterIndex, modelOverride);
+        await this._translateChapter(this.currentChapterIndex);
       });
-    },
-    async retranslateCurrentWithModel2() {
-      const m2 = (this.config.model2 || '').trim();
-      if (!m2) return;
-      await this.retranslateCurrent(m2);
     },
 
     // Per-paragraph retranslate. Sends the full reference chapter as
     // context so the model can find the corresponding passage on the
     // source-of-truth side and translate from its meaning.
-    async retranslateParagraph(i, mode) {
+    async retranslateParagraph(i, mode, modelOverride = null) {
       if (!this.book || this.busy) return;
       const ch = this.book.chapters[this.currentChapterIndex];
       if (!ch) return;
@@ -408,7 +402,8 @@ export function makeBilingualComponent() {
       const subset = this._dictionarySubsetForChapter(this.currentChapterIndex);
       const priorParagraphs = ch.paragraphs.slice(Math.max(0, i - 5), i);
       await this._runBusy(async () => {
-        const t = createTranslator(this.config);
+        const cfg = modelOverride ? { ...this.config, model: modelOverride } : this.config;
+        const t = createTranslator(cfg);
         const out = await t.translateParagraph(p, mode, subset, {
           chapterTitle: ch.title,
           priorParagraphs,
@@ -417,6 +412,11 @@ export function makeBilingualComponent() {
         p.translation = out;
         p.status = 'translated';
       });
+    },
+    async retranslateParagraphWithModel2(i) {
+      const m2 = (this.config.model2 || '').trim();
+      if (!m2) return;
+      await this.retranslateParagraph(i, 'default', m2);
     },
 
     _dictionarySubsetForChapter(chapterIdx) {

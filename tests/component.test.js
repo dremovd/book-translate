@@ -659,18 +659,18 @@ test('retranslateCurrent: regenerates current chapter using prior accepted as co
     'dummy retranslate should overwrite edits with the original text');
 });
 
-test('retranslateCurrentWithModel2: no-op when config.model2 is empty', async () => {
+test('retranslateParagraphWithModel2: no-op when config.model2 is empty', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
   await c.acceptDictionary();
   c.book.chapters[0].paragraphs[0].translation = 'edited';
   // model2 is unset by default; should not run, leaving the edit alone.
-  await c.retranslateCurrentWithModel2();
+  await c.retranslateParagraphWithModel2(0);
   assert.equal(c.book.chapters[0].paragraphs[0].translation, 'edited');
 });
 
-test('retranslateCurrentWithModel2: swaps config.model for config.model2 in the translate call', async () => {
+test('retranslateParagraphWithModel2: swaps config.model for config.model2 in the per-paragraph call', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
@@ -686,15 +686,14 @@ test('retranslateCurrentWithModel2: swaps config.model for config.model2 in the 
   let usedModel;
   const restore = withFetch(async (_u, opts) => {
     usedModel = JSON.parse(opts.body).model;
-    return mockResponse({ body: { choices: [{ message: { content: '[0] t\n\n[1] x' } }] } });
+    return mockResponse({ body: { choices: [{ message: { content: 'translated text' } }] } });
   });
   try {
-    await c.retranslateCurrentWithModel2();
+    await c.retranslateParagraphWithModel2(0);
     assert.equal(usedModel, 'Secondary-Model');
-    // Sanity: persisted config.model is unchanged after the override.
-    assert.equal(c.config.model, 'Primary-Model');
-    // And a plain retranslate goes back to the primary.
-    await c.retranslateCurrent();
+    assert.equal(c.config.model, 'Primary-Model', 'persisted config.model must not mutate');
+    // And a plain per-paragraph retranslate goes back to the primary.
+    await c.retranslateParagraph(0, 'default');
     assert.equal(usedModel, 'Primary-Model');
   } finally { restore(); }
 });

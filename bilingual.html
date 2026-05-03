@@ -312,6 +312,14 @@
                           @click="retranslateParagraph(i, 'natural')"
                           :disabled="busy"
                           title="Retranslate biased toward native-target naturalness">↻ more natural</button>
+                  <button class="tiny" type="button"
+                          @click="retranslateParagraphWithModel2(i)"
+                          :disabled="busy"
+                          x-show="(config.model2 || '').trim()"
+                          x-cloak
+                          :title="`Retranslate this paragraph via ${config.model2} (default mode)`">
+                    ↻ <span x-text="(config.model2 || '').trim().slice(0, 15)"></span>
+                  </button>
                 </div>
               </div>
               <div class="original" x-html="renderMd(p.original)"></div>
@@ -333,13 +341,6 @@
           </button>
           <button class="secondary outline" @click="retranslateCurrent()" :disabled="busy" type="button">
             Re-translate this chapter
-          </button>
-          <button class="secondary outline" @click="retranslateCurrentWithModel2()"
-                  :disabled="busy" type="button"
-                  x-show="(config.model2 || '').trim()"
-                  x-cloak
-                  :title="`Re-translate this chapter via ${config.model2}`">
-            ↻ <span x-text="(config.model2 || '').trim().slice(0, 15)"></span>
           </button>
           <button @click="acceptAndNext()" :disabled="busy" :aria-busy="busy">
             <span x-text="nextButtonLabel"></span>
