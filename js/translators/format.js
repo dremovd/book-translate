@@ -97,6 +97,13 @@ const DIALOG_CONVENTIONS = {
     'Each speaker line starts with an em-dash (—) on a new line. ' +
     'Speaker tags inside a line are flanked by em-dashes. ' +
     'Do NOT use English-style "quotation marks" for spoken lines.',
+  english:
+    'Use double quotation marks (") around spoken lines. ' +
+    'Each new speech turn starts a new paragraph (one speaker per paragraph). ' +
+    'Speaker tags belong inside the same paragraph as the line, e.g. "Hello," she said. ' +
+    'Place commas and periods inside the closing quote (US convention). ' +
+    'Em-dashes mark interruption ("I—"); ellipses ("…") mark trailing off. ' +
+    'Do NOT use em-dash speaker lines or guillemets — those belong to other languages.',
   french:
     'Use guillemets («…») around spoken lines, with a non-breaking space inside the marks ' +
     '(« comme ceci »). When dialog continues across multiple turns within a paragraph, start each ' +

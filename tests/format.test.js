@@ -428,6 +428,13 @@ test('dialogConventionsFor: French → guillemets', () => {
   assert.match(s, /guillemets|«/);
 });
 
+test('dialogConventionsFor: English → double quotes + tags-inside-paragraph guidance', () => {
+  const s = dialogConventionsFor('English');
+  assert.ok(s.length > 0);
+  assert.match(s, /double quot/i);
+  assert.match(s, /paragraph/i);
+});
+
 test('dialogConventionsFor: German → German-style quotation marks', () => {
   const s = dialogConventionsFor('German');
   assert.ok(s.length > 0);
