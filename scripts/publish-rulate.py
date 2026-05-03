@@ -75,9 +75,10 @@ Steps:
      accepts an optional `--volume <name>` flag for books that DO
      use this field.
 
-  3. Status ("Статус") — "идёт перевод" by default. This is the
-     rulate-side translation-progress flag. The script should send
-     this value unless overridden via `--status <value>`.
+  3. Status ("Статус") — "перевод редактируется" by default. This is
+     the rulate-side translation-progress flag. The script should send
+     this value unless overridden via `--status <value>`. Valid values:
+     "идёт перевод" (1), "перевод редактируется" (2), "перевод готов" (3).
 
   4. "Особые права доступа" checkbox — OPT-IN via the
      `--moderators-only` CLI flag. Off by default: the chapter
@@ -546,8 +547,12 @@ def dry_run(queue: list[dict], env: dict, args: argparse.Namespace) -> None:
         first_html = render_paragraph_html(item['paragraphs'][0])[:160] if item['paragraphs'] else ''
         print(f'[{i:3}] {item["title"]!r}  (part {item["part_index"]}/{item["total_parts"]} of source ch {item["source_chapter_index"]})')
         print(f'      paragraphs: {len(item["paragraphs"])}  chars(no-ws): {n_no_ws}')
+        access_str = ('special_access=true  access_levels=Модераторы'
+                      if getattr(args, 'moderators_only', False)
+                      else 'special_access=(default, inherits book settings)')
+        deferred_str = 'on' if getattr(args, 'deferred_publish', True) else 'off'
         print(f'      Phase A: volume={args.volume!r}  status={args.status!r}  '
-              f'special_access=true  access_levels=Модераторы  subscription={sub_str}')
+              f'{access_str}  deferred_publish={deferred_str}  subscription={sub_str}')
 
         if args.show_payload and i == 1:
             phase_a = build_phase_a_form(item, env, args)
@@ -593,8 +598,10 @@ def main(argv: list[str]) -> int:
                              'create) before any write. Prints a summary at the end.')
     parser.add_argument('--volume', default='',
                         help='"Том / Арка" value for every chapter. Empty by default.')
-    parser.add_argument('--status', default='идёт перевод',
-                        help='"Статус" value for every chapter. Default "идёт перевод".')
+    parser.add_argument('--status', default='перевод редактируется',
+                        help='"Статус" value for every chapter. Allowed: '
+                             '"идёт перевод" / "перевод редактируется" / "перевод готов". '
+                             'Default "перевод редактируется".')
     parser.add_argument('--up-to', type=int, default=None, metavar='N',
                         help='Limit processing to the first N SOURCE chapters of the .md '
                              '(applied BEFORE the long-chapter splitting, so e.g. --up-to 3 '
