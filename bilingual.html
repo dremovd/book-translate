@@ -46,10 +46,7 @@
 
     <!-- SETUP -->
     <section x-show="view === 'setup'" x-cloak class="container">
-      <hgroup>
-        <h2>Bilingual translation</h2>
-        <p>Provide the same book in two languages: one you can read (you'll see this while editing), and the canonical original (kept behind the scenes — the model uses it as the source of truth).</p>
-      </hgroup>
+      <h2>Bilingual translator</h2>
 
       <!-- ===== Simple fields (always visible) ===== -->
       <div class="grid">
@@ -62,24 +59,24 @@
       </div>
 
       <label>
-        <strong>Paste the <span x-text="config.editorLanguage || 'reading'"></span> text</strong>
-        <small>— or drop a .md / .txt file. <span x-show="editorChapterCount > 0"><strong x-text="editorChapterCount"></strong> chapter(s) detected.</span></small>
-        <input type="file" accept=".md,.txt,.markdown,text/plain,text/markdown"
+        <strong><span x-text="config.editorLanguage || 'Reading'"></span> text (.md)</strong>
+        <span x-show="editorChapterCount > 0"><small><strong x-text="editorChapterCount"></strong> chapter(s) detected.</small></span>
+        <input type="file" accept=".md,.markdown,text/markdown"
                @change="loadFileIntoSide('editor', $event)">
         <textarea rows="12" x-model="rawEditor"
                   @dragover.prevent
                   @drop="loadFileIntoSide('editor', $event)"
-                  placeholder="Drop a file here or paste. Format: # Chapter Title, blank-line-separated paragraphs."></textarea>
+                  placeholder="# Chapter One&#10;&#10;…"></textarea>
       </label>
       <label>
-        <strong>Paste the <span x-text="config.referenceLanguage || 'original'"></span> text</strong>
-        <small>— or drop a .md / .txt file. <span x-show="referenceChapterCount > 0"><strong x-text="referenceChapterCount"></strong> chapter(s) detected.</span></small>
-        <input type="file" accept=".md,.txt,.markdown,text/plain,text/markdown"
+        <strong><span x-text="config.referenceLanguage || 'Original'"></span> text (.md)</strong>
+        <span x-show="referenceChapterCount > 0"><small><strong x-text="referenceChapterCount"></strong> chapter(s) detected.</small></span>
+        <input type="file" accept=".md,.markdown,text/markdown"
                @change="loadFileIntoSide('reference', $event)">
         <textarea rows="12" x-model="rawReference"
                   @dragover.prevent
                   @drop="loadFileIntoSide('reference', $event)"
-                  placeholder="Drop a file here or paste. Same format as the reading side."></textarea>
+                  placeholder="# Chapter One&#10;&#10;…"></textarea>
       </label>
 
       <article x-show="chapterCountMismatch" x-cloak role="alert" class="warning">
@@ -92,16 +89,11 @@
       <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
 
       <label>Dictionary guidance
-        <textarea rows="4" x-model="config.dictionaryGuidance"
-          placeholder="- Use Palladius transliteration for Chinese names.&#10;- For real-world references, use the canonical published translation."></textarea>
-        <small>
-          Free-text instructions injected into both dictionary phases.
-          <a href="#" @click.prevent="insertPalladiusPrompt()">Insert Palladius (Chinese → Russian) preset</a>
-        </small>
+        <textarea rows="6" x-model="config.dictionaryGuidance"></textarea>
+        <small><a href="#" @click.prevent="insertPalladiusPrompt()">Insert Palladius (Chinese → Russian) preset</a></small>
       </label>
-      <label>Translation guidance (per-book)
-        <textarea rows="3" x-model="config.translationGuidance"
-          placeholder="- Use formal register throughout.&#10;- Preserve narrator's rhythm."></textarea>
+      <label>Translation guidance
+        <textarea rows="5" x-model="config.translationGuidance"></textarea>
       </label>
 
       <!-- ===== Toggle for advanced fields ===== -->
