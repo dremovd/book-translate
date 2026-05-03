@@ -34,7 +34,7 @@ export const PALLADIUS_PROMPT =
 // editor (parseQueryOverrides in component.js), with bilingual extras
 // `editorLanguage` / `referenceLanguage`.
 const QUERY_STRING_CONFIG_KEYS = [
-  'translator', 'apiKey', 'model', 'dictionaryModel', 'baseUrl',
+  'translator', 'apiKey', 'model', 'dictionaryModel', 'model2', 'baseUrl',
   'targetLanguage', 'editorLanguage', 'referenceLanguage',
   'dictionaryGuidance', 'translationGuidance',
   'translationPromptPreset', 'translationPromptCustom',

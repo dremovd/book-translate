@@ -41,8 +41,8 @@ export const SAMPLE_BOOKS = [
 // knobs an onboarding link can pre-fill — the list is intentionally small
 // and explicit; unknown params are silently ignored.
 const QUERY_STRING_CONFIG_KEYS = [
-  'translator', 'apiKey', 'model', 'dictionaryModel', 'baseUrl',
-  'targetLanguage', 'dictionaryGuidance',
+  'translator', 'apiKey', 'model', 'dictionaryModel', 'model2', 'baseUrl',
+  'targetLanguage', 'dictionaryGuidance', 'translationGuidance',
   'translationPromptPreset', 'translationPromptCustom',
 ];
 const QUERY_NUMBER_CONFIG_KEYS = ['dictionaryChunkChars'];
