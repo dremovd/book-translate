@@ -1,6 +1,6 @@
 // Shared helpers for translator backends that talk to a model over text:
-// paragraph numbering, JSON-array parsing, dictionary normalization, chapter
-// and dictionary rendering. Keep this module pure — no network, no `this`.
+// paragraph numbering, JSON-array parsing, glossary normalization, chapter
+// and glossary rendering. Keep this module pure — no network, no `this`.
 
 export function numberedParagraphs(paragraphs) {
   return paragraphs.map((p, i) => `[${i + 1}] ${p.original}`).join('\n\n');
@@ -45,7 +45,7 @@ export function parseJsonArray(content) {
   return arr;
 }
 
-export function normalizeDictionary(arr) {
+export function normalizeGlossary(arr) {
   return arr.map(e => ({
     term: String(e?.term ?? '').trim(),
     translation: String(e?.translation ?? '').trim(),
@@ -61,9 +61,9 @@ export function chapterTranslationText(chapter) {
   return chapter.paragraphs.map(p => p.translation).join('\n\n');
 }
 
-export function formatDictionary(dictionary) {
-  if (!dictionary.length) return '(empty)';
-  return dictionary
+export function formatGlossary(glossary) {
+  if (!glossary.length) return '(empty)';
+  return glossary
     .map(d => {
       // Bilingual entries carry `originalForm` — the canonical form in
       // the reference language (e.g. the Chinese characters when the
@@ -138,7 +138,7 @@ export function dialogConventionsFor(lang) {
 // exactly one chapter; chapters bigger than maxChars are split along
 // paragraph boundaries (never mid-paragraph) with the title repeated on
 // every continuation chunk for context. One-chapter-per-chunk makes each
-// chunk's source chapter unambiguous, which the dictionary uses to track
+// chunk's source chapter unambiguous, which the glossary uses to track
 // which chapters each term appeared in.
 // Returns: [{ text, chapterIndices: [number] }]  (a 1-element array for now,
 // but kept as an array so the shape stays stable if we ever re-enable
@@ -171,27 +171,27 @@ export function chunkBookText(chapters, maxChars) {
   return chunks;
 }
 
-// Render the bilingual dictionary as a Markdown table for export. Columns
+// Render the bilingual glossary as a Markdown table for export. Columns
 // are named by the user's actual languages (e.g. Chinese / English /
 // Russian) so the file is self-describing. Chapter provenance is
 // internal bookkeeping for the model's per-chapter prompt filtering —
 // not useful in the exported file, so it's not emitted.
-export function renderDictionaryMarkdown(dictionary, opts = {}) {
+export function renderGlossaryMarkdown(glossary, opts = {}) {
   const target    = opts.targetLanguage    || 'Translation';
-  // Bilingual dictionaries pass `referenceLanguage` and carry per-entry
+  // Bilingual glossaries pass `referenceLanguage` and carry per-entry
   // `originalForm` (the canonical reference-language form). Single-source
-  // dictionaries pass neither — render a 3-column table (Term · target ·
+  // glossaries pass neither — render a 3-column table (Term · target ·
   // Notes) so the export reflects the data the user actually has.
   const isBilingual = !!opts.referenceLanguage;
   if (isBilingual) {
     const editor    = opts.editorLanguage    || 'Editor';
     const reference = opts.referenceLanguage;
-    const lines = [`# Dictionary — ${reference} / ${editor} → ${target}`, ''];
-    if (!dictionary?.length) return lines.join('\n') + '\n';
+    const lines = [`# Glossary — ${reference} / ${editor} → ${target}`, ''];
+    if (!glossary?.length) return lines.join('\n') + '\n';
     const headerCols = [reference, editor, target, 'Notes'];
     lines.push('| ' + headerCols.join(' | ') + ' |');
     lines.push('| ' + headerCols.map(() => '---').join(' | ') + ' |');
-    for (const d of dictionary) {
+    for (const d of glossary) {
       lines.push('| ' + [
         cell(d.originalForm),
         cell(d.term),
@@ -201,12 +201,12 @@ export function renderDictionaryMarkdown(dictionary, opts = {}) {
     }
     return lines.join('\n') + '\n';
   }
-  const lines = [`# Dictionary — ${target}`, ''];
-  if (!dictionary?.length) return lines.join('\n') + '\n';
+  const lines = [`# Glossary — ${target}`, ''];
+  if (!glossary?.length) return lines.join('\n') + '\n';
   const headerCols = ['Term', target, 'Notes'];
   lines.push('| ' + headerCols.join(' | ') + ' |');
   lines.push('| ' + headerCols.map(() => '---').join(' | ') + ' |');
-  for (const d of dictionary) {
+  for (const d of glossary) {
     lines.push('| ' + [
       cell(d.term),
       cell(d.translation),
@@ -243,7 +243,7 @@ export function renderTranslationMarkdown(book, uptoIndex) {
 }
 
 // Merge per-chunk term extractions, dedupe across chunks, and preserve the
-// set of chapter indices each term appeared in (so the dictionary can
+// set of chapter indices each term appeared in (so the glossary can
 // later filter entries relevant to a given chapter).
 // Input:  [{ terms: string[], chapterIndices: number[] }]
 // Output: [{ term, chapters: number[], frequency: number }]

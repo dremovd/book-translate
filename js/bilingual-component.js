@@ -11,16 +11,16 @@
 import { parseBook } from './parse.js';
 import { makeStore } from './store.js';
 import { createTranslator } from './translators/index.js';
-import { renderTranslationMarkdown, renderDictionaryMarkdown } from './translators/format.js';
+import { renderTranslationMarkdown, renderGlossaryMarkdown } from './translators/format.js';
 import { renderInlineMd } from './markdown.js';
 
 const STORE_KEY = 'book-translate-bilingual:v1';
 const store = makeStore(STORE_KEY);
 
-// Default dictionary-guidance preset for Chinese → Russian: spells out
+// Default glossary-guidance preset for Chinese → Russian: spells out
 // the Palladius (Палладий) transliteration system for Chinese names so
 // the model produces canonical Russian renderings (Жуань Мянь, not
-// Ruan Mian). Inserted into config.dictionaryGuidance via the
+// Ruan Mian). Inserted into config.glossaryGuidance via the
 // "Palladius (Chinese → Russian)" button on the setup view.
 export const PALLADIUS_PROMPT =
   `For Chinese personal names, places, and organizations, transliterate from the ` +
@@ -34,12 +34,21 @@ export const PALLADIUS_PROMPT =
 // editor (parseQueryOverrides in component.js), with bilingual extras
 // `editorLanguage` / `referenceLanguage`.
 const QUERY_STRING_CONFIG_KEYS = [
-  'translator', 'apiKey', 'model', 'dictionaryModel', 'model2', 'baseUrl',
+  'translator', 'apiKey', 'model', 'glossaryModel', 'model2', 'baseUrl',
   'targetLanguage', 'editorLanguage', 'referenceLanguage',
-  'dictionaryGuidance', 'translationGuidance',
+  'glossaryGuidance', 'translationGuidance',
   'translationPromptPreset', 'translationPromptCustom',
+  'projectName',
 ];
-const QUERY_NUMBER_CONFIG_KEYS = ['dictionaryChunkChars'];
+const QUERY_NUMBER_CONFIG_KEYS = ['glossaryChunkChars'];
+
+// Mirror of component.js's LEGACY_QUERY_KEY_MAP — pre-rename URLs with
+// `dictionaryModel=…` etc. still apply, mapped onto the new keys.
+const LEGACY_QUERY_KEY_MAP = {
+  dictionaryModel:      'glossaryModel',
+  dictionaryGuidance:   'glossaryGuidance',
+  dictionaryChunkChars: 'glossaryChunkChars',
+};
 
 export function parseQueryOverrides(queryString) {
   const out = { configPatch: {}, stateOverrides: {}, anyApplied: false };
@@ -54,11 +63,34 @@ export function parseQueryOverrides(queryString) {
       if (Number.isFinite(n)) { out.configPatch[key] = n; out.anyApplied = true; }
     }
   }
+  for (const [oldKey, newKey] of Object.entries(LEGACY_QUERY_KEY_MAP)) {
+    if (!params.has(oldKey) || out.configPatch[newKey] !== undefined) continue;
+    const raw = params.get(oldKey);
+    if (oldKey === 'dictionaryChunkChars') {
+      const n = Number(raw);
+      if (Number.isFinite(n)) { out.configPatch[newKey] = n; out.anyApplied = true; }
+    } else {
+      out.configPatch[newKey] = raw;
+      out.anyApplied = true;
+    }
+  }
   for (const k of ['editorHeadingLevel', 'referenceHeadingLevel']) {
     if (params.has(k)) {
       const n = Number(params.get(k));
       if (Number.isFinite(n)) { out.stateOverrides[k] = n; out.anyApplied = true; }
     }
+  }
+  return out;
+}
+
+// Backward-compat helper, mirror of component.js: rewrite legacy
+// dictionary* config keys to glossary* before merging with defaultConfig.
+function _migrateLegacyConfig(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  const out = { ...raw };
+  for (const [oldKey, newKey] of Object.entries(LEGACY_QUERY_KEY_MAP)) {
+    if (out[newKey] === undefined && out[oldKey] !== undefined) out[newKey] = out[oldKey];
+    delete out[oldKey];
   }
   return out;
 }
@@ -75,24 +107,50 @@ const clampFontSize = (v, fallback) =>
   typeof v === 'string' && FONT_SIZE_KEYS.includes(v) ? v : fallback;
 const clampSplit = (v) => Math.max(20, Math.min(80, Number(v) || 60));
 
+// See component.js for the rationale on the "✓ Saved" badge cooldown.
+const SAVE_BADGE_MS = 1500;
+
+// See component.js#defaultStats for the shape rationale.
+function defaultStats() {
+  return { calls: {}, byChapter: {} };
+}
+
+// Mirror of component.js#_migrateLegacyStats — see there for the
+// rationale on numeric → {count,totalMs} migration.
+function _migrateLegacyStats(raw) {
+  const fresh = defaultStats();
+  if (!raw || typeof raw !== 'object') return fresh;
+  const calls = {};
+  for (const [k, v] of Object.entries(raw.calls || {})) {
+    if (v && typeof v === 'object' && typeof v.count === 'number') {
+      calls[k] = { count: v.count, totalMs: typeof v.totalMs === 'number' ? v.totalMs : 0 };
+    } else if (typeof v === 'number') {
+      calls[k] = { count: v, totalMs: 0 };
+    }
+  }
+  return { ...fresh, ...raw, calls, byChapter: { ...(raw.byChapter || {}) } };
+}
+
 function defaultConfig() {
   return {
     translator: 'poe',
     apiKey: '',
+    // See component.js: optional project-name prefix for export filenames.
+    projectName: '',
     model: 'gemini-3.1-pro',
-    dictionaryModel: '',
+    glossaryModel: '',
     // Optional second model for chapter-level retranslation. See
     // component.js's `model2` for behavior.
     model2: '',
     baseUrl: 'https://api.poe.com/v1',
     // See component.js: opt-in algorithmic Palladius transliteration
-    // hint during dictionary build (off by default).
+    // hint during glossary build (off by default).
     usePalladius: false,
     targetLanguage: 'Russian',
     editorLanguage:  'English',
     referenceLanguage: 'Chinese',
-    dictionaryChunkChars: 400000,
-    dictionaryGuidance: '',
+    glossaryChunkChars: 400000,
+    glossaryGuidance: '',
     translationPromptPreset: 'v2',
     translationPromptCustom: '',
     translationGuidance: '',
@@ -115,7 +173,7 @@ export function chapterTranslationStats(chapter) {
 export function makeBilingualComponent() {
   return {
     // ---- state ----
-    view: 'setup',                // 'setup' | 'dictionary' | 'editor'
+    view: 'setup',                // 'setup' | 'glossary' | 'editor'
     // Two raw markdown inputs, named by their role (not by abstract A/B):
     //   rawEditor    — the side the user reads & edits against; paragraphs
     //                  are split from this and shown in the editor's
@@ -131,14 +189,19 @@ export function makeBilingualComponent() {
     translationFontSize: 'big',
     showAdvanced: false,          // setup view: collapse advanced fields by default
     book: null,                   // { chapters: [{ title, translatedTitle, status, paragraphs:[{original,translation,status}], referenceText }] }
-    dictionary: [],               // [{ term, originalForm, translation, notes, chapters[] }]
+    glossary: [],                 // [{ term, originalForm, translation, notes, chapters[] }]
     currentChapterIndex: 0,
     config: defaultConfig(),
     busy: false,
     error: null,
-    dictionaryProgress: null,
+    glossaryProgress: null,
+    // See component.js: brief "✓ Saved" header badge driven by persistNow.
+    saveIndicator: false,
+    // See component.js: typed POE call counter + per-chapter work-minute tracker.
+    stats: defaultStats(),
 
     _persistTimer: null,
+    _saveBadgeTimer: null,
     _loaded: false,
 
     async init() {
@@ -149,8 +212,9 @@ export function makeBilingualComponent() {
       if (typeof this.$watch === 'function') {
         const schedule = () => this.schedulePersist();
         this.$watch('book',                schedule, { deep: true });
-        this.$watch('dictionary',          schedule, { deep: true });
+        this.$watch('glossary',            schedule, { deep: true });
         this.$watch('config',              schedule, { deep: true });
+        this.$watch('stats',               schedule, { deep: true });
         this.$watch('view',                schedule);
         this.$watch('currentChapterIndex', schedule);
         this.$watch('rawEditor',           schedule);
@@ -176,13 +240,19 @@ export function makeBilingualComponent() {
           if (document.visibilityState === 'hidden') this.persistNow();
         });
       }
+      // See component.js: passive scroll listener feeds the work-minute tracker.
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('scroll', () => this._recordWork(), { passive: true });
+      }
     },
 
     async loadSaved() {
       try {
         const saved = await store.load();
         if (saved && typeof saved === 'object') {
-          this.view                  = saved.view ?? 'setup';
+          // Migrate the pre-rename `view: 'dictionary'` value.
+          const rawView = saved.view ?? 'setup';
+          this.view                  = rawView === 'dictionary' ? 'glossary' : rawView;
           this.rawEditor             = saved.rawEditor    ?? saved.rawA ?? '';
           this.rawReference          = saved.rawReference ?? saved.rawB ?? '';
           this.editorHeadingLevel    = saved.editorHeadingLevel    ?? saved.headingLevelA ?? 1;
@@ -192,9 +262,11 @@ export function makeBilingualComponent() {
           this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
           this.showAdvanced        = !!saved.showAdvanced;
           this.book                = saved.book ?? null;
-          this.dictionary          = saved.dictionary ?? [];
+          // Backward-compat: pre-rename saves used `dictionary`.
+          this.glossary            = saved.glossary ?? saved.dictionary ?? [];
           this.currentChapterIndex = saved.currentChapterIndex ?? 0;
-          this.config              = { ...defaultConfig(), ...(saved.config ?? {}) };
+          this.config              = { ...defaultConfig(), ..._migrateLegacyConfig(saved.config) };
+          this.stats               = _migrateLegacyStats(saved.stats);
         }
       } catch (e) { console.warn('Failed to load bilingual state', e); }
     },
@@ -217,11 +289,127 @@ export function makeBilingualComponent() {
           translationFontSize: this.translationFontSize,
           showAdvanced: this.showAdvanced,
           book: this.book,
-          dictionary: this.dictionary,
+          glossary: this.glossary,
           currentChapterIndex: this.currentChapterIndex,
           config: this.config,
+          stats: this.stats,
         });
+        this._flashSaved();
       } catch (e) { console.warn('persist failed', e); }
+    },
+    _flashSaved() {
+      this.saveIndicator = true;
+      clearTimeout(this._saveBadgeTimer);
+      this._saveBadgeTimer = setTimeout(() => { this.saveIndicator = false; }, SAVE_BADGE_MS);
+    },
+
+    // See component.js for the full rationale on these stats methods.
+    _recordApiCall(kind, durationMs = 0) {
+      if (!kind) return;
+      if (!this.stats) this.stats = defaultStats();
+      let bucket = this.stats.calls[kind];
+      if (!bucket || typeof bucket !== 'object') {
+        bucket = { count: typeof bucket === 'number' ? bucket : 0, totalMs: 0 };
+        this.stats.calls[kind] = bucket;
+      }
+      bucket.count += 1;
+      bucket.totalMs += Number(durationMs) || 0;
+    },
+    _recordWork() {
+      if (this.view !== 'editor') return;
+      if (typeof document !== 'undefined'
+          && document.visibilityState
+          && document.visibilityState !== 'visible') return;
+      const idx = this.currentChapterIndex;
+      if (typeof idx !== 'number' || idx < 0) return;
+      if (!this.book?.chapters?.[idx]) return;
+      if (!this.stats) this.stats = defaultStats();
+      const minute = Math.floor(Date.now() / 60000);
+      let entry = this.stats.byChapter[idx];
+      if (!entry) {
+        entry = { minutes: 0, _lastMinute: null, firstWorkAt: null, lastWorkAt: null };
+        this.stats.byChapter[idx] = entry;
+      }
+      if (entry._lastMinute === minute) return;
+      entry._lastMinute = minute;
+      entry.minutes += 1;
+      const nowIso = new Date(minute * 60000).toISOString();
+      entry.lastWorkAt = nowIso;
+      if (entry.firstWorkAt == null) entry.firstWorkAt = nowIso;
+    },
+    _makeTranslator(configPatch = {}) {
+      return createTranslator({
+        ...this.config,
+        ...configPatch,
+        onApiCall: (kind) => this._recordApiCall(kind),
+      });
+    },
+    get charsPerHourTotal() {
+      const chapters = this.book?.chapters;
+      if (!chapters?.length) return null;
+      let totalChars = 0, totalMin = 0;
+      chapters.forEach((ch, i) => {
+        if (ch?.status !== 'accepted') return;
+        const mins = this.stats?.byChapter?.[i]?.minutes || 0;
+        if (mins <= 0) return;
+        totalMin += mins;
+        totalChars += chapterTranslationStats(ch).chars;
+      });
+      return totalMin > 0 ? Math.round((totalChars / totalMin) * 60) : null;
+    },
+    get hasAnyStats() {
+      const calls = this.stats?.calls || {};
+      const anyCalls = Object.values(calls).some(v =>
+        typeof v === 'number' ? v > 0 : (v?.count || 0) > 0
+      );
+      if (anyCalls) return true;
+      const byCh = this.stats?.byChapter || {};
+      return Object.values(byCh).some(c => (c?.minutes || 0) > 0);
+    },
+    get apiCallRows() {
+      const order = [
+        ['chapter-translate',   'Chapter translation'],
+        ['paragraph-translate', 'Paragraph retranslation'],
+        ['glossary-extract',    'Glossary — extract terms'],
+        ['glossary-translate',  'Glossary — translate terms'],
+        ['bilingual-extract',   'Bilingual glossary — extract pairs'],
+        ['bilingual-translate', 'Bilingual glossary — translate pairs'],
+      ];
+      const calls = this.stats?.calls || {};
+      const out = [];
+      for (const [k, label] of order) {
+        const raw = calls[k];
+        const count   = typeof raw === 'number' ? raw : (raw?.count   || 0);
+        const totalMs = typeof raw === 'number' ? 0   : (raw?.totalMs || 0);
+        if (count <= 0) continue;
+        const avgMs = totalMs > 0 ? Math.round(totalMs / count) : null;
+        out.push({ kind: k, label, count, avgMs });
+      }
+      return out;
+    },
+    get chapterStatsRows() {
+      const chapters = this.book?.chapters || [];
+      const out = [];
+      chapters.forEach((ch, i) => {
+        const entry = this.stats?.byChapter?.[i];
+        if (!entry || !entry.minutes) return;
+        const stats = chapterTranslationStats(ch);
+        out.push({
+          index: i,
+          title: ch.title,
+          status: ch.status,
+          chars: stats.chars,
+          minutes: entry.minutes,
+          charsPerHour: Math.round((stats.chars / entry.minutes) * 60),
+          firstWorkAt: entry.firstWorkAt || null,
+          lastWorkAt:  entry.lastWorkAt  || null,
+        });
+      });
+      return out;
+    },
+    formatWorkTime(iso) {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleString(); } catch { return iso; }
     },
 
     // ---- exposed constants ----
@@ -271,8 +459,9 @@ export function makeBilingualComponent() {
     },
 
     // ---- actions ----
-    gotoSetup()      { this.view = 'setup'; },
-    gotoDictionary() { if (this.dictionary.length) this.view = 'dictionary'; },
+    gotoSetup()    { this.view = 'setup'; },
+    gotoGlossary() { if (this.glossary.length) this.view = 'glossary'; },
+    gotoStats()    { this.view = 'stats'; },
     selectChapter(i) {
       const ch = this.book?.chapters?.[i];
       if (!ch || ch.status === 'pending') return;
@@ -280,9 +469,9 @@ export function makeBilingualComponent() {
     },
 
     addTerm() {
-      this.dictionary.push({ term: '', originalForm: '', translation: '', notes: '', chapters: [] });
+      this.glossary.push({ term: '', originalForm: '', translation: '', notes: '', chapters: [] });
     },
-    removeTerm(i) { this.dictionary.splice(i, 1); },
+    removeTerm(i) { this.glossary.splice(i, 1); },
 
     // Pair the two parsed books by chapter index, building the bilingual
     // book shape: chapters[i].paragraphs come from the editor side,
@@ -324,24 +513,24 @@ export function makeBilingualComponent() {
       this.currentChapterIndex = 0;
 
       await this._runBusy(async () => {
-        const t = createTranslator(this.config);
-        this.dictionaryProgress = null;
+        const t = this._makeTranslator();
+        this.glossaryProgress = null;
         try {
-          const dict = await t.buildBilingualDictionary(this.book.chapters, {
-            onProgress: (p) => { this.dictionaryProgress = { ...p }; },
+          const gloss = await t.buildBilingualGlossary(this.book.chapters, {
+            onProgress: (p) => { this.glossaryProgress = { ...p }; },
           });
-          this.dictionary = dict;
-          this.view = 'dictionary';
+          this.glossary = gloss;
+          this.view = 'glossary';
         } finally {
-          // Always clear the progress hint, even when buildBilingualDictionary
+          // Always clear the progress hint, even when buildBilingualGlossary
           // throws. Otherwise the UI stays at e.g. "Translating … 0/1"
           // forever after an API/parse failure.
-          this.dictionaryProgress = null;
+          this.glossaryProgress = null;
         }
       });
     },
 
-    async acceptDictionary() {
+    async acceptGlossary() {
       if (!this.book) return;
       await this._runBusy(async () => {
         await this._translateChapter(0);
@@ -356,8 +545,8 @@ export function makeBilingualComponent() {
       const prior = this.book.chapters
         .slice(0, i)
         .filter(c => c.status === 'accepted');
-      const t = createTranslator(this.config);
-      const out = await t.translateChapter(ch, this.dictionary, prior);
+      const t = this._makeTranslator();
+      const out = await t.translateChapter(ch, this.glossary, prior);
       ch.translatedTitle = out.titleTranslation;
       ch.paragraphs = out.paragraphs;
       ch.status = 'translated';
@@ -380,6 +569,7 @@ export function makeBilingualComponent() {
 
     async retranslateCurrent() {
       if (!this.book || this.busy) return;
+      this._recordWork();
       await this._runBusy(async () => {
         const ch = this.book.chapters[this.currentChapterIndex];
         if (!ch) return;
@@ -403,11 +593,11 @@ export function makeBilingualComponent() {
       if (!ch) return;
       const p = ch.paragraphs[i];
       if (!p) return;
-      const subset = this._dictionarySubsetForChapter(this.currentChapterIndex);
+      const subset = this._glossarySubsetForChapter(this.currentChapterIndex);
       const priorParagraphs = ch.paragraphs.slice(Math.max(0, i - 5), i);
+      this._recordWork();
       await this._runBusy(async () => {
-        const cfg = modelOverride ? { ...this.config, model: modelOverride } : this.config;
-        const t = createTranslator(cfg);
+        const t = this._makeTranslator(modelOverride ? { model: modelOverride } : {});
         const out = await t.translateParagraph(p, mode, subset, {
           chapterTitle: ch.title,
           priorParagraphs,
@@ -423,14 +613,14 @@ export function makeBilingualComponent() {
       await this.retranslateParagraph(i, 'default', m2);
     },
 
-    _dictionarySubsetForChapter(chapterIdx) {
-      return this.dictionary.filter(t =>
+    _glossarySubsetForChapter(chapterIdx) {
+      return this.glossary.filter(t =>
         Array.isArray(t.chapters) && t.chapters.includes(chapterIdx)
       );
     },
 
     addTermForCurrentChapter() {
-      this.dictionary.push({
+      this.glossary.push({
         term: '', originalForm: '', translation: '', notes: '',
         chapters: [this.currentChapterIndex],
       });
@@ -487,14 +677,14 @@ export function makeBilingualComponent() {
     },
 
     // Append the Palladius (Палладий) transliteration prompt to the
-    // dictionary guidance — the canonical Russian-language convention
+    // glossary guidance — the canonical Russian-language convention
     // for rendering Chinese names. Triggered from a button next to the
     // guidance textarea on the setup view.
     insertPalladiusPrompt() {
       const block = PALLADIUS_PROMPT;
-      const cur = (this.config.dictionaryGuidance || '').trim();
+      const cur = (this.config.glossaryGuidance || '').trim();
       if (cur.includes('Палладий') || cur.includes('Palladius')) return;
-      this.config.dictionaryGuidance = cur ? `${cur}\n\n${block}` : block;
+      this.config.glossaryGuidance = cur ? `${cur}\n\n${block}` : block;
     },
 
     async _runBusy(fn) {
@@ -510,19 +700,20 @@ export function makeBilingualComponent() {
     reset() {
       if (!this._confirm('Discard everything and return to setup?')) return;
       this.book = null;
-      this.dictionary = [];
+      this.glossary = [];
       this.rawEditor = '';
       this.rawReference = '';
       this.currentChapterIndex = 0;
       this.view = 'setup';
       this.error = null;
+      this.stats = defaultStats();
     },
 
     // ---- import / export state ----
     //
     // Mirrors component.js's state envelope but with `type` set to
     // 'bilingual-translate-state' so the two editors can't accidentally
-    // import each other's exports (the schemas overlap on book/dictionary
+    // import each other's exports (the schemas overlap on book/glossary
     // but diverge on raw inputs and heading levels — silently restoring
     // the wrong shape would leave the receiver in a broken state).
     get canExport() {
@@ -530,7 +721,7 @@ export function makeBilingualComponent() {
         this.book ||
         (this.rawEditor && this.rawEditor.trim()) ||
         (this.rawReference && this.rawReference.trim()) ||
-        this.dictionary.length
+        this.glossary.length
       );
     },
     serializeState() {
@@ -549,9 +740,10 @@ export function makeBilingualComponent() {
           originalFontSize: this.originalFontSize,
           translationFontSize: this.translationFontSize,
           book: this.book,
-          dictionary: this.dictionary,
+          glossary: this.glossary,
           currentChapterIndex: this.currentChapterIndex,
           config: cfg,
+          stats: this.stats,
         },
       };
     },
@@ -560,12 +752,16 @@ export function makeBilingualComponent() {
       const envelope = this.serializeState();
       const json = JSON.stringify(envelope, null, 2);
       const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-      const rawTitle = this.book?.chapters?.[0]?.title || 'translation';
-      const slug = String(rawTitle)
+      // Slug source: projectName when set, else first chapter's title,
+      // else generic 'translation'.
+      const projectSlug = this._projectFilenamePrefix().replace(/-$/, '');
+      const fallbackTitle = this.book?.chapters?.[0]?.title || 'translation';
+      const fallbackSlug = String(fallbackTitle)
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
-        .slice(0, 40) || 'translation';
+        .slice(0, 40);
+      const slug = projectSlug || fallbackSlug || 'translation';
       const filename = `bilingual-translate-${slug}-${stamp}.json`;
       if (typeof document === 'undefined' || typeof URL === 'undefined') return;
       const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
@@ -599,12 +795,18 @@ export function makeBilingualComponent() {
           throw new Error('Export envelope has no "state" payload.');
         }
         if (!this._confirm(
-          'Import will replace your current book, dictionary, and settings.\n' +
+          'Import will replace your current book, glossary, and settings.\n' +
           'Your local API key will be kept. Continue?'
         )) return;
         const localKey = this.config?.apiKey || '';
+        // Backward-compat for pre-rename exports (dictionary→glossary).
+        const importedView = data.view === 'dictionary' ? 'glossary' : (data.view ?? 'setup');
+        const importedGlossary =
+            Array.isArray(data.glossary)   ? data.glossary
+          : Array.isArray(data.dictionary) ? data.dictionary
+          : [];
         Object.assign(this, {
-          view: data.view ?? 'setup',
+          view: importedView,
           rawEditor: data.rawEditor ?? '',
           rawReference: data.rawReference ?? '',
           editorHeadingLevel: data.editorHeadingLevel ?? 1,
@@ -613,9 +815,14 @@ export function makeBilingualComponent() {
           originalFontSize: clampFontSize(data.originalFontSize, 'medium'),
           translationFontSize: clampFontSize(data.translationFontSize, 'big'),
           book: data.book ?? null,
-          dictionary: Array.isArray(data.dictionary) ? data.dictionary : [],
+          glossary: importedGlossary,
           currentChapterIndex: data.currentChapterIndex ?? 0,
-          config: { ...defaultConfig(), ...(data.config ?? {}), apiKey: localKey },
+          config: { ...defaultConfig(), ..._migrateLegacyConfig(data.config), apiKey: localKey },
+          stats: data.stats && typeof data.stats === 'object'
+            ? { ...defaultStats(), ...data.stats,
+                calls: { ...(data.stats.calls || {}) },
+                byChapter: { ...(data.stats.byChapter || {}) } }
+            : defaultStats(),
           error: null,
         });
         await this.persistNow();
@@ -669,19 +876,29 @@ export function makeBilingualComponent() {
     get canExportSoFar() {
       return !!this.book?.chapters?.length && this.acceptedCount > 0;
     },
+    // See component.js#_projectFilenamePrefix.
+    _projectFilenamePrefix() {
+      const raw = (this.config.projectName || '').trim();
+      if (!raw) return '';
+      const slug = raw.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40);
+      return slug ? `${slug}-` : '';
+    },
     exportSoFar() {
       this._downloadMarkdown(
         renderTranslationMarkdown(this.book, this.currentChapterIndex),
-        'translation.md',
+        `${this._projectFilenamePrefix()}translation.md`,
       );
     },
-    exportDictionary() {
-      const md = renderDictionaryMarkdown(this.dictionary, {
+    exportGlossary() {
+      const md = renderGlossaryMarkdown(this.glossary, {
         editorLanguage:    this.config.editorLanguage,
         referenceLanguage: this.config.referenceLanguage,
         targetLanguage:    this.config.targetLanguage,
       });
-      this._downloadMarkdown(md, 'dictionary.md');
+      this._downloadMarkdown(md, `${this._projectFilenamePrefix()}glossary.md`);
     },
     _downloadMarkdown(md, filename) {
       const blob = new Blob([md], { type: 'text/markdown' });

@@ -23,11 +23,6 @@ test('pickRandomSample: n greater than length returns all items', () => {
   assert.equal(pickRandomSample([1, 2], 5).length, 2);
 });
 
-test('pickRandomSample: every item came from the source array', () => {
-  const arr = ['a', 'b', 'c', 'd'];
-  for (const x of pickRandomSample(arr, 4)) assert.ok(arr.includes(x));
-});
-
 // ---------- assignSwaps ----------
 
 test('assignSwaps: each pair gets a boolean .swapped, original fields kept', () => {

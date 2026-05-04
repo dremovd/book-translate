@@ -143,7 +143,7 @@ if (bRange) {
 
 // ---------- alignment ----------
 const t = new PoeTranslator({
-  apiKey, model, baseUrl: 'https://api.poe.com/v1', dictionaryModel: model,
+  apiKey, model, baseUrl: 'https://api.poe.com/v1', glossaryModel: model,
 });
 
 log('\nPhase 1: chapter alignment …');

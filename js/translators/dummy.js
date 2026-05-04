@@ -1,14 +1,14 @@
 // Dummy translator: returns original text unchanged.
-// Used as the default so the rest of the pipeline (dictionary → chapter gate → editor)
+// Used as the default so the rest of the pipeline (glossary → chapter gate → editor)
 // can be exercised end-to-end without a network or API key.
 
 export class DummyTranslator {
-  async buildDictionary(chapters, { onProgress } = {}) {
+  async buildGlossary(chapters, { onProgress } = {}) {
     // Fire a couple of progress events for contract uniformity with the
     // real backend, even though the work is synchronous here.
     onProgress?.({ stage: 'extract', current: 0, total: chapters.length });
     // For each capitalized token track which chapter indices it appeared in,
-    // so the dictionary has the same `chapters: number[]` shape the POE
+    // so the glossary has the same `chapters: number[]` shape the POE
     // backend produces — keeps the downstream "subset for this chapter"
     // filter consistent across backends.
     const perTerm = new Map();
@@ -38,7 +38,7 @@ export class DummyTranslator {
     return out;
   }
 
-  async translateChapter(chapter /*, dictionary, priorAcceptedChapters */) {
+  async translateChapter(chapter /*, glossary, priorAcceptedChapters */) {
     return {
       titleTranslation: chapter.title,
       paragraphs: chapter.paragraphs.map(p => ({
@@ -49,7 +49,7 @@ export class DummyTranslator {
     };
   }
 
-  async translateParagraph(paragraph /*, mode, dictionary, context */) {
+  async translateParagraph(paragraph /*, mode, glossary, context */) {
     return paragraph.original;
   }
 }

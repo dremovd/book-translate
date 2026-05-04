@@ -1,7 +1,7 @@
 import { parseBook } from './parse.js';
 import { store } from './store.js';
 import { createTranslator } from './translators/index.js';
-import { renderTranslationMarkdown, renderDictionaryMarkdown } from './translators/format.js';
+import { renderTranslationMarkdown, renderGlossaryMarkdown } from './translators/format.js';
 import { renderInlineMd } from './markdown.js';
 
 export const SAMPLE = `# Chapter One
@@ -41,11 +41,22 @@ export const SAMPLE_BOOKS = [
 // knobs an onboarding link can pre-fill — the list is intentionally small
 // and explicit; unknown params are silently ignored.
 const QUERY_STRING_CONFIG_KEYS = [
-  'translator', 'apiKey', 'model', 'dictionaryModel', 'model2', 'baseUrl',
-  'targetLanguage', 'dictionaryGuidance', 'translationGuidance',
+  'translator', 'apiKey', 'model', 'glossaryModel', 'model2', 'baseUrl',
+  'targetLanguage', 'glossaryGuidance', 'translationGuidance',
   'translationPromptPreset', 'translationPromptCustom',
+  'projectName',
 ];
-const QUERY_NUMBER_CONFIG_KEYS = ['dictionaryChunkChars'];
+const QUERY_NUMBER_CONFIG_KEYS = ['glossaryChunkChars'];
+
+// Backward-compat: legacy query params from before the dictionary→glossary
+// rename. A prefilled URL with `dictionaryModel=…` still works — the param
+// is read into the new key on the receiving side. Map keeps the migration
+// in one place; no duplication of types/parsing rules.
+const LEGACY_QUERY_KEY_MAP = {
+  dictionaryModel:      'glossaryModel',
+  dictionaryGuidance:   'glossaryGuidance',
+  dictionaryChunkChars: 'glossaryChunkChars',
+};
 
 // Pure: parse a window.location.search-style string into a patch applied
 // to state on init. Returns { configPatch, stateOverrides, sampleId, anyApplied }.
@@ -69,6 +80,18 @@ export function parseQueryOverrides(queryString) {
       }
     }
   }
+  // Legacy aliases — only adopted if the new key wasn't supplied directly.
+  for (const [oldKey, newKey] of Object.entries(LEGACY_QUERY_KEY_MAP)) {
+    if (!params.has(oldKey) || out.configPatch[newKey] !== undefined) continue;
+    const raw = params.get(oldKey);
+    if (oldKey === 'dictionaryChunkChars') {
+      const n = Number(raw);
+      if (Number.isFinite(n)) { out.configPatch[newKey] = n; out.anyApplied = true; }
+    } else {
+      out.configPatch[newKey] = raw;
+      out.anyApplied = true;
+    }
+  }
   if (params.has('headingLevel')) {
     const n = Number(params.get('headingLevel'));
     if (Number.isFinite(n)) {
@@ -89,6 +112,91 @@ function clampSplit(pct) {
   return Math.max(20, Math.min(80, n));
 }
 
+// How long the "✓ Saved" badge stays visible after each successful
+// persistNow. ~1.5 s reads as "I saw it confirm" without flashing
+// distractingly during heavy editing — the auto-persist debounce is
+// 400 ms, so successive saves keep the badge on continuously.
+const SAVE_BADGE_MS = 1500;
+
+// Empty stats object — separate factory so loadSaved/reset/import can
+// all share the same default and we don't accidentally leave the
+// in-memory `stats` aliasing a fixed module-level constant.
+function defaultStats() {
+  return {
+    // calls[kind] = how many real (non-cached) POE calls of that kind we
+    // made since the last reset. kinds are free strings supplied by the
+    // translator — currently:
+    //   'chapter-translate', 'paragraph-translate',
+    //   'glossary-extract',  'glossary-translate',
+    //   'bilingual-extract', 'bilingual-translate' (bilingual editor only)
+    calls: {},
+    // byChapter[idx] = {
+    //   minutes:     count of distinct wall-clock minutes the user did
+    //                work in this chapter (read-as-scrolled, edited, or
+    //                retranslated) while the editor was visible.
+    //   _lastMinute: the minute index (Math.floor(now/60000)) of the
+    //                most-recently counted bump — used to dedup events
+    //                fired within the same minute so we don't double-
+    //                count rapid scroll bursts.
+    //   firstWorkAt: ISO timestamp of the first counted minute. Set once,
+    //                never overwritten — useful for "session started" UX.
+    //   lastWorkAt:  ISO timestamp of the most-recently counted minute.
+    //                Updated only when `minutes` bumps, NOT on every
+    //                event — that keeps the persistence debounce from
+    //                churning during continuous scroll.
+    // }
+    byChapter: {},
+  };
+}
+
+// Backward-compat: lift saved stats into the current shape. Two
+// migrations stack here:
+//   1. Pre-stats saves had no `stats` field at all → start fresh.
+//   2. Pre-duration saves stored `calls[kind]` as a plain integer; the
+//      view now expects `{count, totalMs}` for the average-latency
+//      column. Numeric entries are converted with totalMs=0, so the
+//      historical count survives and the average renders as "—" until
+//      a fresh call lands.
+function _migrateLegacyStats(raw) {
+  const fresh = (typeof defaultStats === 'function') ? defaultStats() : { calls: {}, byChapter: {} };
+  if (!raw || typeof raw !== 'object') return fresh;
+  const calls = {};
+  for (const [k, v] of Object.entries(raw.calls || {})) {
+    if (v && typeof v === 'object' && typeof v.count === 'number') {
+      calls[k] = { count: v.count, totalMs: typeof v.totalMs === 'number' ? v.totalMs : 0 };
+    } else if (typeof v === 'number') {
+      calls[k] = { count: v, totalMs: 0 };
+    }
+  }
+  return {
+    ...fresh,
+    ...raw,
+    calls,
+    byChapter: { ...(raw.byChapter || {}) },
+  };
+}
+
+// Backward-compat helper: rewrite pre-rename config keys to their new names
+// before the saved/imported config is merged with defaultConfig(). Without
+// this the merge would silently leave the old key sitting next to the
+// new (default-blank) one and the app would read the blank.
+function _migrateLegacyConfig(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  const out = { ...raw };
+  const map = {
+    dictionaryModel:      'glossaryModel',
+    dictionaryGuidance:   'glossaryGuidance',
+    dictionaryChunkChars: 'glossaryChunkChars',
+  };
+  for (const [oldKey, newKey] of Object.entries(map)) {
+    if (out[newKey] === undefined && out[oldKey] !== undefined) {
+      out[newKey] = out[oldKey];
+    }
+    delete out[oldKey];
+  }
+  return out;
+}
+
 // Five-step font-size scale exposed to the editor toolbar.
 export const FONT_SIZES = {
   smallest: '0.8rem',
@@ -106,15 +214,22 @@ export function defaultConfig() {
   return {
     translator: 'dummy',
     apiKey: '',
+    // Optional project name. When set, every export filename gets a
+    // sanitized version of it as a prefix — `glossary.md` becomes
+    // `my-book-glossary.md`, `translation-through-chapter-001.md`
+    // becomes `my-book-translation-through-chapter-001.md`, and the
+    // state-export JSON uses it as the slug. Empty/whitespace = no
+    // prefix (preserves the pre-existing filenames).
+    projectName: '',
     model: 'gemini-3.1-pro',
-    // Optional override for the dictionary extract + translate-terms calls.
+    // Optional override for the glossary extract + translate-terms calls.
     // Empty → use `model` for everything. A cheaper/faster model here keeps
-    // per-book dictionary cost down without compromising chapter translation.
-    dictionaryModel: '',
+    // per-book glossary cost down without compromising chapter translation.
+    glossaryModel: '',
     // Optional second model for chapter-level retranslation. When set,
     // surfaces an extra "Re-translate via <model2>" button next to the
     // standard one in the editor; the button reuses the default mode
-    // and current dictionary, only swapping `config.model` for this
+    // and current glossary, only swapping `config.model` for this
     // value. Empty → no extra button shown.
     model2: '',
     baseUrl: 'https://api.poe.com/v1',
@@ -126,20 +241,20 @@ export function defaultConfig() {
     // Enable in the setup view to opt in for the current book.
     usePalladius: false,
     targetLanguage: 'Russian',
-    // Max chars per chunk when extracting terms for the dictionary.
+    // Max chars per chunk when extracting terms for the glossary.
     // ~400 000 chars ≈ ~100 k tokens. Smaller chunks → more API calls;
     // larger chunks → fewer but may hit context limits on small-window models.
-    dictionaryChunkChars: 400000,
+    glossaryChunkChars: 400000,
     // Free-text instructions that steer both the extract and translate
-    // phases of the dictionary build — canonical translations to enforce,
+    // phases of the glossary build — canonical translations to enforce,
     // categories to include/skip, case-normalization rules.
-    dictionaryGuidance: '',
+    glossaryGuidance: '',
     // Translation prompt selection:
     //   'v1'     — "natural & idiomatic" (original)
     //   'v2'     — two-stage, native-writer rewrite (current default)
     //   'custom' — free-text, editable in translationPromptCustom below;
     //              `${lang}` is interpolated to the target language.
-    // The structural contract ([0]..[N] numbering, dictionary) is appended
+    // The structural contract ([0]..[N] numbering, glossary) is appended
     // automatically regardless of preset.
     translationPromptPreset: 'v2',
     translationPromptCustom: '',
@@ -166,7 +281,7 @@ export function chapterTranslationStats(chapter) {
 export function makeComponent() {
   return {
     // ---- state ----
-    view: 'setup',               // 'setup' | 'dictionary' | 'editor'
+    view: 'setup',               // 'setup' | 'glossary' | 'editor'
     rawBook: '',
     headingLevel: 1,             // 1 = split on `#`, 2 = split on `##`, …
     splitPercent: 60,            // editor column split — % of width given to translation, clamped 20..80
@@ -175,17 +290,29 @@ export function makeComponent() {
     showAdvanced: false,         // setup view: collapse advanced fields by default
                                  // (assumes user arrived with a pre-filled URL)
     book: null,                  // { chapters: [{ title, paragraphs, status }] }
-    dictionary: [],              // [{ term, translation, notes }]
+    glossary: [],                // [{ term, translation, notes }]
     currentChapterIndex: 0,
     config: defaultConfig(),
     busy: false,
     error: null,
-    // Live progress object during dictionary build ({ stage, current, total })
+    // Live progress object during glossary build ({ stage, current, total })
     // or null when idle. Updated from the translator's onProgress callback;
     // cleared in the finally of startFromRaw, reset, and on error.
-    dictionaryProgress: null,
+    glossaryProgress: null,
+    // Brief "✓ Saved" badge in the header. Flips to true after each
+    // successful persistNow and self-clears after SAVE_BADGE_MS. Replaces
+    // the manual Save button — auto-persist already covers every mutation
+    // (400ms debounced + on tab hide), so the indicator is purely a
+    // confirmation that the latest edit landed in localforage.
+    saveIndicator: false,
+    // Per-book stats: API call counts (typed) + per-chapter work-minute
+    // tracking. Populated by _recordApiCall / _recordWork; surfaced in the
+    // dedicated Stats view + a chars/min hint in the nav bar. See
+    // defaultStats() above for the shape.
+    stats: defaultStats(),
 
     _persistTimer: null,
+    _saveBadgeTimer: null,
     _loaded: false,
 
     // ---- lifecycle ----
@@ -201,8 +328,9 @@ export function makeComponent() {
       if (typeof this.$watch === 'function') {
         const schedule = () => this.schedulePersist();
         this.$watch('book',                schedule, { deep: true });
-        this.$watch('dictionary',          schedule, { deep: true });
+        this.$watch('glossary',            schedule, { deep: true });
         this.$watch('config',              schedule, { deep: true });
+        this.$watch('stats',               schedule, { deep: true });
         this.$watch('view',                schedule);
         this.$watch('currentChapterIndex', schedule);
         this.$watch('rawBook',             schedule);
@@ -232,17 +360,29 @@ export function makeComponent() {
           if (document.visibilityState === 'hidden') this.persistNow();
         });
       }
+
+      // Stats — passive scroll listener feeds the work-minute tracker.
+      // _recordWork itself is the one that gates on view + visibility +
+      // current-chapter-exists, so this listener is intentionally dumb:
+      // it just hands every scroll over and lets the tracker decide.
+      // {passive: true} keeps it off the main-thread scroll critical path.
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('scroll', () => this._recordWork(), { passive: true });
+      }
     },
 
     async loadSaved() {
       try {
         const saved = await store.load();
         if (saved && typeof saved === 'object') {
-          // The A/B view used to live in this component; if a saved state
-          // still has view='abtest' (now served from abtest.html), fall
-          // back to the setup view so the editor isn't stuck on a tab
-          // that no longer exists.
-          this.view = saved.view === 'abtest' ? 'setup' : (saved.view ?? 'setup');
+          // Migrate two legacy view values:
+          //   'abtest'     — used to live here, now lives in abtest.html.
+          //   'dictionary' — pre-rename name for the glossary view.
+          const rawView = saved.view ?? 'setup';
+          this.view =
+              rawView === 'abtest'     ? 'setup'
+            : rawView === 'dictionary' ? 'glossary'
+            : rawView;
           this.rawBook = saved.rawBook ?? '';
           this.headingLevel = saved.headingLevel ?? 1;
           this.splitPercent = clampSplit(saved.splitPercent ?? 60);
@@ -250,9 +390,16 @@ export function makeComponent() {
           this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
           this.showAdvanced = !!saved.showAdvanced;
           this.book = saved.book ?? null;
-          this.dictionary = saved.dictionary ?? [];
+          // Backward-compat: pre-rename saves had `dictionary`; new saves
+          // use `glossary`. New wins if both present.
+          this.glossary = saved.glossary ?? saved.dictionary ?? [];
           this.currentChapterIndex = saved.currentChapterIndex ?? 0;
-          this.config = { ...defaultConfig(), ...(saved.config ?? {}) };
+          this.config = { ...defaultConfig(), ..._migrateLegacyConfig(saved.config) };
+          // Stats may be missing on saves predating this feature — fall
+          // back to a clean object so getters / view code never crash.
+          // Also migrates pre-duration legacy `calls[kind] = N` entries
+          // into the `{count, totalMs}` shape so totals/averages work.
+          this.stats = _migrateLegacyStats(saved.stats);
         }
       } catch (e) {
         console.warn('Failed to load state', e);
@@ -279,6 +426,116 @@ export function makeComponent() {
       return chapterTranslationStats(this.book?.chapters?.[this.currentChapterIndex]);
     },
 
+    // Live chapter count for the setup view: parse the textarea contents
+    // with the current heading level and return how many chapters would be
+    // detected. Returns 0 for empty / unparseable input. Used as a small
+    // hint under the textarea so users see the parse succeed before they
+    // commit to "Parse book & build glossary".
+    get previewChapterCount() {
+      if (!this.rawBook || !this.rawBook.trim()) return 0;
+      try { return parseBook(this.rawBook, { headingLevel: this.headingLevel }).chapters.length; }
+      catch { return 0; }
+    },
+
+    // chars/hour estimate over ACCEPTED chapters only — the in-progress
+    // chapter is half-edited and would skew the rate. Returns null when
+    // we don't yet have any accepted chapter with > 0 minutes (so the UI
+    // can hide the badge entirely instead of showing "0 chars/h").
+    // Hour rather than minute because typical literary throughput puts
+    // the per-minute number in the high-hundreds, which is harder to
+    // read at a glance than the per-hour figure.
+    get charsPerHourTotal() {
+      const chapters = this.book?.chapters;
+      if (!chapters?.length) return null;
+      let totalChars = 0, totalMin = 0;
+      chapters.forEach((ch, i) => {
+        if (ch?.status !== 'accepted') return;
+        const mins = this.stats?.byChapter?.[i]?.minutes || 0;
+        if (mins <= 0) return;
+        totalMin += mins;
+        totalChars += chapterTranslationStats(ch).chars;
+      });
+      return totalMin > 0 ? Math.round((totalChars / totalMin) * 60) : null;
+    },
+
+    // Stats — surface a "do we have anything to show?" flag so the
+    // top-nav Stats link only appears once the user has actually run
+    // some translation or done some editing. Otherwise it'd just be a
+    // dead link on the freshly-loaded setup view.
+    get hasAnyStats() {
+      const calls = this.stats?.calls || {};
+      // Each call entry is `{count, totalMs}` (or a legacy number for
+      // saves predating the duration tracker — _migrateLegacyStats lifts
+      // those, but this getter stays defensive for safety).
+      const anyCalls = Object.values(calls).some(v =>
+        typeof v === 'number' ? v > 0 : (v?.count || 0) > 0
+      );
+      if (anyCalls) return true;
+      const byCh = this.stats?.byChapter || {};
+      return Object.values(byCh).some(c => (c?.minutes || 0) > 0);
+    },
+
+    // Stats view helpers — surface the API-call counters as a stable,
+    // ordered list of {kind, label, count, avgMs} (only non-zero rows
+    // shown). avgMs is null when totalMs is 0 (e.g. legacy entries
+    // migrated from the pre-duration shape) so the view can render "—".
+    get apiCallRows() {
+      const order = [
+        ['chapter-translate',   'Chapter translation'],
+        ['paragraph-translate', 'Paragraph retranslation'],
+        ['glossary-extract',    'Glossary — extract terms'],
+        ['glossary-translate',  'Glossary — translate terms'],
+        ['bilingual-extract',   'Bilingual glossary — extract pairs'],
+        ['bilingual-translate', 'Bilingual glossary — translate pairs'],
+      ];
+      const calls = this.stats?.calls || {};
+      const out = [];
+      for (const [k, label] of order) {
+        const raw = calls[k];
+        // Tolerate either {count,totalMs} or legacy numeric shape.
+        const count   = typeof raw === 'number' ? raw : (raw?.count   || 0);
+        const totalMs = typeof raw === 'number' ? 0   : (raw?.totalMs || 0);
+        if (count <= 0) continue;
+        const avgMs = totalMs > 0 ? Math.round(totalMs / count) : null;
+        out.push({ kind: k, label, count, avgMs });
+      }
+      return out;
+    },
+
+    // Stats view — per-chapter table rows. Only chapters with at least
+    // one recorded minute of work appear, so historical runs from before
+    // the stats feature shipped (or chapters the user never opened) don't
+    // pad the table with zero rows. The chars/min rate computation uses
+    // the same filter via charsPerMinuteTotal.
+    get chapterStatsRows() {
+      const chapters = this.book?.chapters || [];
+      const out = [];
+      chapters.forEach((ch, i) => {
+        const entry = this.stats?.byChapter?.[i];
+        if (!entry || !entry.minutes) return;
+        const stats = chapterTranslationStats(ch);
+        out.push({
+          index: i,
+          title: ch.title,
+          status: ch.status,
+          chars: stats.chars,
+          minutes: entry.minutes,
+          charsPerHour: Math.round((stats.chars / entry.minutes) * 60),
+          firstWorkAt: entry.firstWorkAt || null,
+          lastWorkAt:  entry.lastWorkAt  || null,
+        });
+      });
+      return out;
+    },
+
+    // Format an ISO timestamp for the Stats table — short locale form
+    // ("5/4/2026, 14:32"). Returns "—" for null so x-text never shows
+    // raw "null". Centralized so the template stays declarative.
+    formatWorkTime(iso) {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleString(); } catch { return iso; }
+    },
+
     // ---- persistence ----
     schedulePersist() {
       if (!this._loaded) return;
@@ -297,13 +554,95 @@ export function makeComponent() {
           translationFontSize: this.translationFontSize,
           showAdvanced: this.showAdvanced,
           book: this.book,
-          dictionary: this.dictionary,
+          glossary: this.glossary,
           currentChapterIndex: this.currentChapterIndex,
           config: this.config,
+          stats: this.stats,
         });
+        this._flashSaved();
       } catch (e) {
         console.warn('persist failed', e);
       }
+    },
+
+    // Flash the "✓ Saved" header badge. Called only on successful saves so
+    // the indicator never lies. Re-firing during heavy editing simply
+    // resets the timer — the badge stays visible while writes keep landing,
+    // disappears SAVE_BADGE_MS after the last one.
+    _flashSaved() {
+      this.saveIndicator = true;
+      clearTimeout(this._saveBadgeTimer);
+      this._saveBadgeTimer = setTimeout(() => { this.saveIndicator = false; }, SAVE_BADGE_MS);
+    },
+
+    // Stats — typed POE call counter + per-kind avg latency. Cache hits
+    // don't get here (the translator only invokes the callback when it
+    // actually issued a network request); see PoeTranslator.chat. Each
+    // kind's bucket is `{ count, totalMs }` so the view can render the
+    // running average without storing every individual call's duration.
+    _recordApiCall(kind, durationMs = 0) {
+      if (!kind) return;
+      if (!this.stats) this.stats = defaultStats();
+      let bucket = this.stats.calls[kind];
+      if (!bucket || typeof bucket !== 'object') {
+        // Either a brand-new bucket OR a legacy numeric-counter shape from
+        // before duration tracking landed. Carry the prior count over so
+        // the historical numbers don't disappear; totalMs starts fresh.
+        bucket = { count: typeof bucket === 'number' ? bucket : 0, totalMs: 0 };
+        this.stats.calls[kind] = bucket;
+      }
+      bucket.count += 1;
+      bucket.totalMs += Number(durationMs) || 0;
+    },
+
+    // Single factory for any translator instance the component needs —
+    // ensures every code path that goes to the model also feeds the
+    // typed-call counter. Accepts an optional config patch (e.g. swapping
+    // `model` for the model2 retranslate button).
+    _makeTranslator(configPatch = {}) {
+      return createTranslator({
+        ...this.config,
+        ...configPatch,
+        onApiCall: (kind) => this._recordApiCall(kind),
+      });
+    },
+
+    // Stats — minute-bucketed work tracker. Fired by every event we
+    // consider "engagement with the book" (see _installWorkListeners +
+    // the @input wiring in the editor view): scroll, textarea edits,
+    // retranslate buttons, title edits.
+    //
+    // Two gates so we don't count phantom work:
+    //   - view must be 'editor' (no setup-view scroll, no glossary edits
+    //     get attributed to a chapter — the glossary is book-wide).
+    //   - document.visibilityState must be 'visible' (a backgrounded tab
+    //     can fire scroll events on iOS / momentum-scroll edge cases).
+    //
+    // Same-minute events are no-ops after the first — they don't even
+    // mutate `lastWorkAt`. That keeps the persistence debounce idle
+    // during continuous reading-scroll, and keeps lastWorkAt at the
+    // start-of-the-counted-minute (good enough at minute resolution).
+    _recordWork() {
+      if (this.view !== 'editor') return;
+      if (typeof document !== 'undefined'
+          && document.visibilityState
+          && document.visibilityState !== 'visible') return;
+      const idx = this.currentChapterIndex;
+      if (typeof idx !== 'number' || idx < 0) return;
+      if (!this.book?.chapters?.[idx]) return;
+      if (!this.stats) this.stats = defaultStats();
+      const minute = Math.floor(Date.now() / 60000);
+      let entry = this.stats.byChapter[idx];
+      if (!entry) {
+        entry = { minutes: 0, _lastMinute: null, firstWorkAt: null, lastWorkAt: null };
+        this.stats.byChapter[idx] = entry;
+      }
+      if (entry._lastMinute === minute) return;
+      entry._lastMinute = minute;
+      entry.minutes += 1;
+      const nowIso = new Date(minute * 60000).toISOString();
+      entry.lastWorkAt = nowIso;
+      if (entry.firstWorkAt == null) entry.firstWorkAt = nowIso;
     },
 
     // Registry exposed to the setup view so x-for can populate the dropdown.
@@ -370,19 +709,19 @@ export function makeComponent() {
         }
         this.book = parsed;
         this.currentChapterIndex = 0;
-        this.dictionaryProgress = { stage: 'extract', current: 0, total: parsed.chapters.length };
+        this.glossaryProgress = { stage: 'extract', current: 0, total: parsed.chapters.length };
         try {
-          this.dictionary = await createTranslator(this.config).buildDictionary(parsed.chapters, {
-            onProgress: (p) => { this.dictionaryProgress = p; },
+          this.glossary = await this._makeTranslator().buildGlossary(parsed.chapters, {
+            onProgress: (p) => { this.glossaryProgress = p; },
           });
         } finally {
-          this.dictionaryProgress = null;
+          this.glossaryProgress = null;
         }
-        this.view = 'dictionary';
+        this.view = 'glossary';
       });
     },
 
-    async acceptDictionary() {
+    async acceptGlossary() {
       await this._runBusy(async () => {
         await this._translateChapterAt(0);
         this.currentChapterIndex = 0;
@@ -422,7 +761,7 @@ export function makeComponent() {
 
     // Retranslate a single paragraph in the current chapter, biased either
     // toward literal fidelity ('strict') or toward native-target fluency
-    // ('natural'). Passes only the dictionary entries whose provenance
+    // ('natural'). Passes only the glossary entries whose provenance
     // includes the current chapter — keeps the prompt focused.
     async retranslateParagraph(pIdx, mode, modelOverride = null) {
       const chIdx = this.currentChapterIndex;
@@ -430,12 +769,18 @@ export function makeComponent() {
       const p = ch?.paragraphs?.[pIdx];
       if (!p) return;
       await this._runBusy(async () => {
-        const cfg = modelOverride ? { ...this.config, model: modelOverride } : this.config;
-        const translator = createTranslator(cfg);
+        const translator = this._makeTranslator(
+          modelOverride ? { model: modelOverride } : {}
+        );
         if (typeof translator.translateParagraph !== 'function') {
           throw new Error('This backend does not support per-paragraph retranslation.');
         }
-        const subset = this._dictionarySubsetForChapter(chIdx);
+        // Hand-bumped extra signal: a retranslate click is itself work,
+        // even before the user touches the result. Avoids the case where
+        // someone hits "↻ retranslate" then walks away — without this,
+        // that minute would only count if scroll/edit also fired.
+        this._recordWork();
+        const subset = this._glossarySubsetForChapter(chIdx);
         const priorParagraphs = ch.paragraphs
           .slice(Math.max(0, pIdx - 5), pIdx)
           .map(pp => ({ original: pp.original, translation: pp.translation }));
@@ -455,13 +800,13 @@ export function makeComponent() {
       await this.retranslateParagraph(pIdx, 'default', m2);
     },
 
-    // Dictionary entries whose provenance includes the given chapter index.
-    // Entries without `chapters` (e.g. from a dictionary built before the
+    // Glossary entries whose provenance includes the given chapter index.
+    // Entries without `chapters` (e.g. from a glossary built before the
     // provenance tracking landed, or manually added) are treated as
     // relevant to every chapter.
-    _dictionarySubsetForChapter(chIdx) {
-      if (!Array.isArray(this.dictionary)) return [];
-      return this.dictionary.filter(e =>
+    _glossarySubsetForChapter(chIdx) {
+      if (!Array.isArray(this.glossary)) return [];
+      return this.glossary.filter(e =>
         !Array.isArray(e.chapters) || e.chapters.length === 0 || e.chapters.includes(chIdx)
       );
     },
@@ -471,10 +816,11 @@ export function makeComponent() {
       const ch = this.book?.chapters?.[idx];
       if (!ch) return;
       if (!this._confirm(`Re-translate "${ch.title}"? Current edits in this chapter will be lost.`)) return;
+      this._recordWork();
       await this._runBusy(() => this._translateChapterAt(idx));
     },
 
-    // Wraps an async operation that manipulates `book`/`dictionary`/`view`:
+    // Wraps an async operation that manipulates `book`/`glossary`/`view`:
     //   clears .error, sets .busy = true, captures any thrown error into
     //   .error, restores .busy. Use this for methods whose failure mode is
     //   "show the message and let the user retry" — i.e. no rollback needed.
@@ -496,8 +842,8 @@ export function makeComponent() {
     async _translateChapterAt(idx) {
       const ch = this.book.chapters[idx];
       const prior = this.book.chapters.slice(0, idx).filter(c => c.status === 'accepted');
-      const { titleTranslation, paragraphs } = await createTranslator(this.config)
-        .translateChapter(ch, this.dictionary, prior);
+      const { titleTranslation, paragraphs } = await this._makeTranslator()
+        .translateChapter(ch, this.glossary, prior);
       ch.paragraphs = paragraphs;
       ch.translatedTitle = titleTranslation;
       ch.status = 'translated';
@@ -506,16 +852,16 @@ export function makeComponent() {
       this._autosizeAll();
     },
 
-    addTerm() { this.dictionary.push({ term: '', translation: '', notes: '' }); },
+    addTerm() { this.glossary.push({ term: '', translation: '', notes: '' }); },
     // Sidebar variant: tag the new entry to the current chapter so it shows
     // up in the chapter-scoped subset (where it was added).
     addTermForCurrentChapter() {
-      this.dictionary.push({
+      this.glossary.push({
         term: '', translation: '', notes: '',
         chapters: [this.currentChapterIndex],
       });
     },
-    removeTerm(i) { this.dictionary.splice(i, 1); },
+    removeTerm(i) { this.glossary.splice(i, 1); },
 
     selectChapter(i) {
       const ch = this.book?.chapters?.[i];
@@ -523,11 +869,12 @@ export function makeComponent() {
       this.currentChapterIndex = i;
     },
 
-    gotoSetup()      { this.view = 'setup'; },
-    gotoDictionary() { if (this.dictionary.length) this.view = 'dictionary'; },
+    gotoSetup()    { this.view = 'setup'; },
+    gotoGlossary() { if (this.glossary.length) this.view = 'glossary'; },
+    gotoStats()    { this.view = 'stats'; },
 
     get canExport() {
-      return !!(this.book || (this.rawBook && this.rawBook.trim()) || this.dictionary.length);
+      return !!(this.book || (this.rawBook && this.rawBook.trim()) || this.glossary.length);
     },
 
     // Build a versioned envelope of the current state for download / sharing.
@@ -545,9 +892,10 @@ export function makeComponent() {
           headingLevel: this.headingLevel,
           splitPercent: this.splitPercent,
           book: this.book,
-          dictionary: this.dictionary,
+          glossary: this.glossary,
           currentChapterIndex: this.currentChapterIndex,
           config: cfg,
+          stats: this.stats,
         },
       };
     },
@@ -558,12 +906,17 @@ export function makeComponent() {
       const envelope = this.serializeState();
       const json = JSON.stringify(envelope, null, 2);
       const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-      const rawTitle = this.book?.chapters?.[0]?.title || 'translation';
-      const slug = String(rawTitle)
+      // Slug source: projectName when set, otherwise fall back to the
+      // first chapter's title (the pre-projectName behavior), then to a
+      // generic 'translation' if neither yields anything useful.
+      const projectSlug = this._projectFilenamePrefix().replace(/-$/, '');
+      const fallbackTitle = this.book?.chapters?.[0]?.title || 'translation';
+      const fallbackSlug = String(fallbackTitle)
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
-        .slice(0, 40) || 'translation';
+        .slice(0, 40);
+      const slug = projectSlug || fallbackSlug || 'translation';
       const filename = `book-translate-${slug}-${stamp}.json`;
       if (typeof document === 'undefined' || typeof URL === 'undefined') return;
       const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
@@ -606,19 +959,28 @@ export function makeComponent() {
           throw new Error('Export envelope has no "state" payload.');
         }
         if (!this._confirm(
-          'Import will replace your current book, dictionary, and settings.\n' +
+          'Import will replace your current book, glossary, and settings.\n' +
           'Your local API key will be kept. Continue?'
         )) return;
         const localKey = this.config?.apiKey || '';
+        // Backward-compat: pre-rename exports carry `dictionary` and the
+        // pre-rename `view: 'dictionary'` value. New exports use `glossary`
+        // / `view: 'glossary'`. Accept both shapes silently.
+        const importedView = data.view === 'dictionary' ? 'glossary' : (data.view ?? 'setup');
+        const importedGlossary =
+            Array.isArray(data.glossary)   ? data.glossary
+          : Array.isArray(data.dictionary) ? data.dictionary
+          : [];
         Object.assign(this, {
-          view: data.view ?? 'setup',
+          view: importedView,
           rawBook: data.rawBook ?? '',
           headingLevel: data.headingLevel ?? 1,
           splitPercent: clampSplit(data.splitPercent ?? 50),
           book: data.book ?? null,
-          dictionary: Array.isArray(data.dictionary) ? data.dictionary : [],
+          glossary: importedGlossary,
           currentChapterIndex: data.currentChapterIndex ?? 0,
-          config: { ...defaultConfig(), ...(data.config ?? {}), apiKey: localKey },
+          config: { ...defaultConfig(), ..._migrateLegacyConfig(data.config), apiKey: localKey },
+          stats: _migrateLegacyStats(data.stats),
           error: null,
         });
         await this.persistNow();
@@ -633,6 +995,22 @@ export function makeComponent() {
       return this.book.chapters.slice(0, upto + 1).some(c => c.status !== 'pending');
     },
 
+    // Sanitized projectName usable as a filename prefix. Empty when
+    // config.projectName is unset, so callers can `${prefix}base.md`
+    // and get the pre-projectName filename for free. The slug rules are
+    // the same the state-export already uses for the chapter-title
+    // fallback: lowercase, non-[a-z0-9] runs collapse to '-', leading
+    // and trailing dashes trimmed, capped at 40 chars.
+    _projectFilenamePrefix() {
+      const raw = (this.config.projectName || '').trim();
+      if (!raw) return '';
+      const slug = raw.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40);
+      return slug ? `${slug}-` : '';
+    },
+
     // Export the translation of every non-pending chapter from index 0
     // through the currently-viewed chapter as a Markdown file the parser
     // can re-ingest. The filename encodes the last included chapter number
@@ -641,15 +1019,15 @@ export function makeComponent() {
       if (!this.canExportSoFar) return;
       const md = renderTranslationMarkdown(this.book, this.currentChapterIndex);
       const n = String(this.currentChapterIndex + 1).padStart(3, '0');
-      const filename = `translation-through-chapter-${n}.md`;
+      const filename = `${this._projectFilenamePrefix()}translation-through-chapter-${n}.md`;
       this._downloadMarkdown(md, filename);
     },
-    exportDictionary() {
-      if (!this.dictionary?.length) return;
-      const md = renderDictionaryMarkdown(this.dictionary, {
+    exportGlossary() {
+      if (!this.glossary?.length) return;
+      const md = renderGlossaryMarkdown(this.glossary, {
         targetLanguage: this.config.targetLanguage,
       });
-      this._downloadMarkdown(md, 'dictionary.md');
+      this._downloadMarkdown(md, `${this._projectFilenamePrefix()}glossary.md`);
     },
     _downloadMarkdown(md, filename) {
       if (typeof document === 'undefined' || typeof URL === 'undefined') return;
@@ -665,7 +1043,7 @@ export function makeComponent() {
     },
 
     async reset() {
-      if (!this._confirm('Clear all data (book, dictionary, translations, settings)?')) return;
+      if (!this._confirm('Clear all data (book, glossary, translations, settings)?')) return;
       await store.clear();
       Object.assign(this, {
         view: 'setup',
@@ -675,11 +1053,12 @@ export function makeComponent() {
         originalFontSize: 'medium',
         translationFontSize: 'big',
         book: null,
-        dictionary: [],
+        glossary: [],
         currentChapterIndex: 0,
         config: defaultConfig(),
         error: null,
-        dictionaryProgress: null,
+        glossaryProgress: null,
+        stats: defaultStats(),
       });
     },
 

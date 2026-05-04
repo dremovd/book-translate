@@ -74,6 +74,33 @@ test('pinyinToPalladius: capitalizeWords title-cases each space-separated word',
   assert.equal(upper, 'Жуань Мянь');
 });
 
+test('pinyinToPalladius: ъ-separator after a Cyrillic syllable ending in -н before a vowel', () => {
+  // The cyrillic-loop only fires within a single space-delimited input
+  // word. -ng softening yields Cyrillic ending in -н (jiang → цзян);
+  // when the next tokenized syllable starts with a Russian vowel,
+  // Palladius requires a hard sign (ъ) between them. The ъ is inserted
+  // BEFORE the soft separator (whether forced via separateSyllables or
+  // implicit via the single-letter rule).
+  assert.equal(
+    pinyinToPalladius('jiangyi', { separateSyllables: false }),
+    'цзянъи',
+  );
+  assert.equal(
+    pinyinToPalladius('jiangyi', { separateSyllables: true }),
+    'цзянъ и',
+  );
+});
+
+test('pinyinToPalladius: two single-letter syllables get a soft separator even without separateSyllables', () => {
+  // Inside one input word, two adjacent single-letter syllables (e.g.
+  // "aa" tokenizing into ['a','a']) would otherwise glue into one
+  // Cyrillic blob. The bothSingleLetterSyllable rule inserts a space
+  // anyway so they read as two distinct syllables.
+  // (Using "aa" specifically because multi-letter starts like "ao" hit
+  // the SYLLABLE table directly and don't tokenize into two pieces.)
+  assert.equal(pinyinToPalladius('aa', { separateSyllables: false }), 'а а');
+});
+
 test('pinyinToPalladius: isGeographic switches hui/feng/meng/fen/men to ой/ын/ынь', () => {
   assert.equal(pinyinToPalladius('hui',  { isGeographic: true,  capitalizeWords: true }), 'Хой');
   assert.equal(pinyinToPalladius('hui',  { isGeographic: false, capitalizeWords: true }), 'Хуэй');

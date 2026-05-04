@@ -1,7 +1,7 @@
 // POE translator via OpenAI-compatible chat/completions endpoint.
 // Contract (same as DummyTranslator):
-//   buildDictionary(chapters) -> [{term, translation, notes}]
-//   translateChapter(chapter, dictionary, priorAcceptedChapters) -> paragraphs[] (same length, aligned by index)
+//   buildGlossary(chapters) -> [{term, translation, notes}]
+//   translateChapter(chapter, glossary, priorAcceptedChapters) -> paragraphs[] (same length, aligned by index)
 //
 // Text-shape concerns (paragraph numbering, JSON extraction, rendering) live
 // in ./format.js so any future OpenAI-compatible backend can reuse them.
@@ -11,10 +11,10 @@ import {
   parseNumberedParagraphs,
   alignByIndex,
   parseJsonArray,
-  normalizeDictionary,
+  normalizeGlossary,
   chapterOriginalText,
   chapterTranslationText,
-  formatDictionary,
+  formatGlossary,
   chunkBookText,
   mergeTermsWithSources,
   mergeBilingualPairsWithSources,
@@ -22,18 +22,18 @@ import {
 } from './format.js';
 import { palladiusTransliterate, isMostlyCJK } from '../palladius.js';
 
-// Default chunk size for dictionary term extraction, in characters.
+// Default chunk size for glossary term extraction, in characters.
 // ~400 000 chars ≈ ~100 k tokens at 4 chars/token — sized for modern
 // long-context models (Gemini 1-2M, Claude 200k, GPT-4o 128k). Hpmor
 // (≈3.76 MB) packs into ~10 chunks at this size.
-const DEFAULT_DICT_CHUNK_CHARS = 400000;
+const DEFAULT_GLOSSARY_CHUNK_CHARS = 400000;
 // Cap on parallel extract calls. POE tolerates more; 10 is a good balance
 // between throughput and being a decent API citizen on shared accounts.
-const DICT_EXTRACT_CONCURRENCY = 10;
+const GLOSSARY_EXTRACT_CONCURRENCY = 10;
 
 // Style-prompt presets for the translation step. Each `render(lang)` returns
 // only the STYLE/INSTRUCTION block — the structural contract (numbered
-// paragraphs, dictionary) is appended by `_translationSystemPrompt`
+// paragraphs, glossary) is appended by `_translationSystemPrompt`
 // regardless of preset, because it's protocol-level, not taste.
 export const TRANSLATION_PRESETS = {
   v1: {
@@ -59,7 +59,15 @@ export class PoeTranslator {
     if (!config.model)  throw new Error('Model (POE bot name) is required');
   }
 
-  async chat(messages, { temperature = 0.2, model } = {}) {
+  // chat() is the single network entry point — every real POE call goes
+  // through here. The optional `kind` opt lets callers tag the call so
+  // config.onApiCall(kind, durationMs) can categorize it (and time it)
+  // for the stats view. The hook fires AFTER a successful response only —
+  // failed calls don't count, by design (a 500 isn't editorial work).
+  // _chatCached suppresses the hook on cache hits by routing them around
+  // chat() entirely.
+  async chat(messages, { temperature = 0.2, model, kind = null } = {}) {
+    const startedAt = Date.now();
     const r = await fetch(`${this.config.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -79,14 +87,18 @@ export class PoeTranslator {
     const data = await r.json();
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string') throw new Error('Unexpected API response shape');
+    if (kind && typeof this.config.onApiCall === 'function') {
+      const durationMs = Date.now() - startedAt;
+      try { this.config.onApiCall(kind, durationMs); } catch (_e) { /* best effort */ }
+    }
     return content;
   }
 
   // Same as chat(), but caches the model response in localforage keyed
-  // by SHA-256 of (model, messages). Used by the four dictionary phases
+  // by SHA-256 of (model, messages). Used by the four glossary phases
   // (extract / translate-terms, plus their bilingual variants), where
   // the same chunk + prompt + model deterministically produces the same
-  // JSON output. Re-running a dictionary build (e.g. after refining
+  // JSON output. Re-running a glossary build (e.g. after refining
   // guidance for a different chapter, or pasting the same book again)
   // should not re-hit the API for chunks that haven't changed.
   //
@@ -100,7 +112,7 @@ export class PoeTranslator {
     const lf = globalThis.localforage;
     const subtle = globalThis.crypto?.subtle;
     if (!lf || !subtle) return this.chat(messages, opts);
-    const key = `poe-dict-cache:v1:${await sha256Hex(JSON.stringify({ model, messages }))}`;
+    const key = `poe-glossary-cache:v1:${await sha256Hex(JSON.stringify({ model, messages }))}`;
     const cached = await lf.getItem(key);
     if (cached != null) return cached;
     const content = await this.chat(messages, opts);
@@ -108,29 +120,29 @@ export class PoeTranslator {
     return content;
   }
 
-  // Dictionary phases (extract + translate-terms) can use a separate,
+  // Glossary phases (extract + translate-terms) can use a separate,
   // optionally cheaper/faster model. Falls back to the main model if
-  // `dictionaryModel` is unset or blank.
-  _dictionaryModel() {
-    const dict = (this.config.dictionaryModel || '').trim();
-    return dict || this.config.model;
+  // `glossaryModel` is unset or blank.
+  _glossaryModel() {
+    const gloss = (this.config.glossaryModel || '').trim();
+    return gloss || this.config.model;
   }
 
-  // Three-phase dictionary build, designed to scale past any one model's
+  // Three-phase glossary build, designed to scale past any one model's
   // context window:
   //   1. Chunk the book into text blobs that fit in one prompt.
   //   2. For each chunk, ask the model for a JSON array of terms that need
   //      consistent translation (proper nouns, invented words, etc.).
   //   3. Merge the per-chunk lists, then ask the model once to translate the
   //      deduplicated set into the target language.
-  // This also makes the dictionary step resumable at the chunk level later
+  // This also makes the glossary step resumable at the chunk level later
   // if we ever want to add progress/cache.
-  async buildDictionary(chapters, { onProgress } = {}) {
+  async buildGlossary(chapters, { onProgress } = {}) {
     const lang = this.config.targetLanguage || 'the target language';
-    const configured = Number(this.config.dictionaryChunkChars);
+    const configured = Number(this.config.glossaryChunkChars);
     const maxChars = Number.isFinite(configured) && configured > 0
       ? configured
-      : DEFAULT_DICT_CHUNK_CHARS;
+      : DEFAULT_GLOSSARY_CHUNK_CHARS;
 
     const chunks = chunkBookText(chapters, maxChars);
     const total = chunks.length;
@@ -142,7 +154,7 @@ export class PoeTranslator {
     // bar moves up to CONCURRENCY times per batch-round.
     let done = 0;
     const results = await mapBatched(
-      chunks, DICT_EXTRACT_CONCURRENCY,
+      chunks, GLOSSARY_EXTRACT_CONCURRENCY,
       async (chunk) => {
         const r = {
           terms: await this._extractTerms(chunk.text, lang),
@@ -180,14 +192,14 @@ export class PoeTranslator {
     }));
   }
 
-  // Bilingual dictionary build: like buildDictionary but each chapter
+  // Bilingual glossary build: like buildGlossary but each chapter
   // carries a `referenceText` blob (the same chapter in a second
   // language). Extract phase asks the model for {original, reference}
   // pairs by reading both blobs side-by-side; translate phase produces
   // {term, originalForm, translation, notes}. The result feeds the
-  // bilingual translator's prompts (formatDictionary surfaces
+  // bilingual translator's prompts (formatGlossary surfaces
   // `originalForm` in the glossary line).
-  async buildBilingualDictionary(chapters, { onProgress } = {}) {
+  async buildBilingualGlossary(chapters, { onProgress } = {}) {
     const lang     = this.config.targetLanguage      || 'the target language';
     // editorLang = the language whose paragraphs the user reads/edits.
     // refLang    = the canonical source-of-truth language (chapter blob).
@@ -200,7 +212,7 @@ export class PoeTranslator {
 
     let done = 0;
     const chunkResults = await mapBatched(
-      work, DICT_EXTRACT_CONCURRENCY,
+      work, GLOSSARY_EXTRACT_CONCURRENCY,
       async (ch) => {
         const idx = chapters.indexOf(ch);
         const heading = `# ${ch.title}`;
@@ -217,7 +229,7 @@ export class PoeTranslator {
     const merged = mergeBilingualPairsWithSources(chunkResults);
     if (merged.length === 0) return [];
 
-    // Same Palladius-first pattern as buildDictionary, but applied to
+    // Same Palladius-first pattern as buildGlossary, but applied to
     // the Chinese `reference` side (the bilingual term identity is the
     // pair, but the transliteration always belongs to the CJK form).
     const palladius = await this._safePalladius(merged.map(m => m.reference));
@@ -253,7 +265,7 @@ export class PoeTranslator {
   //
   // Palladius runs offline (pinyin-pro on the page + the syllable table
   // in palladius.js); the try/catch covers the case where pinyin-pro
-  // hasn't loaded yet, so the dictionary build degrades to no-hint
+  // hasn't loaded yet, so the glossary build degrades to no-hint
   // rather than crashing.
   async _safePalladius(sources) {
     if (!this.config.usePalladius) return new Map();
@@ -292,7 +304,7 @@ export class PoeTranslator {
           `${editorLang.toUpperCase()} CHUNK:\n\n${originalChunk}\n\n` +
           `---\n\n${refLang.toUpperCase()} REFERENCE (same chapter):\n\n${referenceChunk || '(none provided)'}`,
       },
-    ], { model: this._dictionaryModel() });
+    ], { model: this._glossaryModel(), kind: 'bilingual-extract' });
     const arr = parseJsonArray(content);
     return arr
       .map(x => ({
@@ -316,7 +328,7 @@ export class PoeTranslator {
       {
         role: 'system',
         content:
-          `You produce a translation dictionary into ${lang} for a novel. ` +
+          `You produce a translation glossary into ${lang} for a novel. ` +
           `Each input is a {original, reference} pair — "original" is the ${editorLang} form, "reference" is the canonical ${refLang} form. ` +
           `For each pair, provide a single best translation into ${lang} and optional short notes (gender, transliteration scheme, role). ` +
           `Use the ${refLang} form as the identity anchor for transliteration: prefer the canonical ${lang} rendering of the ${refLang} term over a fresh transliteration of the ${editorLang} form. ` +
@@ -335,7 +347,7 @@ export class PoeTranslator {
             : `- ${p.original}  ↔  ${p.reference}`
           ).join('\n'),
       },
-    ], { model: this._dictionaryModel() });
+    ], { model: this._glossaryModel(), kind: 'bilingual-translate' });
     const arr = parseJsonArray(content);
     return arr
       .map(e => ({
@@ -362,7 +374,7 @@ export class PoeTranslator {
           `Respond with ONLY a JSON array of strings — the original terms exactly as they appear, no translations, no commentary, no code fences.`,
       },
       { role: 'user', content: chunkText },
-    ], { model: this._dictionaryModel() });
+    ], { model: this._glossaryModel(), kind: 'glossary-extract' });
     const arr = parseJsonArray(content);
     return arr.map(x => (x == null ? '' : String(x))).filter(Boolean);
   }
@@ -384,7 +396,7 @@ export class PoeTranslator {
       {
         role: 'system',
         content:
-          `You produce a translation dictionary for book translation into ${lang}. ` +
+          `You produce a translation glossary for book translation into ${lang}. ` +
           `For each input term, provide a single best translation and optional short notes (gender, transliteration scheme, role). ` +
           `For real-world references (titles of books / films / songs / papers, institutions, theories, historical or public figures), use the canonical published translation into ${lang} when one exists — prefer the standard rendering over a fresh translation, and note it (e.g. "canonical", "standard published title", "Росмэн"). ` +
           palladiusBlock +
@@ -397,16 +409,16 @@ export class PoeTranslator {
           x.palladius ? `- ${x.term} (Palladius: ${x.palladius})` : `- ${x.term}`
         ).join('\n')}`,
       },
-    ], { model: this._dictionaryModel() });
-    return normalizeDictionary(parseJsonArray(content));
+    ], { model: this._glossaryModel(), kind: 'glossary-translate' });
+    return normalizeGlossary(parseJsonArray(content));
   }
 
   // Editor-supplied guidance that steers both the extract and translate
-  // phases of the dictionary build — e.g. canonical translations to enforce,
+  // phases of the glossary build — e.g. canonical translations to enforce,
   // categories to include or skip, case-normalization rules. Returned with
   // surrounding whitespace so it can be inline-concatenated into prompts.
   _guidanceSection() {
-    const guidance = (this.config.dictionaryGuidance || '').trim();
+    const guidance = (this.config.glossaryGuidance || '').trim();
     if (!guidance) return '';
     return `\n\nEditor guidance:\n${guidance}\n\n`;
   }
@@ -431,7 +443,7 @@ export class PoeTranslator {
     return `\n\nInline markers in the source (*…*, **…**, _…_, __…__) are italic or bold and semantically meaningful — do not drop them. In fiction, italic often marks a character's thought, an imagined or remembered line, or strong emphasis. If the guidance above prescribes a target-language convention (e.g. "use quotation marks for character thoughts"), apply it to these spans; otherwise preserve the wrapping verbatim around the equivalent phrase.`;
   }
 
-  async translateChapter(chapter, dictionary, priorAcceptedChapters) {
+  async translateChapter(chapter, glossary, priorAcceptedChapters) {
     const lang = this.config.targetLanguage || 'the target language';
     const priorStr = priorAcceptedChapters
       .map(c => {
@@ -442,7 +454,7 @@ export class PoeTranslator {
       .join('\n\n---\n\n');
 
     const messages = [
-      { role: 'system', content: this._translationSystemPrompt(lang, dictionary) },
+      { role: 'system', content: this._translationSystemPrompt(lang, glossary) },
     ];
     if (priorStr) {
       messages.push({
@@ -472,7 +484,7 @@ export class PoeTranslator {
         numberedParagraphs(chapter.paragraphs),
     });
 
-    const content = await this.chat(messages);
+    const content = await this.chat(messages, { kind: 'chapter-translate' });
     const parsed = parseNumberedParagraphs(content);
     return {
       titleTranslation: parsed.get(0) ?? chapter.title,
@@ -486,10 +498,10 @@ export class PoeTranslator {
   // the editor patch a single bad paragraph without redoing the chapter.
   //   paragraph: { original, translation?, status? }
   //   mode: 'strict' | 'natural'
-  //   dictionary: subset of entries the caller deems relevant
+  //   glossary: subset of entries the caller deems relevant
   //   context: { chapterTitle?, priorParagraphs?: [{original, translation}] }
   // Returns the translated text as a plain string.
-  async translateParagraph(paragraph, mode, dictionary, context = {}) {
+  async translateParagraph(paragraph, mode, glossary, context = {}) {
     const lang = this.config.targetLanguage || 'the target language';
     // Three modes: 'strict' (literal-bias), 'natural' (native-target-bias),
     // anything else (default / no bias) — the per-book style preset alone.
@@ -531,7 +543,7 @@ export class PoeTranslator {
         content:
           `Translate ONE paragraph into ${lang} at publication-ready literary quality. ${modeInstruction}${revisionNote}${guidanceBlock}${dialogBlock}${markersBlock}\n\n` +
           `Output: just the translated paragraph — do NOT wrap it in an extra pair of quotation marks, but KEEP quotation marks that belong inside the prose (direct speech, inner monologue, quoted words). No numbering, label (e.g. "Translation:"), commentary, or leading/trailing blank lines.\n\n` +
-          `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`,
+          `Use this glossary for consistency:\n${formatGlossary(glossary)}`,
       },
     ];
     if (context.chapterTitle) {
@@ -567,7 +579,10 @@ export class PoeTranslator {
       });
     }
 
-    const content = await this.chat(messages, { temperature: strict ? 0.15 : 0.5 });
+    const content = await this.chat(messages, {
+      temperature: strict ? 0.15 : 0.5,
+      kind: 'paragraph-translate',
+    });
     const unlabeled = content.replace(/^\s*(?:Translation|Перевод)\s*:\s*/i, '').trim();
     // Quote unwrapping: only strip an outer pair when the SOURCE wasn't
     // itself wrapped in matching quotes. If the source was a direct-
@@ -587,7 +602,7 @@ export class PoeTranslator {
   //      chapter pair, return interval-to-interval matches (a single B
   //      paragraph can adapt several source paragraphs and vice versa).
   //
-  // Both run on `dictionaryModel` (cheaper than the main translation
+  // Both run on `glossaryModel` (cheaper than the main translation
   // model) since this is structural matching, not literary judgment.
 
   async alignChapters(sourceBook, bBook, { onProgress } = {}) {
@@ -610,7 +625,7 @@ export class PoeTranslator {
         role: 'user',
         content: `SOURCE chapters:\n\n${summarize(sourceBook?.chapters)}\n\n---\n\nB chapters:\n\n${summarize(bBook?.chapters)}`,
       },
-    ], { model: this._dictionaryModel() });
+    ], { model: this._glossaryModel() });
 
     onProgress?.({ stage: 'align-chapters', current: 1, total: 1 });
 
@@ -647,7 +662,7 @@ export class PoeTranslator {
           `SOURCE paragraphs (S1..S${(sourceParagraphs || []).length}):\n\n${sText}\n\n` +
           `---\n\nB paragraphs (B1..B${(bParagraphs || []).length}):\n\n${bText}`,
       },
-    ], { model: this._dictionaryModel() });
+    ], { model: this._glossaryModel() });
 
     onProgress?.({ stage: 'align-paragraphs', current: 1, total: 1 });
 
@@ -671,8 +686,8 @@ export class PoeTranslator {
   //      to the default preset.
   //   2. Structural contract — [0]..[N] numbering. Always present; taking
   //      this out would break `alignByIndex`.
-  //   3. Dictionary — always present (may render as "(empty)").
-  _translationSystemPrompt(lang, dictionary) {
+  //   3. Glossary — always present (may render as "(empty)").
+  _translationSystemPrompt(lang, glossary) {
     const preset = this.config.translationPromptPreset || DEFAULT_TRANSLATION_PRESET;
     let style;
     if (preset === 'custom') {
@@ -689,7 +704,7 @@ export class PoeTranslator {
       this._dialogSection(lang) +
       this._inlineMarkersSection() +
       `\n\nInput is numbered: [0] is the chapter title, [1]..[N] are body paragraphs in order. Output MUST mirror this numbering with one translation per input item. No merging, splitting, reordering, or commentary.\n\n` +
-      `Use this dictionary for consistency:\n${formatDictionary(dictionary)}`;
+      `Use this glossary for consistency:\n${formatGlossary(glossary)}`;
   }
 
   // Inline dialog-formatting block, auto-injected when we have conventions
@@ -743,7 +758,7 @@ function isWrappedInMatchingQuotes(text) {
   return false;
 }
 
-// SHA-256 hex digest of a string. Used as the dictionary-cache key —
+// SHA-256 hex digest of a string. Used as the glossary-cache key —
 // short, stable, collision-resistant. Available in browsers and Node
 // 19+ via globalThis.crypto.subtle; the caller checks before invoking.
 async function sha256Hex(str) {

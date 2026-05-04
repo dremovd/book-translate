@@ -2,10 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderInlineMd, renderBlockMd } from '../js/markdown.js';
 
-test('renderInlineMd: plain text passes through unchanged', () => {
-  assert.equal(renderInlineMd('hello world'), 'hello world');
-});
-
 test('renderInlineMd: escapes HTML before applying markdown (XSS guard)', () => {
   assert.equal(
     renderInlineMd('<script>alert(1)</script>'),

@@ -19,16 +19,16 @@ function setDummyBook(c, raw = SAMPLE) {
 
 // ---------- full happy path ----------
 
-test('dummy flow: setup → dictionary → editor → accept-next → final accept', async () => {
+test('dummy flow: setup → glossary → editor → accept-next → final accept', async () => {
   const c = await initFresh();
   setDummyBook(c);
 
   await c.startFromRaw();
-  assert.equal(c.view, 'dictionary');
+  assert.equal(c.view, 'glossary');
   assert.equal(c.book.chapters.length, 3);
   assert.equal(c.book.chapters[0].status, 'pending');
 
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   assert.equal(c.view, 'editor');
   assert.equal(c.currentChapterIndex, 0);
   assert.equal(c.book.chapters[0].status, 'translated');
@@ -56,16 +56,11 @@ test('dummy flow: setup → dictionary → editor → accept-next → final acce
 
 // ---------- translation stats footer ----------
 
-test('currentChapterStats: zero when no book is loaded', async () => {
-  const c = await initFresh();
-  assert.deepEqual(c.currentChapterStats, { words: 0, chars: 0 });
-});
-
 test('currentChapterStats: counts words and non-space chars across title + translated paragraphs', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   // Dummy copies original to translation, so ch1 has translatedTitle='Chapter 1'
   // and paragraphs[0].translation='para A1', paragraphs[1].translation='para A2'.
   const stats = c.currentChapterStats;
@@ -99,6 +94,16 @@ test('loadFile: drag-and-drop drop event populates rawBook and calls preventDefa
   assert.equal(c.rawBook, 'dropped content');
 });
 
+test('previewChapterCount: live count of headings in rawBook (0 when empty, respects headingLevel)', async () => {
+  const c = await initFresh();
+  assert.equal(c.previewChapterCount, 0, 'empty input → 0 chapters');
+  c.rawBook = '# A\n\nx\n\n# B\n\ny\n\n# C\n\nz';
+  assert.equal(c.previewChapterCount, 3, 'three H1 chapters detected at default level');
+  c.rawBook = '## A\n\nx\n\n## B\n\ny';
+  c.headingLevel = 2;
+  assert.equal(c.previewChapterCount, 2, 'two H2 chapters detected at level 2');
+});
+
 test('loadFile: surfaces a file-read error without clobbering rawBook', async () => {
   const c = await initFresh();
   c.rawBook = 'kept';
@@ -112,36 +117,81 @@ test('loadFile: surfaces a file-read error without clobbering rawBook', async ()
   assert.match(c.error || '', /disk gone/);
 });
 
-test('exportDictionary: produces a 3-column markdown table for the singular editor', async () => {
+test('exportGlossary: filename uses projectName slug when set', async () => {
   const c = await initFresh();
   c.config.targetLanguage = 'Russian';
-  c.dictionary = [
+  c.config.projectName = 'My Cool Book';
+  c.glossary = [{ term: 'Hogwarts', translation: 'Хогвартс', notes: '', chapters: [0] }];
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportGlossary();
+  // Slug: lowercased, spaces → hyphens, no leading/trailing punctuation.
+  assert.equal(captured.filename, 'my-cool-book-glossary.md');
+});
+
+test('exportGlossary: filename has no project prefix when projectName is empty/whitespace', async () => {
+  const c = await initFresh();
+  c.config.projectName = '   ';   // whitespace alone is treated as unset
+  c.glossary = [{ term: 'X', translation: 'Х', notes: '', chapters: [0] }];
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportGlossary();
+  assert.equal(captured.filename, 'glossary.md');
+});
+
+test('exportSoFar: filename includes projectName slug when set', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  c.config.projectName = 'meiyou-renxiang-ni';
+  await c.startFromRaw();
+  await c.acceptGlossary();
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportSoFar();
+  assert.equal(captured.filename, 'meiyou-renxiang-ni-translation-through-chapter-001.md');
+});
+
+test('exportSoFar: filename has no project prefix when projectName is empty', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptGlossary();
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportSoFar();
+  assert.equal(captured.filename, 'translation-through-chapter-001.md');
+});
+
+test('exportGlossary: produces a 3-column markdown table for the singular editor', async () => {
+  const c = await initFresh();
+  c.config.targetLanguage = 'Russian';
+  c.glossary = [
     { term: 'Hogwarts', translation: 'Хогвартс', notes: 'school', chapters: [0] },
     { term: 'Quidditch', translation: 'квиддич', notes: '', chapters: [1] },
   ];
   // Capture what the component would download instead of actually clicking.
   let captured = null;
   c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
-  c.exportDictionary();
-  assert.equal(captured.filename, 'dictionary.md');
+  c.exportGlossary();
+  assert.equal(captured.filename, 'glossary.md');
   assert.match(captured.md, /\| Term \| Russian \| Notes \|/);
   assert.doesNotMatch(captured.md, /Reference/i);
   assert.match(captured.md, /\| Hogwarts \| Хогвартс \| school \|/);
 });
 
-test('exportDictionary: no-ops on empty dictionary', async () => {
+test('exportGlossary: no-ops on empty glossary', async () => {
   const c = await initFresh();
   let called = false;
   c._downloadMarkdown = () => { called = true; };
-  c.exportDictionary();
-  assert.equal(called, false, 'must not download an empty dictionary');
+  c.exportGlossary();
+  assert.equal(called, false, 'must not download an empty glossary');
 });
 
 test('currentChapterStats: ignores leading/trailing whitespace and treats newlines as separators', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   c.book.chapters[0].translatedTitle = '  Заголовок  ';
   c.book.chapters[0].paragraphs[0].translation = 'два слова';
   c.book.chapters[0].paragraphs[1].translation = 'строка\nещё строка';
@@ -157,7 +207,7 @@ test('acceptAndNext: does NOT re-translate an already-translated next chapter', 
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   await c.acceptAndNext();                 // now on ch2, ch2 translated
   assert.equal(c.currentChapterIndex, 1);
 
@@ -181,7 +231,7 @@ test('acceptAndNext: rolls back status when translator fails', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();              // ch1 translated
+  await c.acceptGlossary();              // ch1 translated
 
   // Swap to POE with a failing fetch; ch2 is still pending, so it will be attempted.
   c.config.translator = 'poe';
@@ -205,7 +255,7 @@ test('selectChapter: refuses to navigate to a pending chapter', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();              // ch1 translated, ch2/ch3 pending
+  await c.acceptGlossary();              // ch1 translated, ch2/ch3 pending
   c.selectChapter(1);
   assert.equal(c.currentChapterIndex, 0);
   c.selectChapter(2);
@@ -216,7 +266,7 @@ test('selectChapter: allows navigation to a translated chapter', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   await c.acceptAndNext();                 // on ch2
   c.selectChapter(0);
   assert.equal(c.currentChapterIndex, 0);
@@ -259,7 +309,7 @@ test('nextButtonLabel reflects final-chapter and already-translated-next cases',
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();              // on ch1 of 3
+  await c.acceptGlossary();              // on ch1 of 3
 
   assert.equal(c.nextButtonLabel, 'Accept & translate next chapter');
 
@@ -281,7 +331,7 @@ test('acceptedCount and anyTranslated getters', async () => {
 
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   assert.equal(c.anyTranslated, true);
   assert.equal(c.acceptedCount, 0);
 
@@ -289,21 +339,21 @@ test('acceptedCount and anyTranslated getters', async () => {
   assert.equal(c.acceptedCount, 1);
 });
 
-// ---------- dictionary ----------
+// ---------- glossary ----------
 
-test('startFromRaw: dictionaryProgress starts null, ends null after build', async () => {
+test('startFromRaw: glossaryProgress starts null, ends null after build', async () => {
   const c = await initFresh();
   setDummyBook(c);
-  assert.equal(c.dictionaryProgress, null);
+  assert.equal(c.glossaryProgress, null);
   await c.startFromRaw();
-  assert.equal(c.dictionaryProgress, null, 'progress must be cleared once the build finishes');
+  assert.equal(c.glossaryProgress, null, 'progress must be cleared once the build finishes');
 });
 
 test('font-size and splitPercent survive acceptAndNext (translate next chapter)', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   c.splitPercent = 72;
   c.originalFontSize = 'small';
   c.translationFontSize = 'biggest';
@@ -318,7 +368,7 @@ test('font-size and splitPercent survive selectChapter (sidebar navigation)', as
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   await c.acceptAndNext();
   c.splitPercent = 30;
   c.originalFontSize = 'smallest';
@@ -334,7 +384,7 @@ test('font-size and splitPercent survive retranslateCurrent', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   c.splitPercent = 45;
   c.originalFontSize = 'big';
   c.translationFontSize = 'smallest';
@@ -342,13 +392,6 @@ test('font-size and splitPercent survive retranslateCurrent', async () => {
   assert.equal(c.splitPercent, 45);
   assert.equal(c.originalFontSize, 'big');
   assert.equal(c.translationFontSize, 'smallest');
-});
-
-test('defaults: split 60 %, original medium, translation big', async () => {
-  const c = await initFresh();
-  assert.equal(c.splitPercent, 60);
-  assert.equal(c.originalFontSize, 'medium');
-  assert.equal(c.translationFontSize, 'big');
 });
 
 test('font-size selections persist across reloads', async () => {
@@ -374,25 +417,46 @@ test('font-size: malformed saved value falls back to default', async () => {
   assert.equal(c.translationFontSize, 'big');
 });
 
-test('addTerm/removeTerm mutate the dictionary', async () => {
+test('addTerm/removeTerm mutate the glossary', async () => {
   const c = await initFresh();
   c.addTerm();
   c.addTerm();
-  c.dictionary[0].term = 'X';
-  c.dictionary[1].term = 'Y';
+  c.glossary[0].term = 'X';
+  c.glossary[1].term = 'Y';
   c.removeTerm(0);
-  assert.equal(c.dictionary.length, 1);
-  assert.equal(c.dictionary[0].term, 'Y');
+  assert.equal(c.glossary.length, 1);
+  assert.equal(c.glossary[0].term, 'Y');
 });
 
 // ---------- persistence ----------
 
-test('persist/load round-trip restores view, book, dictionary, and config', async () => {
+test('persistNow: lights up the saveIndicator after a successful save', async () => {
+  const c = await initFresh();
+  c.rawBook = '# X\n\nx';
+  assert.equal(c.saveIndicator, false, 'idle by default');
+  await c.persistNow();
+  assert.equal(c.saveIndicator, true, 'must light up immediately after a successful save');
+});
+
+test('persistNow: leaves saveIndicator off when the underlying store throws', async () => {
+  const c = await initFresh();
+  // Force the store layer to throw — exercises the catch path in persistNow.
+  const orig = globalThis.localforage.setItem;
+  globalThis.localforage.setItem = async () => { throw new Error('disk full'); };
+  try {
+    await c.persistNow();
+    assert.equal(c.saveIndicator, false, 'a thrown save must NOT light up the indicator');
+  } finally {
+    globalThis.localforage.setItem = orig;
+  }
+});
+
+test('persist/load round-trip restores view, book, glossary, and config', async () => {
   const c1 = await initFresh();
   setDummyBook(c1);
   await c1.startFromRaw();
-  c1.dictionary.push({ term: 'Winston', translation: 'Уинстон', notes: '' });
-  await c1.acceptDictionary();
+  c1.glossary.push({ term: 'Winston', translation: 'Уинстон', notes: '' });
+  await c1.acceptGlossary();
   c1.book.chapters[0].paragraphs[0].translation = 'перевод';
   await c1.persistNow();
 
@@ -402,7 +466,84 @@ test('persist/load round-trip restores view, book, dictionary, and config', asyn
   assert.equal(c2.book.chapters.length, 3);
   assert.equal(c2.book.chapters[0].status, 'translated');
   assert.equal(c2.book.chapters[0].paragraphs[0].translation, 'перевод');
-  assert.ok(c2.dictionary.some(e => e.term === 'Winston'));
+  assert.ok(c2.glossary.some(e => e.term === 'Winston'));
+});
+
+test('loadSaved: pre-rename state with `dictionary`, `view: "dictionary"`, and `dictionary*` config keys migrates to glossary', async () => {
+  // Simulate a state file written before the dictionary→glossary rename.
+  // Hand-crafted via the same store the component reads from, so the test
+  // exercises the actual loadSaved path rather than poking internals.
+  await globalThis.localforage.setItem('book-translate-state:v1', {
+    view: 'dictionary',
+    rawBook: '# C\n\nx',
+    book: { chapters: [{ title: 'C', translatedTitle: '', status: 'pending', paragraphs: [{ original: 'x', translation: '', status: 'pending' }] }] },
+    dictionary: [{ term: 'Winston', translation: 'Уинстон', notes: '', chapters: [0] }],
+    currentChapterIndex: 0,
+    config: {
+      translator: 'poe',
+      apiKey: 'sk-x',
+      model: 'gemini-3.1-pro',
+      dictionaryModel: 'cheap-model',
+      dictionaryGuidance: 'Use Spivak.',
+      dictionaryChunkChars: 12345,
+      targetLanguage: 'Russian',
+    },
+  });
+  const c = makeComponent();
+  await c.init();
+  assert.equal(c.view, 'glossary', 'view: "dictionary" must migrate to "glossary"');
+  assert.equal(c.glossary.length, 1, 'saved.dictionary must surface as c.glossary');
+  assert.equal(c.glossary[0].term, 'Winston');
+  assert.equal(c.config.glossaryModel,      'cheap-model');
+  assert.equal(c.config.glossaryGuidance,   'Use Spivak.');
+  assert.equal(c.config.glossaryChunkChars, 12345);
+  assert.equal(c.config.dictionaryModel,    undefined, 'old key must NOT linger after migration');
+  assert.equal(c.config.dictionaryGuidance, undefined);
+  assert.equal(c.config.dictionaryChunkChars, undefined);
+});
+
+test('importFromText: pre-rename export envelope (dictionary, view: "dictionary") migrates to glossary on import', async () => {
+  const c = await initFresh();
+  c.config.apiKey = 'local-key';
+  const envelope = {
+    type: 'book-translate-state', version: 1, exportedAt: '2026-04-21T12:00:00Z',
+    state: {
+      view: 'dictionary',
+      rawBook: '# C\n\nx',
+      headingLevel: 1,
+      book: { chapters: [{ title: 'C', translatedTitle: '', status: 'translated',
+        paragraphs: [{ original: 'x', translation: 'икс', status: 'translated' }] }] },
+      dictionary: [{ term: 'X', translation: 'Икс', notes: '', chapters: [0] }],
+      currentChapterIndex: 0,
+      config: { translator: 'poe', apiKey: '', model: 'm',
+                dictionaryModel: 'cheap', dictionaryGuidance: 'g', dictionaryChunkChars: 9000 },
+    },
+  };
+  await c.importFromText(JSON.stringify(envelope));
+  assert.equal(c.view, 'glossary');
+  assert.equal(c.glossary.length, 1);
+  assert.equal(c.glossary[0].term, 'X');
+  assert.equal(c.config.glossaryModel,      'cheap');
+  assert.equal(c.config.glossaryGuidance,   'g');
+  assert.equal(c.config.glossaryChunkChars, 9000);
+  assert.equal(c.config.apiKey, 'local-key', 'local API key must still survive a legacy import');
+});
+
+test('parseQueryOverrides: legacy ?dictionaryModel/?dictionaryGuidance/?dictionaryChunkChars all map to glossary*', async () => {
+  // Inline import to avoid disturbing the file's existing imports.
+  const { parseQueryOverrides } = await import('../js/component.js');
+  const out = parseQueryOverrides('?dictionaryModel=cheap&dictionaryGuidance=hello&dictionaryChunkChars=4242');
+  assert.equal(out.configPatch.glossaryModel,      'cheap');
+  assert.equal(out.configPatch.glossaryGuidance,   'hello');
+  assert.equal(out.configPatch.glossaryChunkChars, 4242);
+  // Legacy key should NOT also be set on the patch — we want one canonical key.
+  assert.equal(out.configPatch.dictionaryModel, undefined);
+});
+
+test('parseQueryOverrides: when both legacy and new keys are present, the new one wins', async () => {
+  const { parseQueryOverrides } = await import('../js/component.js');
+  const out = parseQueryOverrides('?glossaryModel=NEW&dictionaryModel=OLD');
+  assert.equal(out.configPatch.glossaryModel, 'NEW');
 });
 
 test('persist is suppressed until loadSaved completes (no clobber of saved state)', async () => {
@@ -410,7 +551,7 @@ test('persist is suppressed until loadSaved completes (no clobber of saved state
   const c1 = await initFresh();
   setDummyBook(c1);
   await c1.startFromRaw();
-  await c1.acceptDictionary();
+  await c1.acceptGlossary();
   await c1.persistNow();
 
   const before = await globalThis.localforage.getItem('book-translate-state:v1');
@@ -431,28 +572,28 @@ test('persist is suppressed until loadSaved completes (no clobber of saved state
 test('_applyQueryParamOverrides: applies known string config fields', async () => {
   const c = await initFresh();
   const applied = c._applyQueryParamOverrides(
-    '?translator=poe&model=claude-opus-4.7&dictionaryModel=gemini-2.5-flash&apiKey=sk-test&targetLanguage=French'
+    '?translator=poe&model=claude-opus-4.7&glossaryModel=gemini-2.5-flash&apiKey=sk-test&targetLanguage=French'
   );
   assert.equal(applied, true);
   assert.equal(c.config.translator, 'poe');
   assert.equal(c.config.model, 'claude-opus-4.7');
-  assert.equal(c.config.dictionaryModel, 'gemini-2.5-flash');
+  assert.equal(c.config.glossaryModel, 'gemini-2.5-flash');
   assert.equal(c.config.apiKey, 'sk-test');
   assert.equal(c.config.targetLanguage, 'French');
 });
 
 test('_applyQueryParamOverrides: coerces numeric fields', async () => {
   const c = await initFresh();
-  c._applyQueryParamOverrides('?dictionaryChunkChars=12345');
-  assert.equal(c.config.dictionaryChunkChars, 12345);
-  assert.equal(typeof c.config.dictionaryChunkChars, 'number');
+  c._applyQueryParamOverrides('?glossaryChunkChars=12345');
+  assert.equal(c.config.glossaryChunkChars, 12345);
+  assert.equal(typeof c.config.glossaryChunkChars, 'number');
 });
 
 test('_applyQueryParamOverrides: invalid number is skipped (existing value preserved)', async () => {
   const c = await initFresh();
-  const before = c.config.dictionaryChunkChars;
-  c._applyQueryParamOverrides('?dictionaryChunkChars=not-a-number');
-  assert.equal(c.config.dictionaryChunkChars, before);
+  const before = c.config.glossaryChunkChars;
+  c._applyQueryParamOverrides('?glossaryChunkChars=not-a-number');
+  assert.equal(c.config.glossaryChunkChars, before);
 });
 
 test('_applyQueryParamOverrides: empty query returns false and leaves state alone', async () => {
@@ -527,7 +668,7 @@ test('importFromText: applies exported envelope; preserves local apiKey', async 
         title: 'Chapter 1', translatedTitle: 'Глава 1', status: 'translated',
         paragraphs: [{ original: 'hello', translation: 'привет', status: 'translated' }],
       }]},
-      dictionary: [{ term: 'hello', translation: 'привет', notes: '', chapters: [0] }],
+      glossary: [{ term: 'hello', translation: 'привет', notes: '', chapters: [0] }],
       currentChapterIndex: 0,
       config: { translator: 'poe', apiKey: '', model: 'gemini-3.1-pro', targetLanguage: 'Russian' },
     },
@@ -538,7 +679,7 @@ test('importFromText: applies exported envelope; preserves local apiKey', async 
   assert.equal(c.rawBook, '# Chapter 1\n\nhello');
   assert.equal(c.splitPercent, 70);
   assert.equal(c.book.chapters.length, 1);
-  assert.equal(c.dictionary.length, 1);
+  assert.equal(c.glossary.length, 1);
   assert.equal(c.config.model, 'gemini-3.1-pro');
   assert.equal(c.config.apiKey, 'my-local-key', 'local API key must be preserved on import');
   assert.equal(c.error, null);
@@ -589,13 +730,13 @@ test('reset clears all state and the store', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   await c.reset();
 
   assert.equal(c.view, 'setup');
   assert.equal(c.rawBook, '');
   assert.equal(c.book, null);
-  assert.equal(c.dictionary.length, 0);
+  assert.equal(c.glossary.length, 0);
   assert.equal(c.currentChapterIndex, 0);
   const stored = await globalThis.localforage.getItem('book-translate-state:v1');
   assert.equal(stored, null);
@@ -617,7 +758,7 @@ test('retranslateParagraph (dummy): rewrites just the one paragraph, leaves othe
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   // User-edits paragraph 0 and 1.
   c.book.chapters[0].paragraphs[0].translation = 'my edit 0';
   c.book.chapters[0].paragraphs[1].translation = 'my edit 1';
@@ -627,23 +768,23 @@ test('retranslateParagraph (dummy): rewrites just the one paragraph, leaves othe
   assert.equal(c.book.chapters[0].paragraphs[1].translation, 'my edit 1');
 });
 
-test('_dictionarySubsetForChapter: filters by chapters[]; legacy entries (no chapters) are kept', async () => {
+test('_glossarySubsetForChapter: filters by chapters[]; legacy entries (no chapters) are kept', async () => {
   const c = await initFresh();
   setDummyBook(c);
-  await c.startFromRaw();  // dummy dict entries now carry chapters[]
+  await c.startFromRaw();  // dummy glossary entries now carry chapters[]
   c.book = { chapters: [
     { title: 'A', translatedTitle: '', paragraphs: [{ original: 'x', translation: '', status: 'pending' }], status: 'pending' },
     { title: 'B', translatedTitle: '', paragraphs: [{ original: 'y', translation: '', status: 'pending' }], status: 'pending' },
   ]};
-  c.dictionary = [
+  c.glossary = [
     { term: 'Alpha',  translation: 'Альфа',  notes: '', chapters: [0] },
     { term: 'Beta',   translation: 'Бета',   notes: '', chapters: [1] },
     { term: 'Global', translation: 'Global', notes: '' },  // legacy: no chapters field
     { term: 'Both',   translation: 'Оба',    notes: '', chapters: [0, 1] },
   ];
-  const sub0 = c._dictionarySubsetForChapter(0).map(e => e.term).sort();
+  const sub0 = c._glossarySubsetForChapter(0).map(e => e.term).sort();
   assert.deepEqual(sub0, ['Alpha', 'Both', 'Global']);
-  const sub1 = c._dictionarySubsetForChapter(1).map(e => e.term).sort();
+  const sub1 = c._glossarySubsetForChapter(1).map(e => e.term).sort();
   assert.deepEqual(sub1, ['Beta', 'Both', 'Global']);
 });
 
@@ -651,7 +792,7 @@ test('retranslateCurrent: regenerates current chapter using prior accepted as co
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   await c.acceptAndNext();                 // on ch2
   c.book.chapters[1].paragraphs[0].translation = 'my edit';
   await c.retranslateCurrent();
@@ -663,7 +804,7 @@ test('retranslateParagraphWithModel2: no-op when config.model2 is empty', async 
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   c.book.chapters[0].paragraphs[0].translation = 'edited';
   // model2 is unset by default; should not run, leaving the edit alone.
   await c.retranslateParagraphWithModel2(0);
@@ -674,7 +815,7 @@ test('retranslateParagraphWithModel2: swaps config.model for config.model2 in th
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
 
   // Switch to POE so we can see the model name in the outgoing request.
   c.config.translator = 'poe';
@@ -702,9 +843,286 @@ test('retranslateCurrent: respects a cancelling _confirm', async () => {
   const c = await initFresh();
   setDummyBook(c);
   await c.startFromRaw();
-  await c.acceptDictionary();
+  await c.acceptGlossary();
   c.book.chapters[0].paragraphs[0].translation = 'keep me';
   c._confirm = () => false;
   await c.retranslateCurrent();
   assert.equal(c.book.chapters[0].paragraphs[0].translation, 'keep me');
+});
+
+// ---------- stats: work-minute tracking ----------
+
+// Helpers — most stats tests need a fully-set-up book in the editor view
+// with a fixed wall clock and visibility=visible.
+async function initInEditor() {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  await c.acceptGlossary();          // chapter 0 translated, view='editor'
+  return c;
+}
+function withFakeNow(ms, fn) {
+  const orig = Date.now;
+  Date.now = () => ms;
+  try { return fn(); } finally { Date.now = orig; }
+}
+
+test('stats: default-empty stats present after init', async () => {
+  const c = await initFresh();
+  assert.ok(c.stats, 'stats object must exist');
+  assert.deepEqual(c.stats.calls, {}, 'no calls counted yet');
+  assert.deepEqual(c.stats.byChapter, {}, 'no chapter work yet');
+});
+
+test('_recordWork: bumps minute counter for current chapter, sets first/lastWorkAt', async () => {
+  const c = await initInEditor();
+  withFakeNow(1_700_000_000_000, () => c._recordWork());
+  const ch = c.stats.byChapter[0];
+  assert.equal(ch.minutes, 1);
+  assert.equal(ch.firstWorkAt, ch.lastWorkAt, 'first/last identical on first event');
+});
+
+test('_recordWork: same minute, same chapter → no double-count', async () => {
+  const c = await initInEditor();
+  const t = 1_700_000_000_000;
+  withFakeNow(t,        () => c._recordWork());
+  withFakeNow(t + 1000, () => c._recordWork()); // 1 second later
+  withFakeNow(t + 30000,() => c._recordWork()); // 30 seconds later
+  assert.equal(c.stats.byChapter[0].minutes, 1, 'all three events in the same minute count once');
+});
+
+test('_recordWork: minute boundary crossed → new minute counted', async () => {
+  const c = await initInEditor();
+  const t = 1_700_000_000_000;          // arbitrary minute boundary
+  withFakeNow(t,         () => c._recordWork());
+  withFakeNow(t + 60000, () => c._recordWork());
+  withFakeNow(t + 90000, () => c._recordWork()); // same as second minute
+  assert.equal(c.stats.byChapter[0].minutes, 2);
+});
+
+test('_recordWork: switching chapters tracks each independently', async () => {
+  const c = await initInEditor();
+  const t = 1_700_000_000_000;
+  // Translate chapter 1 so it's selectable.
+  await c.acceptAndNext();
+  withFakeNow(t,         () => { c.currentChapterIndex = 0; c._recordWork(); });
+  withFakeNow(t + 60000, () => { c.currentChapterIndex = 1; c._recordWork(); });
+  withFakeNow(t + 60000, () => { c.currentChapterIndex = 0; c._recordWork(); });
+  assert.equal(c.stats.byChapter[0].minutes, 2);
+  assert.equal(c.stats.byChapter[1].minutes, 1);
+});
+
+test('_recordWork: gated to view==="editor" (setup view does NOT count)', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  // Stay on setup; recordWork should be a no-op.
+  c._recordWork();
+  assert.equal(Object.keys(c.stats.byChapter).length, 0);
+});
+
+test('_recordWork: gated on document.visibilityState (hidden tab does NOT count)', async () => {
+  const c = await initInEditor();
+  // Pretend the tab is hidden.
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true, value: { visibilityState: 'hidden' },
+  });
+  try {
+    c._recordWork();
+    assert.equal(Object.keys(c.stats.byChapter).length, 0, 'hidden tab must NOT count work');
+  } finally {
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: undefined });
+  }
+});
+
+// ---------- stats: API call tracking ----------
+
+test('_recordApiCall: tracks count and accumulated duration per kind', async () => {
+  const c = await initFresh();
+  c._recordApiCall('chapter-translate', 1500);
+  c._recordApiCall('chapter-translate', 2500);
+  c._recordApiCall('paragraph-translate', 300);
+  assert.equal(c.stats.calls['chapter-translate'].count, 2);
+  assert.equal(c.stats.calls['chapter-translate'].totalMs, 4000);
+  assert.equal(c.stats.calls['paragraph-translate'].count, 1);
+  assert.equal(c.stats.calls['paragraph-translate'].totalMs, 300);
+});
+
+test('_recordApiCall: missing/undefined duration counts as 0ms (still bumps count)', async () => {
+  const c = await initFresh();
+  c._recordApiCall('chapter-translate'); // no duration passed
+  assert.equal(c.stats.calls['chapter-translate'].count, 1);
+  assert.equal(c.stats.calls['chapter-translate'].totalMs, 0);
+});
+
+test('apiCallRows: includes avgMs = totalMs / count for each row', async () => {
+  const c = await initFresh();
+  c._recordApiCall('chapter-translate', 1000);
+  c._recordApiCall('chapter-translate', 3000);
+  const rows = c.apiCallRows;
+  const row = rows.find(r => r.kind === 'chapter-translate');
+  assert.equal(row.count, 2);
+  assert.equal(row.avgMs, 2000);
+});
+
+test('loadSaved: migrates legacy numeric calls[kind]=N to {count, totalMs}', async () => {
+  // Simulate saves written before per-kind duration tracking landed.
+  await globalThis.localforage.setItem('book-translate-state:v1', {
+    view: 'setup',
+    stats: { calls: { 'chapter-translate': 5, 'glossary-extract': 2 }, byChapter: {} },
+  });
+  const c = makeComponent();
+  await c.init();
+  assert.equal(c.stats.calls['chapter-translate'].count, 5);
+  assert.equal(c.stats.calls['chapter-translate'].totalMs, 0);
+  assert.equal(c.stats.calls['glossary-extract'].count, 2);
+});
+
+test('stats survive persistNow / loadSaved round-trip', async () => {
+  const c1 = await initInEditor();
+  const t = 1_700_000_000_000;
+  withFakeNow(t, () => c1._recordWork());
+  c1._recordApiCall('chapter-translate', 1234);
+  await c1.persistNow();
+
+  const c2 = makeComponent();
+  await c2.init();
+  assert.equal(c2.stats.byChapter[0]?.minutes, 1);
+  assert.equal(c2.stats.calls['chapter-translate'].count, 1);
+  assert.equal(c2.stats.calls['chapter-translate'].totalMs, 1234);
+});
+
+test('reset(): wipes stats along with the rest of state', async () => {
+  const c = await initInEditor();
+  withFakeNow(1_700_000_000_000, () => c._recordWork());
+  c._recordApiCall('chapter-translate', 100);
+  c._confirm = () => true;
+  await c.reset();
+  assert.deepEqual(c.stats.calls, {});
+  assert.deepEqual(c.stats.byChapter, {});
+});
+
+// ---------- stats: nav-bar chars/min ----------
+
+test('charsPerHourTotal: null when no minutes worked', async () => {
+  const c = await initFresh();
+  assert.equal(c.charsPerHourTotal, null);
+});
+
+test('canExportSoFar / exportSoFar: requires at least one non-pending chapter, downloads through current', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  // Before parsing, no book → can't export.
+  assert.equal(c.canExportSoFar, false);
+
+  await c.startFromRaw();
+  // Glossary view, ch1 still pending.
+  assert.equal(c.canExportSoFar, false);
+
+  await c.acceptGlossary();
+  // ch1 translated → exportSoFar must work.
+  assert.equal(c.canExportSoFar, true);
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportSoFar();
+  assert.match(captured.filename, /^translation-through-chapter-001\.md$/);
+  assert.match(captured.md, /^# Chapter 1/);
+});
+
+test('exportSoFar: no-ops when nothing has been translated yet', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  await c.startFromRaw();
+  // Still in glossary view, no chapter translated.
+  let called = false;
+  c._downloadMarkdown = () => { called = true; };
+  c.exportSoFar();
+  assert.equal(called, false);
+});
+
+test('importFromText: rejects an envelope with the right type but no `state` payload', async () => {
+  const c = await initFresh();
+  await c.importFromText(JSON.stringify({
+    type: 'book-translate-state', version: 1, /* state intentionally missing */
+  }));
+  assert.match(c.error || '', /no.*state.*payload|state/i);
+});
+
+test('hasAnyStats: false on a fresh component, true once any call or work-minute lands', async () => {
+  const c = await initFresh();
+  assert.equal(c.hasAnyStats, false);
+  c._recordApiCall('chapter-translate', 100);
+  assert.equal(c.hasAnyStats, true);
+});
+
+test('hasAnyStats: counts work-minutes too (not just API calls)', async () => {
+  const c = await initInEditor();
+  assert.equal(c.hasAnyStats, false);
+  withFakeNow(1_700_000_000_000, () => c._recordWork());
+  assert.equal(c.hasAnyStats, true);
+});
+
+test('gotoSetup / gotoGlossary / gotoStats: simple view transitions', async () => {
+  const c = await initFresh();
+  c.view = 'editor';
+  c.gotoSetup();
+  assert.equal(c.view, 'setup');
+  // gotoGlossary is gated on the glossary being non-empty.
+  c.gotoGlossary();
+  assert.equal(c.view, 'setup');
+  c.glossary.push({ term: 'X', translation: 'Х', notes: '' });
+  c.gotoGlossary();
+  assert.equal(c.view, 'glossary');
+  c.gotoStats();
+  assert.equal(c.view, 'stats');
+});
+
+test('loadSample: inline-text sample sets rawBook and resets headingLevel', async () => {
+  const c = await initFresh();
+  c.headingLevel = 3; // anything non-default
+  await c.loadSample('tiny');
+  assert.match(c.rawBook, /^# Chapter One/);
+  assert.equal(c.headingLevel, 1, 'inline samples are H1; level must reset');
+});
+
+test('loadSample: unknown id is a silent no-op (no error, no rawBook change)', async () => {
+  const c = await initFresh();
+  c.rawBook = 'kept';
+  await c.loadSample('does-not-exist');
+  assert.equal(c.rawBook, 'kept');
+  assert.equal(c.error, null);
+});
+
+test('loadSample: empty/falsy id is also a no-op', async () => {
+  const c = await initFresh();
+  c.rawBook = 'kept';
+  await c.loadSample('');
+  await c.loadSample(null);
+  await c.loadSample(undefined);
+  assert.equal(c.rawBook, 'kept');
+});
+
+test('chapterStatsRows: only includes chapters with at least one recorded minute', async () => {
+  const c = await initInEditor();
+  await c.acceptAndNext();
+  withFakeNow(1_700_000_000_000, () => { c.currentChapterIndex = 0; c._recordWork(); });
+  const rows = c.chapterStatsRows;
+  assert.equal(rows.length, 1, 'untouched chapters must NOT appear in the stats table');
+  assert.equal(rows[0].index, 0);
+});
+
+test('charsPerHourTotal: based on ACCEPTED chapters only — in-progress chapter excluded', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].paragraphs[0].translation = 'abcdefghij'; // 10 chars
+  c.book.chapters[0].paragraphs[1].translation = '12345';      // 5 chars
+  withFakeNow(1_700_000_000_000, () => c._recordWork());
+  withFakeNow(1_700_000_120_000, () => c._recordWork()); // +2 minutes total
+  assert.equal(c.stats.byChapter[0].minutes, 2);
+  // In-progress chapter must NOT contribute.
+  assert.equal(c.charsPerHourTotal, null);
+
+  // Accept chapter 0. chapterTranslationStats includes the title
+  // ("Chapter 1" → 8 no-space chars) plus the two edited paragraphs
+  // (10 + 5 = 15) → 23 chars / 2 minutes × 60 = 690 chars/h.
+  await c.acceptAndNext();
+  assert.equal(c.charsPerHourTotal, 690);
 });

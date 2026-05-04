@@ -15,9 +15,20 @@
       <ul><li><strong>Bilingual Translate</strong></li></ul>
       <ul>
         <li><small x-show="book" x-text="(book?.chapters?.length || 0) + ' chapters · ' + (acceptedCount) + ' accepted'"></small></li>
+        <li>
+          <small class="rate-indicator" x-show="charsPerHourTotal != null" x-cloak
+                 :title="`Rolling rate over accepted chapters only.`">
+            <span x-text="charsPerHourTotal"></span> chars/h
+          </small>
+        </li>
+        <li>
+          <small class="save-indicator" x-show="saveIndicator" x-cloak
+                 title="State auto-saved to your browser (localforage).">✓ Saved</small>
+        </li>
         <li><a href="#" @click.prevent="gotoSetup()">Setup</a></li>
-        <li><a href="#" @click.prevent="gotoDictionary()" x-show="dictionary.length">Dictionary</a></li>
+        <li><a href="#" @click.prevent="gotoGlossary()" x-show="glossary.length">Glossary</a></li>
         <li><a href="#" @click.prevent="view = 'editor'" x-show="book && anyTranslated">Editor</a></li>
+        <li><a href="#" @click.prevent="gotoStats()" x-show="hasAnyStats">Stats</a></li>
         <li>
           <button class="secondary outline" type="button"
                   @click="$refs.importFile.click()" :disabled="busy"
@@ -28,7 +39,7 @@
         <li>
           <button class="secondary outline" type="button"
                   @click="exportState()" :disabled="!canExport"
-                  title="Download the current bilingual book, dictionary, and settings as JSON (API key blanked)">
+                  title="Download the current bilingual book, glossary, and settings as JSON (API key blanked)">
             Export
           </button>
         </li>
@@ -86,10 +97,13 @@
         Translation will pair the first <strong x-text="Math.min(editorChapterCount, referenceChapterCount)"></strong> chapters by index — fix the heading level or the source files if these should match 1:1.
       </article>
 
+      <label>Project name (optional)
+        <input x-model="config.projectName" placeholder="e.g. meiyou-renxiang-ni — used as a filename prefix on every export">
+      </label>
       <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
 
-      <label>Dictionary guidance
-        <textarea rows="6" x-model="config.dictionaryGuidance"></textarea>
+      <label>Glossary guidance
+        <textarea rows="6" x-model="config.glossaryGuidance"></textarea>
         <small><a href="#" @click.prevent="insertPalladiusPrompt()">Insert Palladius (Chinese → Russian) preset</a></small>
       </label>
       <label>Translation guidance
@@ -130,8 +144,8 @@
           </label>
           <label>API key<input type="password" x-model="config.apiKey" autocomplete="off"></label>
         </div>
-        <label>Dictionary model (optional override)
-          <input x-model="config.dictionaryModel" list="poe-models"
+        <label>Glossary model (optional override)
+          <input x-model="config.glossaryModel" list="poe-models"
                  placeholder="leave empty to reuse the main model"
                  autocomplete="off" spellcheck="false">
         </label>
@@ -150,7 +164,7 @@
         <label>
           <input type="checkbox" x-model="config.usePalladius">
           Algorithmic Palladius (Палладий) for Chinese reference forms
-          <small>When the dictionary's reference side is Chinese, run each CJK reference form through the Palladius transliteration system and pass the result to the model as a per-pair hint. Off by default.</small>
+          <small>When the glossary's reference side is Chinese, run each CJK reference form through the Palladius transliteration system and pass the result to the model as a per-pair hint. Off by default.</small>
         </label>
         <label>Translation prompt
           <select x-model="config.translationPromptPreset">
@@ -168,25 +182,25 @@
 
       <button @click="startFromRaw()" :disabled="busy || !canStartFromRaw" :aria-busy="busy && view === 'setup'"
               style="margin-top: 1rem;">
-        <span x-text="busy ? 'Building bilingual dictionary…' : 'Pair texts & build dictionary'"></span>
+        <span x-text="busy ? 'Building bilingual glossary…' : 'Pair texts & build glossary'"></span>
       </button>
-      <div class="dict-progress" x-show="dictionaryProgress" x-cloak>
+      <div class="gloss-progress" x-show="glossaryProgress" x-cloak>
         <small>
-          <span x-text="dictionaryProgress?.stage === 'extract' ? 'Extracting term pairs per chapter' : 'Translating merged term pairs'"></span>
+          <span x-text="glossaryProgress?.stage === 'extract' ? 'Extracting term pairs per chapter' : 'Translating merged term pairs'"></span>
           —
-          <span x-text="`${dictionaryProgress?.current ?? 0} / ${dictionaryProgress?.total ?? 0}`"></span>
+          <span x-text="`${glossaryProgress?.current ?? 0} / ${glossaryProgress?.total ?? 0}`"></span>
         </small>
-        <progress :value="dictionaryProgress?.current ?? 0" :max="Math.max(1, dictionaryProgress?.total ?? 1)"></progress>
+        <progress :value="glossaryProgress?.current ?? 0" :max="Math.max(1, glossaryProgress?.total ?? 1)"></progress>
       </div>
     </section>
 
-    <!-- DICTIONARY -->
-    <section x-show="view === 'dictionary'" x-cloak class="container">
+    <!-- GLOSSARY -->
+    <section x-show="view === 'glossary'" x-cloak class="container">
       <hgroup>
-        <h2>Bilingual dictionary</h2>
+        <h2>Bilingual glossary</h2>
         <p>Three columns: the canonical form in the reference language (identity anchor), the rendering in the original language (what appears in the editor), and the target translation. Edits are passed to every chapter translation.</p>
       </hgroup>
-      <div class="dict-table">
+      <div class="gloss-table">
         <table>
           <thead>
             <tr>
@@ -198,7 +212,7 @@
             </tr>
           </thead>
           <tbody>
-            <template x-for="(t, i) in dictionary" :key="i">
+            <template x-for="(t, i) in glossary" :key="i">
               <tr>
                 <td><input x-model="t.originalForm" :placeholder="config.referenceLanguage || 'reference'"></td>
                 <td><input x-model="t.term"         :placeholder="config.editorLanguage || 'original'"></td>
@@ -212,15 +226,83 @@
       </div>
       <div role="group">
         <button class="secondary" @click="addTerm()" type="button">Add term</button>
-        <button class="secondary outline" @click="exportDictionary()" type="button"
-                :disabled="!dictionary.length"
-                title="Download the dictionary as a Markdown table (Chinese / English / Russian / Notes)">
-          Export dictionary
+        <button class="secondary outline" @click="exportGlossary()" type="button"
+                :disabled="!glossary.length"
+                title="Download the glossary as a Markdown table (Chinese / English / Russian / Notes)">
+          Export glossary
         </button>
-        <button @click="acceptDictionary()" :disabled="busy" :aria-busy="busy">
+        <button @click="acceptGlossary()" :disabled="busy" :aria-busy="busy">
           <span x-text="busy ? 'Translating chapter 1…' : 'Accept &amp; translate chapter 1'"></span>
         </button>
       </div>
+    </section>
+
+    <!-- STATS -->
+    <section x-show="view === 'stats'" x-cloak class="container stats-view">
+      <hgroup>
+        <h2>Stats</h2>
+        <p>POE call counts and per-chapter editing time since the last reset. Editing time is bucketed at 1-minute resolution — a minute counts whenever scroll, an edit, a retranslate, or a title change fires while the editor view is open and the tab is visible.</p>
+      </hgroup>
+
+      <h3>API calls</h3>
+      <p x-show="!apiCallRows.length"><small>No POE calls recorded yet.</small></p>
+      <table x-show="apiCallRows.length" class="stats-calls">
+        <thead>
+          <tr>
+            <th>Kind</th>
+            <th class="num">Calls</th>
+            <th class="num" title="Mean wall-clock time per network call (ms). Cache hits don't contribute.">Avg latency</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in apiCallRows" :key="row.kind">
+            <tr>
+              <td x-text="row.label"></td>
+              <td class="num" x-text="row.count"></td>
+              <td class="num" x-text="row.avgMs == null ? '—' : (row.avgMs + ' ms')"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+
+      <h3>Per-chapter editing</h3>
+      <p x-show="!book?.chapters?.length"><small>No book loaded yet.</small></p>
+      <table x-show="book?.chapters?.length" class="stats-chapters">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Chapter</th>
+            <th>Status</th>
+            <th class="num">Chars (no spaces)</th>
+            <th class="num">Minutes worked</th>
+            <th class="num">Chars / h</th>
+            <th>First worked</th>
+            <th>Last worked</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in chapterStatsRows" :key="row.index">
+            <tr>
+              <td x-text="row.index + 1"></td>
+              <td x-text="row.title"></td>
+              <td><span class="chapter-status" :class="row.status" :title="row.status"></span></td>
+              <td class="num" x-text="row.chars"></td>
+              <td class="num" x-text="row.minutes"></td>
+              <td class="num" x-text="row.charsPerHour == null ? '—' : row.charsPerHour"></td>
+              <td x-text="formatWorkTime(row.firstWorkAt)"></td>
+              <td x-text="formatWorkTime(row.lastWorkAt)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+
+      <p class="stats-summary">
+        <strong>Rolling rate (accepted chapters only):</strong>
+        <span x-show="charsPerHourTotal != null">
+          <span x-text="charsPerHourTotal"></span> chars/h
+        </span>
+        <span x-show="charsPerHourTotal == null"><em>not enough accepted-chapter data yet.</em></span>
+      </p>
     </section>
 
     <!-- EDITOR -->
@@ -240,16 +322,16 @@
         </ul>
         <details>
           <summary>
-            Dictionary
-            <small class="dict-count"
-                   x-text="`(${_dictionarySubsetForChapter(currentChapterIndex).length} of ${dictionary.length})`"></small>
+            Glossary
+            <small class="gloss-count"
+                   x-text="`(${_glossarySubsetForChapter(currentChapterIndex).length} of ${glossary.length})`"></small>
           </summary>
-          <p class="dict-hint">Filtered to this chapter. Edit in the full Dictionary view.</p>
-          <div class="dict-mini">
-            <template x-for="(t, i) in _dictionarySubsetForChapter(currentChapterIndex)" :key="i">
-              <div class="dict-mini-entry">
-                <input class="dict-mini-term"  x-model="t.term"        placeholder="term">
-                <input class="dict-mini-trans" x-model="t.translation" placeholder="translation">
+          <p class="gloss-hint">Filtered to this chapter. Edit in the full Glossary view.</p>
+          <div class="gloss-mini">
+            <template x-for="(t, i) in _glossarySubsetForChapter(currentChapterIndex)" :key="i">
+              <div class="gloss-mini-entry">
+                <input class="gloss-mini-term"  x-model="t.term"        placeholder="term">
+                <input class="gloss-mini-trans" x-model="t.translation" placeholder="translation">
               </div>
             </template>
             <button class="secondary outline" @click="addTermForCurrentChapter()" type="button">+ term for this chapter</button>
@@ -340,7 +422,6 @@
            x-text="`${currentChapterStats.words} words · ${currentChapterStats.chars} characters (no spaces)`"></p>
 
         <div class="editor-actions">
-          <button class="secondary" @click="persistNow()" type="button">Save</button>
           <button class="secondary outline" @click="exportSoFar()" :disabled="!canExportSoFar" type="button"
                   title="Download Markdown of every translated chapter through the one you're viewing">
             Export so far
@@ -358,7 +439,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/localforage@1/dist/localforage.min.js"></script>
   <!-- pinyin-pro: Han characters → Pinyin, feeds algorithmic
-       Palladius transliteration during dictionary build. -->
+       Palladius transliteration during glossary build. -->
   <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.28.1/dist/index.js"></script>
   <script type="module" src="js/bilingual-app.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>

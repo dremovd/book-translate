@@ -1,5 +1,39 @@
 [x-cloak] { display: none !important; }
 
+/* Header "✓ Saved" badge — fades in briefly after every successful
+   persistNow, fades out under JS control after SAVE_BADGE_MS. The
+   transition only applies to the show direction (no exit animation)
+   because x-show toggles `display: none`, which can't be transitioned. */
+.save-indicator {
+  color: var(--pico-color-green-600, #2c8c3a);
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: opacity 0.2s ease-in;
+}
+
+/* Header chars/min rolling-rate badge — sits next to the chapter count
+   and the save indicator. Same tabular-nums treatment so the digits
+   don't jump as the rate ticks up; muted so it reads as ambient info,
+   not an alert. */
+.rate-indicator {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Stats view tables: dense, right-aligned numerics, the same chapter
+   status dot the editor sidebar uses. Pico's default <table> styles are
+   light-touch enough that we mostly just need the numeric alignment. */
+.stats-view table { margin-bottom: 1.5rem; }
+.stats-view td.num,
+.stats-view th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.stats-view .stats-summary {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--pico-muted-border-color, #ddd);
+}
+
 :root {
   --pico-font-size: 16px;
 }
@@ -15,11 +49,11 @@ article[role="alert"] {
   gap: 0.5rem;
 }
 
-.dict-progress {
+.gloss-progress {
   margin-top: 0.75rem;
 }
-.dict-progress small { opacity: 0.75; }
-.dict-progress progress {
+.gloss-progress small { opacity: 0.75; }
+.gloss-progress progress {
   width: 100%;
   margin: 0.25rem 0 0;
 }
@@ -115,31 +149,31 @@ article[role="alert"] .close {
   opacity: 1;
 }
 
-/* Sidebar dictionary — vertically stacked entries so each input gets the
+/* Sidebar glossary — vertically stacked entries so each input gets the
    full sidebar width (the previous side-by-side table squeezed words to
    illegibility at 180px). Filtered to the current chapter's subset; the
-   full Dictionary view is for editing the rest. */
+   full Glossary view is for editing the rest. */
 .sidebar details > summary { font-size: 0.85rem; }
-.sidebar details .dict-count {
+.sidebar details .gloss-count {
   opacity: 0.55;
   font-weight: normal;
   margin-left: 0.3rem;
 }
-.sidebar details .dict-hint {
+.sidebar details .gloss-hint {
   font-size: 0.7rem;
   opacity: 0.55;
   margin: 0.3rem 0 0.5rem 0;
   line-height: 1.3;
 }
 
-.sidebar .dict-mini {
+.sidebar .gloss-mini {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
   margin: 0.4rem 0;
 }
 
-.sidebar .dict-mini-entry {
+.sidebar .gloss-mini-entry {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -147,7 +181,7 @@ article[role="alert"] .close {
   border-bottom: 1px dotted var(--pico-muted-border-color);
 }
 
-.sidebar .dict-mini input {
+.sidebar .gloss-mini input {
   width: 100%;
   font-size: 0.75rem;
   padding: 0.18rem 0.35rem;
@@ -159,11 +193,11 @@ article[role="alert"] .close {
   min-height: 0;
   line-height: 1.4;
 }
-.sidebar .dict-mini input.dict-mini-trans {
+.sidebar .gloss-mini input.gloss-mini-trans {
   color: var(--pico-primary, var(--pico-color));
 }
 
-.sidebar .dict-mini button {
+.sidebar .gloss-mini button {
   margin-top: 0.4rem;
   padding: 0.25rem 0.6rem;
   font-size: 0.75rem;
@@ -462,10 +496,10 @@ input.translation.title-row:focus {
   text-align: right;
 }
 
-/* ---------- dictionary table ---------- */
+/* ---------- glossary table ---------- */
 
-.dict-table { overflow-x: auto; }
-.dict-table input { margin: 0; }
+.gloss-table { overflow-x: auto; }
+.gloss-table input { margin: 0; }
 
 /* ---------- responsive ---------- */
 

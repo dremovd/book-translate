@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // One-shot demo: extract proper-noun terms from a pure-Chinese .md
-// file via the POE dictionary-extraction phase, then run them through
+// file via the POE glossary-extraction phase, then run them through
 // the offline Palladius pipeline (pinyin-pro + js/palladius.js) for
 // canonical Russian transliteration. Prints a table.
 //

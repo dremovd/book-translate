@@ -1,13 +1,13 @@
 // Algorithmic Chinese → Russian transliteration (Палладиевая система),
 // the canonical scheme for rendering Mandarin in Cyrillic. Used as a
-// post-process for dictionary entries: for proper-noun terms whose
+// post-process for glossary entries: for proper-noun terms whose
 // source form is pure CJK, Palladius gives the standard Russian
 // rendering — usually better than what an LLM produces, especially
 // for novel-specific names with no Wikipedia presence.
 //
 // Pipeline: Chinese characters → Pinyin (via pinyin-pro) → Palladius
 // (via the syllable table + post-process rules in this file). Both
-// stages run client-side so the browser builds a dictionary with no
+// stages run client-side so the browser builds a glossary with no
 // network calls.
 //
 // pinyin-pro is loaded as a UMD via <script> in index.html /

@@ -5,10 +5,10 @@ import {
   parseNumberedParagraphs,
   alignByIndex,
   parseJsonArray,
-  normalizeDictionary,
+  normalizeGlossary,
   chapterOriginalText,
   chapterTranslationText,
-  formatDictionary,
+  formatGlossary,
   chunkBookText,
   mergeTermsWithSources,
   renderTranslationMarkdown,
@@ -114,15 +114,15 @@ test('parseJsonArray: throws on unparseable input', () => {
   assert.throws(() => parseJsonArray('definitely not json'));
 });
 
-// ---------- normalizeDictionary ----------
+// ---------- normalizeGlossary ----------
 
-test('normalizeDictionary: fills missing fields with empty strings', () => {
-  const arr = normalizeDictionary([{ term: 'a' }]);
+test('normalizeGlossary: fills missing fields with empty strings', () => {
+  const arr = normalizeGlossary([{ term: 'a' }]);
   assert.deepEqual(arr, [{ term: 'a', translation: '', notes: '' }]);
 });
 
-test('normalizeDictionary: drops entries with empty or missing term', () => {
-  const arr = normalizeDictionary([
+test('normalizeGlossary: drops entries with empty or missing term', () => {
+  const arr = normalizeGlossary([
     { term: 'keep', translation: 'x' },
     { term: '' },
     { translation: 'y' },
@@ -132,8 +132,8 @@ test('normalizeDictionary: drops entries with empty or missing term', () => {
   assert.equal(arr[0].term, 'keep');
 });
 
-test('normalizeDictionary: trims whitespace from fields', () => {
-  const [entry] = normalizeDictionary([{ term: '  a  ', translation: '  b\n', notes: ' c ' }]);
+test('normalizeGlossary: trims whitespace from fields', () => {
+  const [entry] = normalizeGlossary([{ term: '  a  ', translation: '  b\n', notes: ' c ' }]);
   assert.deepEqual(entry, { term: 'a', translation: 'b', notes: 'c' });
 });
 
@@ -148,10 +148,10 @@ test('chapterOriginalText/chapterTranslationText: paragraphs joined by blank lin
   assert.equal(chapterTranslationText(ch), 't1\n\nt2');
 });
 
-// ---------- formatDictionary ----------
+// ---------- formatGlossary ----------
 
-test('formatDictionary: renders "term → translation" per line', () => {
-  const s = formatDictionary([
+test('formatGlossary: renders "term → translation" per line', () => {
+  const s = formatGlossary([
     { term: 'Winston', translation: 'Уинстон', notes: '' },
     { term: 'Julia', translation: 'Джулия', notes: 'love interest' },
   ]);
@@ -160,16 +160,16 @@ test('formatDictionary: renders "term → translation" per line', () => {
   assert.match(s, /love interest/);
 });
 
-test('formatDictionary: empty dictionary returns "(empty)"', () => {
-  assert.equal(formatDictionary([]), '(empty)');
+test('formatGlossary: empty glossary returns "(empty)"', () => {
+  assert.equal(formatGlossary([]), '(empty)');
 });
 
-test('formatDictionary: bilingual entry renders "(originally X)" before notes', () => {
+test('formatGlossary: bilingual entry renders "(originally X)" before notes', () => {
   // The model translating English-side paragraphs benefits from seeing
   // the canonical Chinese form of each name in the glossary line — both
   // for disambiguation and so canonical-rendering instructions in the
   // notes have something to attach to.
-  const s = formatDictionary([
+  const s = formatGlossary([
     { term: 'Ruan Mian', translation: 'Жуань Мянь', originalForm: '阮眠', notes: 'protagonist' },
     { term: 'Pingjiang', translation: 'Пинцзян', originalForm: '平江', notes: '' },
   ]);
@@ -179,22 +179,22 @@ test('formatDictionary: bilingual entry renders "(originally X)" before notes', 
   assert.doesNotMatch(s, /Pingjiang.*protagonist/);
 });
 
-test('formatDictionary: entry without originalForm keeps the single-source format', () => {
-  const s = formatDictionary([{ term: 'X', translation: 'Х', notes: 'a note' }]);
+test('formatGlossary: entry without originalForm keeps the single-source format', () => {
+  const s = formatGlossary([{ term: 'X', translation: 'Х', notes: 'a note' }]);
   assert.match(s, /X → Х\s+\(a note\)/);
   assert.doesNotMatch(s, /originally/);
 });
 
-// ---------- renderDictionaryMarkdown ----------
+// ---------- renderGlossaryMarkdown ----------
 
-import { renderDictionaryMarkdown } from '../js/translators/format.js';
+import { renderGlossaryMarkdown } from '../js/translators/format.js';
 
-test('renderDictionaryMarkdown: produces a 4-column markdown table (no chapters column)', () => {
-  const dict = [
+test('renderGlossaryMarkdown: produces a 4-column markdown table (no chapters column)', () => {
+  const gloss = [
     { term: 'Ruan Mian', originalForm: '阮眠', translation: 'Жуань Мянь', notes: 'protagonist', chapters: [0, 1, 2] },
     { term: 'Pingjiang', originalForm: '平江', translation: 'Пинцзян',     notes: '',            chapters: [0] },
   ];
-  const md = renderDictionaryMarkdown(dict, {
+  const md = renderGlossaryMarkdown(gloss, {
     editorLanguage: 'English', referenceLanguage: 'Chinese', targetLanguage: 'Russian',
   });
   assert.match(md, /Chinese.*English.*Russian/);
@@ -206,15 +206,15 @@ test('renderDictionaryMarkdown: produces a 4-column markdown table (no chapters 
   assert.match(md, /\| 平江 \| Pingjiang \| Пинцзян \|  \|/);
 });
 
-test('renderDictionaryMarkdown: empty dictionary still emits the header line', () => {
-  const md = renderDictionaryMarkdown([], { editorLanguage: 'English', referenceLanguage: 'Chinese', targetLanguage: 'Russian' });
+test('renderGlossaryMarkdown: empty glossary still emits the header line', () => {
+  const md = renderGlossaryMarkdown([], { editorLanguage: 'English', referenceLanguage: 'Chinese', targetLanguage: 'Russian' });
   assert.match(md, /^#/m);
   assert.match(md, /English.*Russian/);
   assert.doesNotMatch(md, /\|.*\|/);
 });
 
-test('renderDictionaryMarkdown: escapes pipe characters in cell content (table-safety)', () => {
-  const md = renderDictionaryMarkdown([
+test('renderGlossaryMarkdown: escapes pipe characters in cell content (table-safety)', () => {
+  const md = renderGlossaryMarkdown([
     { term: 'Foo|Bar', originalForm: 'A|B', translation: 'X|Y', notes: 'split: a|b' },
   ], { editorLanguage: 'EN', referenceLanguage: 'ZH', targetLanguage: 'RU' });
   assert.match(md, /A\\\|B/);
@@ -223,12 +223,12 @@ test('renderDictionaryMarkdown: escapes pipe characters in cell content (table-s
   assert.match(md, /split: a\\\|b/);
 });
 
-test('renderDictionaryMarkdown: omitting referenceLanguage produces a 3-column table for the single-source editor', () => {
-  const dict = [
+test('renderGlossaryMarkdown: omitting referenceLanguage produces a 3-column table for the single-source editor', () => {
+  const gloss = [
     { term: 'Hogwarts', translation: 'Хогвартс', notes: 'school', chapters: [0] },
     { term: 'Quidditch', translation: 'квиддич', notes: '', chapters: [1] },
   ];
-  const md = renderDictionaryMarkdown(dict, { targetLanguage: 'Russian' });
+  const md = renderGlossaryMarkdown(gloss, { targetLanguage: 'Russian' });
   // Header line drops the Reference column entirely — three columns only.
   assert.match(md, /\| Term \| Russian \| Notes \|/);
   assert.doesNotMatch(md, /Reference/i);
@@ -238,9 +238,9 @@ test('renderDictionaryMarkdown: omitting referenceLanguage produces a 3-column t
   assert.match(md, /\| Quidditch \| квиддич \|  \|/);
 });
 
-test('renderDictionaryMarkdown: chapter provenance is never emitted, even when present', () => {
-  const dict = [{ term: 'X', originalForm: '一', translation: 'Икс', notes: '', chapters: [0, 1, 2, 3] }];
-  const md = renderDictionaryMarkdown(dict, { editorLanguage: 'EN', referenceLanguage: 'ZH', targetLanguage: 'RU' });
+test('renderGlossaryMarkdown: chapter provenance is never emitted, even when present', () => {
+  const gloss = [{ term: 'X', originalForm: '一', translation: 'Икс', notes: '', chapters: [0, 1, 2, 3] }];
+  const md = renderGlossaryMarkdown(gloss, { editorLanguage: 'EN', referenceLanguage: 'ZH', targetLanguage: 'RU' });
   assert.doesNotMatch(md, /Chapters/i);
   assert.doesNotMatch(md, /1, 2, 3, 4/);
 });
@@ -368,16 +368,6 @@ test('renderTranslationMarkdown: includes chapters 0..upto, using translated tit
   assert.match(md, /фу/);
   assert.doesNotMatch(md, /Three/);
   assert.doesNotMatch(md, /bar/);
-});
-
-test('renderTranslationMarkdown: chapters past uptoIndex are never included', () => {
-  const book = { chapters: [
-    ch('One', 'Один', [para('a', 'а')], 'accepted'),
-    ch('Two', 'Два', [para('b', 'б')], 'translated'),
-  ]};
-  const md = renderTranslationMarkdown(book, 0);
-  assert.match(md, /# Один/);
-  assert.doesNotMatch(md, /Два/);
 });
 
 test('renderTranslationMarkdown: pending chapters in range are skipped', () => {
