@@ -251,7 +251,7 @@
           <tr>
             <th>Kind</th>
             <th class="num">Calls</th>
-            <th class="num" title="Mean wall-clock time per network call (ms). Cache hits don't contribute.">Avg latency</th>
+            <th class="num" title="Mean wall-clock time per network call. Cache hits don't contribute.">Avg time</th>
           </tr>
         </thead>
         <tbody>
@@ -259,7 +259,7 @@
             <tr>
               <td x-text="row.label"></td>
               <td class="num" x-text="row.count"></td>
-              <td class="num" x-text="row.avgMs == null ? '—' : (row.avgMs + ' ms')"></td>
+              <td class="num" x-text="row.avgMs == null ? '—' : ((row.avgMs / 1000).toFixed(1) + ' s')"></td>
             </tr>
           </template>
         </tbody>
