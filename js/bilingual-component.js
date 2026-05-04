@@ -676,6 +676,16 @@ export function makeBilingualComponent() {
       finally { this.busy = false; }
     },
 
+    // Targeted reset for the Stats view: zero out per-kind call counts
+    // and per-chapter work-minute history. Useful after a code change
+    // that left the stats buckets in a weird shape (legacy data with
+    // zero totalMs, etc.) so the user can start a clean measurement
+    // window without losing the book, glossary, or edits.
+    resetStats() {
+      if (!this._confirm('Reset call counts and work-minute history? Book, glossary, and edits stay.')) return;
+      this.stats = defaultStats();
+    },
+
     reset() {
       if (!this._confirm('Discard everything and return to setup?')) return;
       this.book = null;

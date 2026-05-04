@@ -680,6 +680,45 @@ test('reset: wipes book, glossary, raws, stats; returns to setup', async () => {
   } finally { restore(); }
 });
 
+test('resetStats: wipes calls/byChapter without touching the book or glossary', async () => {
+  const { c, restore } = await bilingualInEditor();
+  try {
+    // Plant some history.
+    withFakeNow(1_700_000_000_000, () => c._recordWork());
+    c._recordApiCall('chapter-translate', 999);
+    c._recordApiCall('paragraph-translate'); // untimed legacy-shape entry
+    assert.ok(Object.keys(c.stats.calls).length > 0);
+    assert.ok(Object.keys(c.stats.byChapter).length > 0);
+
+    const bookBefore     = c.book;
+    const glossaryBefore = c.glossary;
+    const viewBefore     = c.view;
+
+    c._confirm = () => true;
+    c.resetStats();
+
+    // Stats wiped.
+    assert.deepEqual(c.stats.calls, {});
+    assert.deepEqual(c.stats.byChapter, {});
+    // Everything else intact.
+    assert.equal(c.book,     bookBefore,     'book must not change');
+    assert.equal(c.glossary, glossaryBefore, 'glossary must not change');
+    assert.equal(c.view,     viewBefore,     'view must not change');
+  } finally { restore(); }
+});
+
+test('resetStats: respects a cancelling _confirm', async () => {
+  const { c, restore } = await bilingualInEditor();
+  try {
+    c._recordApiCall('chapter-translate', 1000);
+    const before = JSON.stringify(c.stats.calls);
+    c._confirm = () => false;
+    c.resetStats();
+    assert.equal(JSON.stringify(c.stats.calls), before,
+      'cancellation must keep stats intact');
+  } finally { restore(); }
+});
+
 test('reset: respects a cancelling _confirm', async () => {
   const { c, restore } = await bilingualInEditor();
   try {

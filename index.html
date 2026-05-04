@@ -291,6 +291,13 @@
         </span>
         <span x-show="charsPerHourTotal == null"><em>not enough accepted-chapter data yet.</em></span>
       </p>
+
+      <p>
+        <button class="secondary outline" @click="resetStats()" type="button"
+                title="Zero out call counts and work-minute history. Book, glossary, and edits stay.">
+          Reset stats
+        </button>
+      </p>
     </section>
 
     <!-- EDITOR -->

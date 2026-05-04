@@ -966,6 +966,14 @@ export function makeComponent() {
       URL.revokeObjectURL(url);
     },
 
+    // Targeted reset — see bilingual-component.js#resetStats for the
+    // rationale. Wipes only `stats`, leaving book / glossary / edits /
+    // settings untouched.
+    resetStats() {
+      if (!this._confirm('Reset call counts and work-minute history? Book, glossary, and edits stay.')) return;
+      this.stats = defaultStats();
+    },
+
     async reset() {
       if (!this._confirm('Clear all data (book, glossary, translations, settings)?')) return;
       await store.clear();
