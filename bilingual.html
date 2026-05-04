@@ -444,6 +444,17 @@
     </section>
   </main>
 
+  <!-- Editor status bar — see index.html for the rationale. -->
+  <div class="status-bar" x-show="view === 'editor' && chapterProgressInfo" x-cloak
+       :title="chapterProgressInfo
+         ? `Rate: ${chapterProgressInfo.rate} chars/h${chapterProgressInfo.rateIsDefault ? ' (default — accept a chapter for a data-driven rate)' : ' (from your accepted chapters)'}`
+         : ''">
+    <span x-text="`${chapterProgressInfo?.total ?? 0} chars`"></span>
+    <span> · ~<span x-text="chapterProgressInfo?.charsLeft ?? 0"></span> left</span>
+    <span> · ~<span x-text="formatDurationShort(chapterProgressInfo?.secondsLeft ?? 0)"></span><span
+      x-show="chapterProgressInfo?.rateIsDefault" x-cloak>*</span></span>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/localforage@1/dist/localforage.min.js"></script>
   <!-- pinyin-pro: Han characters → Pinyin, feeds algorithmic
        Palladius transliteration during glossary build. -->

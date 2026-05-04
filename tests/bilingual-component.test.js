@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { withFetch, mockResponse, clearStore } from './_setup.js';
 import { makeBilingualComponent, parseQueryOverrides, PALLADIUS_PROMPT } from '../js/bilingual-component.js';
+import { APP_VERSION } from '../js/version.js';
 
 const RAW_EN = `# Chapter One
 
@@ -56,7 +57,8 @@ test('serializeState: stamps type/version, blanks apiKey, includes both raw inpu
   c.config.apiKey = 'SECRET';
   const env = c.serializeState();
   assert.equal(env.type, 'bilingual-translate-state');
-  assert.equal(env.version, 1);
+  assert.equal(env.version, APP_VERSION,
+    'every export must stamp the current APP_VERSION (see CHANGELOG.md)');
   assert.equal(env.state.rawEditor, 'editor side');
   assert.equal(env.state.rawReference, 'ref side');
   assert.equal(env.state.config.apiKey, '', 'apiKey must be blanked in the export envelope');

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { clearStore, withFetch, mockResponse } from './_setup.js';
 import { makeComponent } from '../js/component.js';
+import { APP_VERSION } from '../js/version.js';
 
 const SAMPLE = '# Chapter 1\n\npara A1\n\npara A2\n\n# Chapter 2\n\npara B1\n\n# Chapter 3\n\npara C1';
 
@@ -635,7 +636,9 @@ test('serializeState: envelope carries type + version + state; apiKey is blanked
 
   const env = c.serializeState();
   assert.equal(env.type, 'book-translate-state');
-  assert.equal(env.version, 1);
+  assert.equal(env.version, APP_VERSION,
+    'every export must stamp the current APP_VERSION (see CHANGELOG.md)');
+  assert.ok(typeof env.version === 'number' && env.version >= 1);
   assert.ok(env.exportedAt, 'exportedAt timestamp must be set');
   // Secret must not leak.
   assert.equal(env.state.config.apiKey, '');
@@ -1188,4 +1191,114 @@ test('charsPerHourTotal: based on ACCEPTED chapters only — in-progress chapter
   // (10 + 5 = 15) → 23 chars / 2 minutes × 60 = 690 chars/h.
   await c.acceptAndNext();
   assert.equal(c.charsPerHourTotal, 690);
+});
+
+// ---------- chapter progress / status bar ----------
+
+test('chapterProgressInfo: null outside the editor view (no chapter to estimate)', async () => {
+  const c = await initFresh();
+  setDummyBook(c);
+  // Setup view: not in editor.
+  assert.equal(c.chapterProgressInfo, null);
+});
+
+test('chapterProgressInfo: scroll=0 → charsLeft equals total chars', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].translatedTitle = 'T';                 // 1 char
+  c.book.chapters[0].paragraphs[0].translation = 'abcdefghij'; // 10 chars
+  c.book.chapters[0].paragraphs[1].translation = '';
+  c.scrollProgress = 0;
+  const info = c.chapterProgressInfo;
+  assert.equal(info.total, 11);
+  assert.equal(info.charsLeft, 11);
+});
+
+test('chapterProgressInfo: scroll=1 → charsLeft is 0 (chapter fully past viewport)', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].translatedTitle = 'T';
+  c.book.chapters[0].paragraphs[0].translation = 'abcde';
+  c.scrollProgress = 1;
+  assert.equal(c.chapterProgressInfo.charsLeft, 0);
+});
+
+test('chapterProgressInfo: scroll=0.5 → charsLeft is half of total', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].translatedTitle = '';
+  c.book.chapters[0].paragraphs[0].translation = 'a'.repeat(100);
+  c.book.chapters[0].paragraphs[1].translation = '';
+  c.scrollProgress = 0.5;
+  assert.equal(c.chapterProgressInfo.charsLeft, 50);
+});
+
+test('chapterProgressInfo: default rate is 20 000 chars/h when no accepted-chapter stats yet', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].translatedTitle = '';
+  c.book.chapters[0].paragraphs[0].translation = 'a'.repeat(20000);
+  c.book.chapters[0].paragraphs[1].translation = '';
+  c.scrollProgress = 0;
+  const info = c.chapterProgressInfo;
+  assert.equal(info.rate, 20000, 'default rate kicks in before any chapter is accepted');
+  assert.equal(info.rateIsDefault, true);
+  // 20 000 chars / 20 000 chars-per-hour = 1 hour = 3600 seconds.
+  assert.ok(Math.abs(info.secondsLeft - 3600) < 1);
+});
+
+test('chapterProgressInfo: uses charsPerHourTotal when accepted-chapter stats are available', async () => {
+  const c = await initInEditor();
+  // Plant 1000 chars across 2 minutes of work, then accept → rate = 30 000 chars/h.
+  c.book.chapters[0].translatedTitle = '';
+  c.book.chapters[0].paragraphs[0].translation = 'a'.repeat(1000);
+  c.book.chapters[0].paragraphs[1].translation = '';
+  withFakeNow(1_700_000_000_000, () => c._recordWork());
+  withFakeNow(1_700_000_120_000, () => c._recordWork()); // +2 min
+  await c.acceptAndNext();
+  // Now on chapter 1; set its content + scroll=0 for the estimate.
+  c.book.chapters[1].translatedTitle = '';
+  c.book.chapters[1].paragraphs[0].translation = 'b'.repeat(15000);
+  c.scrollProgress = 0;
+  const info = c.chapterProgressInfo;
+  assert.equal(info.rate, 30000, 'accepted-chapter rate replaces the 20 000 default');
+  assert.equal(info.rateIsDefault, false);
+});
+
+test('formatDurationShort: < 30s → "<1m"; minute range; hour range', async () => {
+  const c = await initFresh();
+  assert.equal(c.formatDurationShort(0),     '<1m');
+  assert.equal(c.formatDurationShort(29),    '<1m');
+  assert.equal(c.formatDurationShort(60),    '1m');
+  assert.equal(c.formatDurationShort(900),   '15m');
+  assert.equal(c.formatDurationShort(3600),  '1h');
+  assert.equal(c.formatDurationShort(5400),  '1h 30m');
+  assert.equal(c.formatDurationShort(7260),  '2h 1m');
+});
+
+test('_updateScrollProgress: clamps to [0, 1] for any window scroll position', async () => {
+  const c = await initInEditor();
+  // Globals like `window`/`document` aren't always re-assignable in
+  // Node, so go through Object.defineProperty with configurable: true.
+  const stub = (obj, key, value) =>
+    Object.defineProperty(globalThis, key, { configurable: true, value });
+  const origWin = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const origDoc = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const win = { scrollY: 0, innerHeight: 800 };
+  stub(null, 'window', win);
+  stub(null, 'document', { documentElement: { scrollHeight: 2000 } });
+  try {
+    c._updateScrollProgress();
+    assert.equal(c.scrollProgress, 0);
+    win.scrollY = 600; // halfway through 1200px of scrollable content
+    c._updateScrollProgress();
+    assert.equal(c.scrollProgress, 0.5);
+    win.scrollY = 99999; // way past the bottom
+    c._updateScrollProgress();
+    assert.equal(c.scrollProgress, 1);
+    win.scrollY = -50;   // bounce / overscroll
+    c._updateScrollProgress();
+    assert.equal(c.scrollProgress, 0);
+  } finally {
+    if (origWin) Object.defineProperty(globalThis, 'window', origWin);
+    else delete globalThis.window;
+    if (origDoc) Object.defineProperty(globalThis, 'document', origDoc);
+    else delete globalThis.document;
+  }
 });

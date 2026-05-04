@@ -12,6 +12,33 @@
   transition: opacity 0.2s ease-in;
 }
 
+/* Editor status bar — tiny, fixed at the bottom of the viewport,
+   always visible while editing. Shows total chars / chars left /
+   time left for the current chapter. Stays out of the way (low
+   contrast, single line, narrow padding) so it doesn't crowd the
+   editor; widens to full width so the readout is centred and
+   doesn't shift when its numbers change. */
+.status-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  text-align: center;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.2rem 0.75rem;
+  background: var(--pico-background-color, #fff);
+  color: var(--pico-muted-color, #666);
+  border-top: 1px solid var(--pico-muted-border-color, #e5e5e5);
+  opacity: 0.85;
+  pointer-events: none; /* don't intercept mouse events on the editor below */
+}
+.status-bar:hover { opacity: 1; }
+/* Reserve space at the page bottom so the bar doesn't cover the last
+   row of editor controls when scrolled all the way down. */
+body { padding-bottom: 1.6rem; }
+
 /* Header chars/min rolling-rate badge — sits next to the chapter count
    and the save indicator. Same tabular-nums treatment so the digits
    don't jump as the rate ticks up; muted so it reads as ambient info,

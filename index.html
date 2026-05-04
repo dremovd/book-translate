@@ -447,6 +447,21 @@
 
   </main>
 
+  <!-- Editor status bar — tiny, always visible while editing.
+       Shows the current chapter's chars total, a rough "chars left"
+       estimate via window scroll fraction, and a rough "time left"
+       at 20 000 chars/h (default) or your accepted-chapter rate
+       (when stats are present, marked without the asterisk). -->
+  <div class="status-bar" x-show="view === 'editor' && chapterProgressInfo" x-cloak
+       :title="chapterProgressInfo
+         ? `Rate: ${chapterProgressInfo.rate} chars/h${chapterProgressInfo.rateIsDefault ? ' (default — accept a chapter for a data-driven rate)' : ' (from your accepted chapters)'}`
+         : ''">
+    <span x-text="`${chapterProgressInfo?.total ?? 0} chars`"></span>
+    <span> · ~<span x-text="chapterProgressInfo?.charsLeft ?? 0"></span> left</span>
+    <span> · ~<span x-text="formatDurationShort(chapterProgressInfo?.secondsLeft ?? 0)"></span><span
+      x-show="chapterProgressInfo?.rateIsDefault" x-cloak>*</span></span>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/localforage@1/dist/localforage.min.js"></script>
   <!-- pinyin-pro: Han characters → Pinyin. Used by js/palladius.js
        to drive algorithmic Russian transliteration of Chinese terms

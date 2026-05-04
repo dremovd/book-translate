@@ -20,6 +20,7 @@ import {
   clampSplit, SAVE_BADGE_MS, chapterTranslationStats,
   defaultStats, migrateLegacyStats, migrateLegacyConfig, LEGACY_QUERY_KEY_MAP,
 } from './state-helpers.js';
+import { APP_VERSION } from './version.js';
 
 // Re-export — `chapterTranslationStats` was a public export of this
 // module before the extract; tests + scripts may still import from here.
@@ -158,6 +159,9 @@ export function makeBilingualComponent() {
     saveIndicator: false,
     // See component.js: typed POE call counter + per-chapter work-minute tracker.
     stats: defaultStats(),
+    // See component.js: window scroll fraction in [0, 1] for the
+    // editor's status bar.
+    scrollProgress: 0,
 
     _persistTimer: null,
     _saveBadgeTimer: null,
@@ -201,7 +205,10 @@ export function makeBilingualComponent() {
       }
       // See component.js: passive scroll listener feeds the work-minute tracker.
       if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-        window.addEventListener('scroll', () => this._recordWork(), { passive: true });
+        window.addEventListener('scroll', () => {
+          this._recordWork();
+          this._updateScrollProgress();
+        }, { passive: true });
       }
     },
 
@@ -322,6 +329,33 @@ export function makeBilingualComponent() {
         totalChars += chapterTranslationStats(ch).chars;
       });
       return totalMin > 0 ? Math.round((totalChars / totalMin) * 60) : null;
+    },
+    // See component.js — editor status-bar progress estimate.
+    get chapterProgressInfo() {
+      if (this.view !== 'editor') return null;
+      const total = this.currentChapterStats.chars;
+      if (!total) return null;
+      const fractionLeft = Math.max(0, Math.min(1, 1 - this.scrollProgress));
+      const charsLeft = Math.max(0, Math.round(total * fractionLeft));
+      const ratePresent = this.charsPerHourTotal != null;
+      const rate = ratePresent ? this.charsPerHourTotal : 20000;
+      const secondsLeft = (charsLeft / rate) * 3600;
+      return { total, charsLeft, secondsLeft, rate, rateIsDefault: !ratePresent };
+    },
+    formatDurationShort(seconds) {
+      if (!Number.isFinite(seconds) || seconds < 30) return '<1m';
+      if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+      const h = Math.floor(seconds / 3600);
+      const m = Math.round((seconds % 3600) / 60);
+      return m === 0 ? `${h}h` : `${h}h ${m}m`;
+    },
+    _updateScrollProgress() {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return;
+      const scrollHeight = document.documentElement?.scrollHeight ?? 0;
+      const innerHeight = window.innerHeight ?? 0;
+      const max = scrollHeight - innerHeight;
+      const y = window.scrollY ?? 0;
+      this.scrollProgress = max > 0 ? Math.min(1, Math.max(0, y / max)) : 0;
     },
     get hasAnyStats() {
       const calls = this.stats?.calls || {};
@@ -717,7 +751,7 @@ export function makeBilingualComponent() {
       const cfg = { ...this.config, apiKey: '' };
       return {
         type: 'bilingual-translate-state',
-        version: 1,
+        version: APP_VERSION,
         exportedAt: new Date().toISOString(),
         state: {
           view: this.view,

@@ -7,6 +7,7 @@ import {
   clampSplit, SAVE_BADGE_MS, chapterTranslationStats,
   defaultStats, migrateLegacyStats, migrateLegacyConfig, LEGACY_QUERY_KEY_MAP,
 } from './state-helpers.js';
+import { APP_VERSION } from './version.js';
 
 // Re-export — `chapterTranslationStats` was a public API of this module
 // before the extract; tests and (potentially) external imports may
@@ -213,6 +214,12 @@ export function makeComponent() {
     // dedicated Stats view + a chars/min hint in the nav bar. See
     // defaultStats() above for the shape.
     stats: defaultStats(),
+    // Window scroll fraction in [0, 1]. Updated by the same passive
+    // scroll listener that drives _recordWork, used by the editor's
+    // status bar to estimate "chars left in chapter" and "time left".
+    // Resets to 0 implicitly when currentChapterIndex changes (the
+    // $watch scrolls the page back to top, which fires the listener).
+    scrollProgress: 0,
 
     _persistTimer: null,
     _saveBadgeTimer: null,
@@ -270,7 +277,10 @@ export function makeComponent() {
       // it just hands every scroll over and lets the tracker decide.
       // {passive: true} keeps it off the main-thread scroll critical path.
       if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-        window.addEventListener('scroll', () => this._recordWork(), { passive: true });
+        window.addEventListener('scroll', () => {
+          this._recordWork();
+          this._updateScrollProgress();
+        }, { passive: true });
       }
     },
 
@@ -359,6 +369,55 @@ export function makeComponent() {
         totalChars += chapterTranslationStats(ch).chars;
       });
       return totalMin > 0 ? Math.round((totalChars / totalMin) * 60) : null;
+    },
+
+    // Editor status bar — quick "you're N chars in, ~M chars to go,
+    // ~T time" hint based on window scroll position. Returns null
+    // outside the editor view so the bar's x-show toggles cleanly.
+    // Time estimate uses the rolling chars-per-hour rate over accepted
+    // chapters when available; otherwise falls back to a 20 000 chars/h
+    // default (a rough literary-translation pace from real sessions —
+    // good enough for "roughly 30 minutes" precision before you've
+    // accepted a chapter).
+    get chapterProgressInfo() {
+      if (this.view !== 'editor') return null;
+      const total = this.currentChapterStats.chars;
+      if (!total) return null;
+      const fractionLeft = Math.max(0, Math.min(1, 1 - this.scrollProgress));
+      const charsLeft = Math.max(0, Math.round(total * fractionLeft));
+      const ratePresent = this.charsPerHourTotal != null;
+      const rate = ratePresent ? this.charsPerHourTotal : 20000;
+      const secondsLeft = (charsLeft / rate) * 3600;
+      return {
+        total,
+        charsLeft,
+        secondsLeft,
+        rate,
+        rateIsDefault: !ratePresent,
+      };
+    },
+
+    // Compact duration formatter for the status bar.
+    //   < 30 s   → "<1m"
+    //   < 1 h    → "Xm"   (rounded)
+    //   ≥ 1 h    → "Hh" or "Hh Mm"
+    formatDurationShort(seconds) {
+      if (!Number.isFinite(seconds) || seconds < 30) return '<1m';
+      if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+      const h = Math.floor(seconds / 3600);
+      const m = Math.round((seconds % 3600) / 60);
+      return m === 0 ? `${h}h` : `${h}h ${m}m`;
+    },
+
+    // Recompute the [0, 1] scroll fraction from the current viewport
+    // position. Called from the passive scroll listener; cheap.
+    _updateScrollProgress() {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return;
+      const scrollHeight = document.documentElement?.scrollHeight ?? 0;
+      const innerHeight = window.innerHeight ?? 0;
+      const max = scrollHeight - innerHeight;
+      const y = window.scrollY ?? 0;
+      this.scrollProgress = max > 0 ? Math.min(1, Math.max(0, y / max)) : 0;
     },
 
     // Stats — surface a "do we have anything to show?" flag so the
@@ -808,7 +867,7 @@ export function makeComponent() {
       const cfg = { ...this.config, apiKey: '' };
       return {
         type: 'book-translate-state',
-        version: 1,
+        version: APP_VERSION,
         exportedAt: new Date().toISOString(),
         state: {
           view: this.view,
