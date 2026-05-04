@@ -92,7 +92,19 @@ const DIALOG_CONVENTIONS = {
   russian:
     'Each speaker line starts with an em-dash (—) on a new line. ' +
     'Speaker tags inside a line are flanked by em-dashes, e.g. «— Привет, — сказал он, — как дела?». ' +
-    'Do NOT use English-style "quotation marks" for spoken lines.',
+    'Do NOT use English-style "quotation marks" for spoken lines. ' +
+    // After-the-line punctuation switches on what follows. Speech-tag
+    // verbs (verba dicendi) and standalone actions follow different
+    // conventions in Russian; getting this right is the difference
+    // between a model output that reads native and one that reads
+    // translated. Verb examples stay in Russian — the model needs
+    // language-specific signal, not a glossary lookup.
+    'When a spoken line is followed by a speech-reporting verb ' +
+    '(сказал, спросила, прошептал, ответил), end the line with a ' +
+    'comma and lowercase the speaker tag, e.g. «— Не переживай, — сказала она.». ' +
+    'When a spoken line is followed by a standalone action ' +
+    '(улыбнулась, отвернулся, хлопнул дверью), end the line with a ' +
+    'period and capitalise the action as a new sentence, e.g. «— Не переживай. — Она улыбнулась.».',
   ukrainian:
     'Each speaker line starts with an em-dash (—) on a new line. ' +
     'Speaker tags inside a line are flanked by em-dashes. ' +
