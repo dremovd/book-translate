@@ -506,7 +506,7 @@ export function makeComponent() {
       return createTranslator({
         ...this.config,
         ...configPatch,
-        onApiCall: (kind) => this._recordApiCall(kind),
+        onApiCall: (kind, durationMs) => this._recordApiCall(kind, durationMs),
       });
     },
 

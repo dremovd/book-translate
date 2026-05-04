@@ -954,6 +954,30 @@ test('_recordApiCall: missing/undefined duration counts as 0ms (still bumps coun
   assert.equal(c.stats.calls['chapter-translate'].totalMs, 0);
 });
 
+test('_makeTranslator: forwards durationMs through to _recordApiCall (regression: avg latency stuck at "—")', async () => {
+  // The translator times each call and invokes onApiCall(kind, durationMs).
+  // The component MUST forward both args to _recordApiCall — passing
+  // only `kind` lets durationMs default to 0, totalMs never accumulates,
+  // and the Stats view's Avg-latency column shows "—" forever.
+  const c = await initFresh();
+  c.config.translator = 'poe';
+  c.config.apiKey = 'k'; c.config.model = 'M'; c.config.baseUrl = 'http://x';
+  let now = 1_000_000;
+  const origDateNow = Date.now;
+  Date.now = () => now;
+  const restore = withFetch(async () => {
+    now += 1234; // simulate 1234 ms of network time
+    return mockResponse({ body: { choices: [{ message: { content: 'ok' } }] } });
+  });
+  try {
+    const t = c._makeTranslator();
+    await t.chat([{ role: 'user', content: 'a' }], { kind: 'chapter-translate' });
+    const bucket = c.stats.calls['chapter-translate'];
+    assert.equal(bucket.count, 1);
+    assert.equal(bucket.totalMs, 1234, 'durationMs must reach the stats bucket');
+  } finally { restore(); Date.now = origDateNow; }
+});
+
 test('apiCallRows: includes avgMs = totalMs / count for each row', async () => {
   const c = await initFresh();
   c._recordApiCall('chapter-translate', 1000);
