@@ -380,8 +380,10 @@ export function makeComponent() {
 
     // Stats view helpers — surface the API-call counters as a stable,
     // ordered list of {kind, label, count, avgMs} (only non-zero rows
-    // shown). avgMs is null when totalMs is 0 (e.g. legacy entries
-    // migrated from the pre-duration shape) so the view can render "—".
+    // shown). avgMs is null when nothing in the bucket has timing data
+    // (e.g. all entries came in before duration tracking landed) so
+    // the view can render "—". The divisor is `timedCount`, NOT count
+    // — untimed entries shouldn't dilute the average.
     get apiCallRows() {
       const order = [
         ['chapter-translate',   'Chapter translation'],
@@ -395,11 +397,14 @@ export function makeComponent() {
       const out = [];
       for (const [k, label] of order) {
         const raw = calls[k];
-        // Tolerate either {count,totalMs} or legacy numeric shape.
-        const count   = typeof raw === 'number' ? raw : (raw?.count   || 0);
-        const totalMs = typeof raw === 'number' ? 0   : (raw?.totalMs || 0);
+        // Tolerate every shape the persistence layer might hand back:
+        // legacy numeric, pre-timedCount {count,totalMs}, current
+        // {count,totalMs,timedCount}.
+        const count      = typeof raw === 'number' ? raw : (raw?.count      || 0);
+        const totalMs    = typeof raw === 'number' ? 0   : (raw?.totalMs    || 0);
+        const timedCount = typeof raw === 'number' ? 0   : (raw?.timedCount || 0);
         if (count <= 0) continue;
-        const avgMs = totalMs > 0 ? Math.round(totalMs / count) : null;
+        const avgMs = timedCount > 0 ? Math.round(totalMs / timedCount) : null;
         out.push({ kind: k, label, count, avgMs });
       }
       return out;
@@ -480,22 +485,38 @@ export function makeComponent() {
 
     // Stats — typed POE call counter + per-kind avg latency. Cache hits
     // don't get here (the translator only invokes the callback when it
-    // actually issued a network request); see PoeTranslator.chat. Each
-    // kind's bucket is `{ count, totalMs }` so the view can render the
-    // running average without storing every individual call's duration.
-    _recordApiCall(kind, durationMs = 0) {
+    // actually issued a network request); see PoeTranslator.chat.
+    //
+    // Bucket shape: `{ count, totalMs, timedCount }`.
+    //   count      — every recorded call, including ones we couldn't
+    //                time (legacy data from before duration tracking,
+    //                or _recordApiCall called without a duration arg).
+    //   totalMs    — accumulated wall-clock time, only from calls that
+    //                arrived WITH a numeric durationMs.
+    //   timedCount — divisor for the average. Bumps in lockstep with
+    //                totalMs, so avg = totalMs / timedCount stays
+    //                undiluted by untimed entries.
+    _recordApiCall(kind, durationMs) {
       if (!kind) return;
       if (!this.stats) this.stats = defaultStats();
       let bucket = this.stats.calls[kind];
       if (!bucket || typeof bucket !== 'object') {
         // Either a brand-new bucket OR a legacy numeric-counter shape from
         // before duration tracking landed. Carry the prior count over so
-        // the historical numbers don't disappear; totalMs starts fresh.
-        bucket = { count: typeof bucket === 'number' ? bucket : 0, totalMs: 0 };
+        // the historical numbers don't disappear; totalMs/timedCount
+        // start fresh — the legacy entries don't pollute the average.
+        bucket = {
+          count: typeof bucket === 'number' ? bucket : 0,
+          totalMs: 0,
+          timedCount: 0,
+        };
         this.stats.calls[kind] = bucket;
       }
       bucket.count += 1;
-      bucket.totalMs += Number(durationMs) || 0;
+      if (typeof durationMs === 'number' && Number.isFinite(durationMs)) {
+        bucket.totalMs    += durationMs;
+        bucket.timedCount += 1;
+      }
     },
 
     // Single factory for any translator instance the component needs —

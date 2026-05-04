@@ -85,22 +85,35 @@ export function defaultStats() {
   };
 }
 
-// Lift saved stats into the current shape. Two migrations stack here:
+// Lift saved stats into the current shape. Migrations stack:
+//
 //   1. Pre-stats saves had no `stats` field at all → start fresh.
-//   2. Pre-duration saves stored `calls[kind]` as a plain integer; the
-//      view now expects `{count, totalMs}` for the average-latency
-//      column. Numeric entries are converted with totalMs=0, so the
-//      historical count survives and the average renders as "—" until
-//      a fresh call lands.
+//   2. Pre-duration saves stored `calls[kind]` as a plain integer.
+//      Numeric entries become `{count, totalMs: 0, timedCount: 0}`
+//      — historical count survives, but those calls don't dilute the
+//      average since they were never timed.
+//   3. Pre-`timedCount` saves had `{count, totalMs}` only. We
+//      recover `timedCount` heuristically: if totalMs > 0, every
+//      call must have been timed (= count); if totalMs == 0, none
+//      could have been (= 0). That's exactly right for both
+//      "all post-fix calls" and "all pre-fix calls", and the worst
+//      case is that a mixed bucket gets one round of either-or
+//      attribution before fresh calls fix it.
 export function migrateLegacyStats(raw) {
   const fresh = defaultStats();
   if (!raw || typeof raw !== 'object') return fresh;
   const calls = {};
   for (const [k, v] of Object.entries(raw.calls || {})) {
     if (v && typeof v === 'object' && typeof v.count === 'number') {
-      calls[k] = { count: v.count, totalMs: typeof v.totalMs === 'number' ? v.totalMs : 0 };
+      const count   = v.count;
+      const totalMs = typeof v.totalMs === 'number' ? v.totalMs : 0;
+      // Prefer an explicit timedCount when present; otherwise infer.
+      const timedCount = typeof v.timedCount === 'number'
+        ? v.timedCount
+        : (totalMs > 0 ? count : 0);
+      calls[k] = { count, totalMs, timedCount };
     } else if (typeof v === 'number') {
-      calls[k] = { count: v, totalMs: 0 };
+      calls[k] = { count: v, totalMs: 0, timedCount: 0 };
     }
   }
   return {

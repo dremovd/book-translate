@@ -943,15 +943,19 @@ test('_recordApiCall: tracks count and accumulated duration per kind', async () 
   c._recordApiCall('paragraph-translate', 300);
   assert.equal(c.stats.calls['chapter-translate'].count, 2);
   assert.equal(c.stats.calls['chapter-translate'].totalMs, 4000);
+  assert.equal(c.stats.calls['chapter-translate'].timedCount, 2,
+    'timedCount must match the timed-arg call count');
   assert.equal(c.stats.calls['paragraph-translate'].count, 1);
   assert.equal(c.stats.calls['paragraph-translate'].totalMs, 300);
 });
 
-test('_recordApiCall: missing/undefined duration counts as 0ms (still bumps count)', async () => {
+test('_recordApiCall: missing/undefined duration bumps count but NOT totalMs/timedCount', async () => {
   const c = await initFresh();
   c._recordApiCall('chapter-translate'); // no duration passed
   assert.equal(c.stats.calls['chapter-translate'].count, 1);
   assert.equal(c.stats.calls['chapter-translate'].totalMs, 0);
+  assert.equal(c.stats.calls['chapter-translate'].timedCount, 0,
+    'untimed calls must stay out of the average divisor');
 });
 
 test('_makeTranslator: forwards durationMs through to _recordApiCall (regression: avg latency stuck at "—")', async () => {
@@ -978,17 +982,24 @@ test('_makeTranslator: forwards durationMs through to _recordApiCall (regression
   } finally { restore(); Date.now = origDateNow; }
 });
 
-test('apiCallRows: includes avgMs = totalMs / count for each row', async () => {
+test('apiCallRows: avgMs = totalMs / timedCount; untimed calls in the same bucket are excluded from the divisor', async () => {
+  // Mixed bucket: some calls came in with timing (post-fix), some
+  // without (pre-fix bug or legacy numeric migration). The displayed
+  // count includes everything (it's still an accurate call count); the
+  // average should NOT be diluted by the untimed calls.
   const c = await initFresh();
-  c._recordApiCall('chapter-translate', 1000);
-  c._recordApiCall('chapter-translate', 3000);
-  const rows = c.apiCallRows;
-  const row = rows.find(r => r.kind === 'chapter-translate');
-  assert.equal(row.count, 2);
+  c._recordApiCall('chapter-translate');           // untimed (count++, no totalMs)
+  c._recordApiCall('chapter-translate');           // untimed
+  c._recordApiCall('chapter-translate', 1000);     // timed, 1000ms
+  c._recordApiCall('chapter-translate', 3000);     // timed, 3000ms
+  const row = c.apiCallRows.find(r => r.kind === 'chapter-translate');
+  assert.equal(row.count, 4, 'count includes untimed calls');
+  // avg = (1000 + 3000) / 2 timed-calls = 2000ms — NOT 1000ms (which would
+  // be the diluted version dividing by 4).
   assert.equal(row.avgMs, 2000);
 });
 
-test('loadSaved: migrates legacy numeric calls[kind]=N to {count, totalMs}', async () => {
+test('loadSaved: migrates legacy numeric calls[kind]=N to {count, totalMs, timedCount}', async () => {
   // Simulate saves written before per-kind duration tracking landed.
   await globalThis.localforage.setItem('book-translate-state:v1', {
     view: 'setup',
@@ -998,7 +1009,34 @@ test('loadSaved: migrates legacy numeric calls[kind]=N to {count, totalMs}', asy
   await c.init();
   assert.equal(c.stats.calls['chapter-translate'].count, 5);
   assert.equal(c.stats.calls['chapter-translate'].totalMs, 0);
+  // The legacy entries were never timed; timedCount = 0 keeps them out
+  // of the average divisor for any subsequent timed calls.
+  assert.equal(c.stats.calls['chapter-translate'].timedCount, 0);
   assert.equal(c.stats.calls['glossary-extract'].count, 2);
+  assert.equal(c.stats.calls['glossary-extract'].timedCount, 0);
+});
+
+test('loadSaved: pre-timedCount {count, totalMs} entries get timedCount inferred (totalMs>0 → count, else 0)', async () => {
+  // Simulate saves between the duration feature shipping and the
+  // timedCount field landing — `{count, totalMs}` without timedCount.
+  // Heuristic: if totalMs > 0, every recorded call must have been timed;
+  // if totalMs == 0, none could have been.
+  await globalThis.localforage.setItem('book-translate-state:v1', {
+    view: 'setup',
+    stats: {
+      calls: {
+        'chapter-translate': { count: 3, totalMs: 6000 },     // post-fix data
+        'paragraph-translate': { count: 4, totalMs: 0 },      // pre-fix bug data
+      },
+      byChapter: {},
+    },
+  });
+  const c = makeComponent();
+  await c.init();
+  assert.equal(c.stats.calls['chapter-translate'].timedCount, 3,
+    'totalMs > 0 → infer that all count calls were timed');
+  assert.equal(c.stats.calls['paragraph-translate'].timedCount, 0,
+    'totalMs == 0 → infer that no call was timed');
 });
 
 test('stats survive persistNow / loadSaved round-trip', async () => {
@@ -1013,6 +1051,7 @@ test('stats survive persistNow / loadSaved round-trip', async () => {
   assert.equal(c2.stats.byChapter[0]?.minutes, 1);
   assert.equal(c2.stats.calls['chapter-translate'].count, 1);
   assert.equal(c2.stats.calls['chapter-translate'].totalMs, 1234);
+  assert.equal(c2.stats.calls['chapter-translate'].timedCount, 1);
 });
 
 test('reset(): wipes stats along with the rest of state', async () => {

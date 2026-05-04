@@ -263,16 +263,23 @@ export function makeBilingualComponent() {
     },
 
     // See component.js for the full rationale on these stats methods.
-    _recordApiCall(kind, durationMs = 0) {
+    _recordApiCall(kind, durationMs) {
       if (!kind) return;
       if (!this.stats) this.stats = defaultStats();
       let bucket = this.stats.calls[kind];
       if (!bucket || typeof bucket !== 'object') {
-        bucket = { count: typeof bucket === 'number' ? bucket : 0, totalMs: 0 };
+        bucket = {
+          count: typeof bucket === 'number' ? bucket : 0,
+          totalMs: 0,
+          timedCount: 0,
+        };
         this.stats.calls[kind] = bucket;
       }
       bucket.count += 1;
-      bucket.totalMs += Number(durationMs) || 0;
+      if (typeof durationMs === 'number' && Number.isFinite(durationMs)) {
+        bucket.totalMs    += durationMs;
+        bucket.timedCount += 1;
+      }
     },
     _recordWork() {
       if (this.view !== 'editor') return;
@@ -338,10 +345,11 @@ export function makeBilingualComponent() {
       const out = [];
       for (const [k, label] of order) {
         const raw = calls[k];
-        const count   = typeof raw === 'number' ? raw : (raw?.count   || 0);
-        const totalMs = typeof raw === 'number' ? 0   : (raw?.totalMs || 0);
+        const count      = typeof raw === 'number' ? raw : (raw?.count      || 0);
+        const totalMs    = typeof raw === 'number' ? 0   : (raw?.totalMs    || 0);
+        const timedCount = typeof raw === 'number' ? 0   : (raw?.timedCount || 0);
         if (count <= 0) continue;
-        const avgMs = totalMs > 0 ? Math.round(totalMs / count) : null;
+        const avgMs = timedCount > 0 ? Math.round(totalMs / timedCount) : null;
         out.push({ kind: k, label, count, avgMs });
       }
       return out;

@@ -744,24 +744,30 @@ test('_recordWork: hidden tab does NOT count work', async () => {
 
 // ---------- stats: API call counter ----------
 
-test('_recordApiCall: tracks count + accumulated duration; missing duration → 0ms', () => {
+test('_recordApiCall: tracks count, totalMs, and timedCount (untimed calls bump count only)', () => {
   const c = makeBilingualComponent();
   c._recordApiCall('chapter-translate', 500);
   c._recordApiCall('chapter-translate', 1500);
   c._recordApiCall('paragraph-translate'); // no duration
   assert.equal(c.stats.calls['chapter-translate'].count, 2);
   assert.equal(c.stats.calls['chapter-translate'].totalMs, 2000);
+  assert.equal(c.stats.calls['chapter-translate'].timedCount, 2);
   assert.equal(c.stats.calls['paragraph-translate'].count, 1);
   assert.equal(c.stats.calls['paragraph-translate'].totalMs, 0);
+  assert.equal(c.stats.calls['paragraph-translate'].timedCount, 0);
 });
 
-test('apiCallRows: avgMs = totalMs / count; null for legacy (totalMs=0)', () => {
+test('apiCallRows: avgMs uses timedCount as divisor; untimed calls are excluded', () => {
   const c = makeBilingualComponent();
-  c._recordApiCall('chapter-translate', 1000);
-  c._recordApiCall('chapter-translate', 3000);
-  c._recordApiCall('glossary-extract'); // no duration → totalMs=0 → avgMs=null
+  c._recordApiCall('chapter-translate');           // untimed
+  c._recordApiCall('chapter-translate', 1000);     // timed
+  c._recordApiCall('chapter-translate', 3000);     // timed
+  c._recordApiCall('glossary-extract');            // untimed only
   const rows = Object.fromEntries(c.apiCallRows.map(r => [r.kind, r]));
+  // 3 calls total, 2 timed → avg = (1000 + 3000) / 2 = 2000.
+  assert.equal(rows['chapter-translate'].count, 3);
   assert.equal(rows['chapter-translate'].avgMs, 2000);
+  // No timed calls → avgMs is null, view renders "—".
   assert.equal(rows['glossary-extract'].avgMs, null);
 });
 
