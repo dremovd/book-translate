@@ -5,14 +5,26 @@
 // only context for meaning, names, idioms).
 //
 // Engine reuse: parseBook, makeStore, createTranslator, format helpers,
-// renderBlockMd. UI plumbing (defaults, autosize, persist) is duplicated
-// from component.js by design — see memory/feedback_dry_vs_overengineering.
+// renderBlockMd, plus the pure state/persistence helpers in
+// ./state-helpers.js (font sizes, clamps, stats default + migration,
+// chapter text counts). The stateful methods that mention `this.stats`
+// / `this.config` stay duplicated with component.js by design — see
+// memory/feedback_dry_vs_overengineering.
 
 import { parseBook } from './parse.js';
 import { makeStore } from './store.js';
 import { createTranslator } from './translators/index.js';
 import { renderTranslationMarkdown, renderGlossaryMarkdown } from './translators/format.js';
 import { renderInlineMd } from './markdown.js';
+import {
+  clampSplit, SAVE_BADGE_MS, chapterTranslationStats,
+  defaultStats, migrateLegacyStats, migrateLegacyConfig, LEGACY_QUERY_KEY_MAP,
+} from './state-helpers.js';
+
+// Re-export — `chapterTranslationStats` was a public export of this
+// module before the extract; tests + scripts may still import from here.
+// (FONT_SIZES is intentionally still defined locally — see state-helpers.js.)
+export { chapterTranslationStats };
 
 const STORE_KEY = 'book-translate-bilingual:v1';
 const store = makeStore(STORE_KEY);
@@ -42,14 +54,8 @@ const QUERY_STRING_CONFIG_KEYS = [
 ];
 const QUERY_NUMBER_CONFIG_KEYS = ['glossaryChunkChars'];
 
-// Mirror of component.js's LEGACY_QUERY_KEY_MAP — pre-rename URLs with
+// LEGACY_QUERY_KEY_MAP comes from state-helpers — pre-rename URLs with
 // `dictionaryModel=…` etc. still apply, mapped onto the new keys.
-const LEGACY_QUERY_KEY_MAP = {
-  dictionaryModel:      'glossaryModel',
-  dictionaryGuidance:   'glossaryGuidance',
-  dictionaryChunkChars: 'glossaryChunkChars',
-};
-
 export function parseQueryOverrides(queryString) {
   const out = { configPatch: {}, stateOverrides: {}, anyApplied: false };
   if (!queryString) return out;
@@ -83,18 +89,9 @@ export function parseQueryOverrides(queryString) {
   return out;
 }
 
-// Backward-compat helper, mirror of component.js: rewrite legacy
-// dictionary* config keys to glossary* before merging with defaultConfig.
-function _migrateLegacyConfig(raw) {
-  if (!raw || typeof raw !== 'object') return {};
-  const out = { ...raw };
-  for (const [oldKey, newKey] of Object.entries(LEGACY_QUERY_KEY_MAP)) {
-    if (out[newKey] === undefined && out[oldKey] !== undefined) out[newKey] = out[oldKey];
-    delete out[oldKey];
-  }
-  return out;
-}
-
+// FONT_SIZES is the only knob that diverges from the singular editor:
+// the bilingual side starts a bit larger at the smallest/small steps
+// for CJK glyph legibility. Kept local rather than shared.
 const FONT_SIZES = {
   smallest: '0.85rem',
   small:    '0.95rem',
@@ -105,31 +102,6 @@ const FONT_SIZES = {
 const FONT_SIZE_KEYS = Object.keys(FONT_SIZES);
 const clampFontSize = (v, fallback) =>
   typeof v === 'string' && FONT_SIZE_KEYS.includes(v) ? v : fallback;
-const clampSplit = (v) => Math.max(20, Math.min(80, Number(v) || 60));
-
-// See component.js for the rationale on the "✓ Saved" badge cooldown.
-const SAVE_BADGE_MS = 1500;
-
-// See component.js#defaultStats for the shape rationale.
-function defaultStats() {
-  return { calls: {}, byChapter: {} };
-}
-
-// Mirror of component.js#_migrateLegacyStats — see there for the
-// rationale on numeric → {count,totalMs} migration.
-function _migrateLegacyStats(raw) {
-  const fresh = defaultStats();
-  if (!raw || typeof raw !== 'object') return fresh;
-  const calls = {};
-  for (const [k, v] of Object.entries(raw.calls || {})) {
-    if (v && typeof v === 'object' && typeof v.count === 'number') {
-      calls[k] = { count: v.count, totalMs: typeof v.totalMs === 'number' ? v.totalMs : 0 };
-    } else if (typeof v === 'number') {
-      calls[k] = { count: v, totalMs: 0 };
-    }
-  }
-  return { ...fresh, ...raw, calls, byChapter: { ...(raw.byChapter || {}) } };
-}
 
 function defaultConfig() {
   return {
@@ -155,19 +127,6 @@ function defaultConfig() {
     translationPromptCustom: '',
     translationGuidance: '',
   };
-}
-
-// Word + non-space character count for one chapter's translated text
-// (title + every paragraph translation, joined). Whitespace-separated
-// tokens for words; `\s` for the chars filter, so newlines don't count.
-export function chapterTranslationStats(chapter) {
-  if (!chapter) return { words: 0, chars: 0 };
-  const parts = [chapter.translatedTitle || ''];
-  for (const p of chapter.paragraphs || []) parts.push(p?.translation || '');
-  const text = parts.join('\n').trim();
-  const words = text ? text.split(/\s+/).length : 0;
-  const chars = text.replace(/\s/g, '').length;
-  return { words, chars };
 }
 
 export function makeBilingualComponent() {
@@ -265,8 +224,8 @@ export function makeBilingualComponent() {
           // Backward-compat: pre-rename saves used `dictionary`.
           this.glossary            = saved.glossary ?? saved.dictionary ?? [];
           this.currentChapterIndex = saved.currentChapterIndex ?? 0;
-          this.config              = { ...defaultConfig(), ..._migrateLegacyConfig(saved.config) };
-          this.stats               = _migrateLegacyStats(saved.stats);
+          this.config              = { ...defaultConfig(), ...migrateLegacyConfig(saved.config) };
+          this.stats               = migrateLegacyStats(saved.stats);
         }
       } catch (e) { console.warn('Failed to load bilingual state', e); }
     },
@@ -554,16 +513,28 @@ export function makeBilingualComponent() {
 
     async acceptAndNext() {
       if (!this.book || this.busy) return;
+      const ch = this.book.chapters[this.currentChapterIndex];
+      if (!ch) return;
+      // Rollback guard, mirror of the singular editor: marking the
+      // current chapter as accepted is conditional on the next one
+      // either already existing or translating successfully. If
+      // _translateChapter throws (network blip, model overload, parse
+      // failure), restore the prior status so the user isn't stuck
+      // with an "accepted" chapter that has no successor.
+      const prevStatus = ch.status;
+      ch.status = 'accepted';
+      const next = this.book.chapters[this.currentChapterIndex + 1];
+      if (!next) return; // final chapter — accept stands.
       await this._runBusy(async () => {
-        const ch = this.book.chapters[this.currentChapterIndex];
-        if (!ch) return;
-        ch.status = 'accepted';
-        const next = this.book.chapters[this.currentChapterIndex + 1];
-        if (!next) return; // final chapter
-        if (next.status === 'pending') {
-          await this._translateChapter(this.currentChapterIndex + 1);
+        try {
+          if (next.status === 'pending') {
+            await this._translateChapter(this.currentChapterIndex + 1);
+          }
+          this.currentChapterIndex++;
+        } catch (e) {
+          ch.status = prevStatus;
+          throw e; // _runBusy surfaces it as this.error
         }
-        this.currentChapterIndex++;
       });
     },
 
@@ -817,7 +788,7 @@ export function makeBilingualComponent() {
           book: data.book ?? null,
           glossary: importedGlossary,
           currentChapterIndex: data.currentChapterIndex ?? 0,
-          config: { ...defaultConfig(), ..._migrateLegacyConfig(data.config), apiKey: localKey },
+          config: { ...defaultConfig(), ...migrateLegacyConfig(data.config), apiKey: localKey },
           stats: data.stats && typeof data.stats === 'object'
             ? { ...defaultStats(), ...data.stats,
                 calls: { ...(data.stats.calls || {}) },

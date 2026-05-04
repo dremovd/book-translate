@@ -3,6 +3,33 @@ import { store } from './store.js';
 import { createTranslator } from './translators/index.js';
 import { renderTranslationMarkdown, renderGlossaryMarkdown } from './translators/format.js';
 import { renderInlineMd } from './markdown.js';
+import {
+  clampSplit, SAVE_BADGE_MS, chapterTranslationStats,
+  defaultStats, migrateLegacyStats, migrateLegacyConfig, LEGACY_QUERY_KEY_MAP,
+} from './state-helpers.js';
+
+// Re-export — `chapterTranslationStats` was a public API of this module
+// before the extract; tests and (potentially) external imports may
+// still reach for it here. Re-exporting keeps the extract from being a
+// breaking rename. (`FONT_SIZES` is intentionally still defined locally
+// — see state-helpers.js for why it's not shared.)
+export { chapterTranslationStats };
+
+// Five-step font-size scale exposed to the editor toolbar. Singular and
+// bilingual editors ship with slightly different smallest/small steps
+// (the bilingual side starts a bit larger for CJK glyph legibility),
+// so each component keeps its own copy rather than sharing one constant.
+export const FONT_SIZES = {
+  smallest: '0.8rem',
+  small:    '0.9rem',
+  medium:   '1rem',
+  big:      '1.15rem',
+  biggest:  '1.35rem',
+};
+const FONT_SIZE_KEYS = Object.keys(FONT_SIZES);
+function clampFontSize(v, fallback) {
+  return typeof v === 'string' && FONT_SIZE_KEYS.includes(v) ? v : fallback;
+}
 
 export const SAMPLE = `# Chapter One
 
@@ -48,18 +75,11 @@ const QUERY_STRING_CONFIG_KEYS = [
 ];
 const QUERY_NUMBER_CONFIG_KEYS = ['glossaryChunkChars'];
 
-// Backward-compat: legacy query params from before the dictionary→glossary
-// rename. A prefilled URL with `dictionaryModel=…` still works — the param
-// is read into the new key on the receiving side. Map keeps the migration
-// in one place; no duplication of types/parsing rules.
-const LEGACY_QUERY_KEY_MAP = {
-  dictionaryModel:      'glossaryModel',
-  dictionaryGuidance:   'glossaryGuidance',
-  dictionaryChunkChars: 'glossaryChunkChars',
-};
-
 // Pure: parse a window.location.search-style string into a patch applied
 // to state on init. Returns { configPatch, stateOverrides, sampleId, anyApplied }.
+// Legacy aliases (`dictionaryModel=…` etc., from before the rename) are
+// imported from state-helpers so the singular and bilingual editors stay
+// in lockstep on what counts as a legacy key.
 export function parseQueryOverrides(queryString) {
   const out = { configPatch: {}, stateOverrides: {}, sampleId: null, anyApplied: false };
   if (!queryString) return out;
@@ -104,110 +124,6 @@ export function parseQueryOverrides(queryString) {
     out.anyApplied = true;
   }
   return out;
-}
-
-function clampSplit(pct) {
-  const n = Number(pct);
-  if (!Number.isFinite(n)) return 60;
-  return Math.max(20, Math.min(80, n));
-}
-
-// How long the "✓ Saved" badge stays visible after each successful
-// persistNow. ~1.5 s reads as "I saw it confirm" without flashing
-// distractingly during heavy editing — the auto-persist debounce is
-// 400 ms, so successive saves keep the badge on continuously.
-const SAVE_BADGE_MS = 1500;
-
-// Empty stats object — separate factory so loadSaved/reset/import can
-// all share the same default and we don't accidentally leave the
-// in-memory `stats` aliasing a fixed module-level constant.
-function defaultStats() {
-  return {
-    // calls[kind] = how many real (non-cached) POE calls of that kind we
-    // made since the last reset. kinds are free strings supplied by the
-    // translator — currently:
-    //   'chapter-translate', 'paragraph-translate',
-    //   'glossary-extract',  'glossary-translate',
-    //   'bilingual-extract', 'bilingual-translate' (bilingual editor only)
-    calls: {},
-    // byChapter[idx] = {
-    //   minutes:     count of distinct wall-clock minutes the user did
-    //                work in this chapter (read-as-scrolled, edited, or
-    //                retranslated) while the editor was visible.
-    //   _lastMinute: the minute index (Math.floor(now/60000)) of the
-    //                most-recently counted bump — used to dedup events
-    //                fired within the same minute so we don't double-
-    //                count rapid scroll bursts.
-    //   firstWorkAt: ISO timestamp of the first counted minute. Set once,
-    //                never overwritten — useful for "session started" UX.
-    //   lastWorkAt:  ISO timestamp of the most-recently counted minute.
-    //                Updated only when `minutes` bumps, NOT on every
-    //                event — that keeps the persistence debounce from
-    //                churning during continuous scroll.
-    // }
-    byChapter: {},
-  };
-}
-
-// Backward-compat: lift saved stats into the current shape. Two
-// migrations stack here:
-//   1. Pre-stats saves had no `stats` field at all → start fresh.
-//   2. Pre-duration saves stored `calls[kind]` as a plain integer; the
-//      view now expects `{count, totalMs}` for the average-latency
-//      column. Numeric entries are converted with totalMs=0, so the
-//      historical count survives and the average renders as "—" until
-//      a fresh call lands.
-function _migrateLegacyStats(raw) {
-  const fresh = (typeof defaultStats === 'function') ? defaultStats() : { calls: {}, byChapter: {} };
-  if (!raw || typeof raw !== 'object') return fresh;
-  const calls = {};
-  for (const [k, v] of Object.entries(raw.calls || {})) {
-    if (v && typeof v === 'object' && typeof v.count === 'number') {
-      calls[k] = { count: v.count, totalMs: typeof v.totalMs === 'number' ? v.totalMs : 0 };
-    } else if (typeof v === 'number') {
-      calls[k] = { count: v, totalMs: 0 };
-    }
-  }
-  return {
-    ...fresh,
-    ...raw,
-    calls,
-    byChapter: { ...(raw.byChapter || {}) },
-  };
-}
-
-// Backward-compat helper: rewrite pre-rename config keys to their new names
-// before the saved/imported config is merged with defaultConfig(). Without
-// this the merge would silently leave the old key sitting next to the
-// new (default-blank) one and the app would read the blank.
-function _migrateLegacyConfig(raw) {
-  if (!raw || typeof raw !== 'object') return {};
-  const out = { ...raw };
-  const map = {
-    dictionaryModel:      'glossaryModel',
-    dictionaryGuidance:   'glossaryGuidance',
-    dictionaryChunkChars: 'glossaryChunkChars',
-  };
-  for (const [oldKey, newKey] of Object.entries(map)) {
-    if (out[newKey] === undefined && out[oldKey] !== undefined) {
-      out[newKey] = out[oldKey];
-    }
-    delete out[oldKey];
-  }
-  return out;
-}
-
-// Five-step font-size scale exposed to the editor toolbar.
-export const FONT_SIZES = {
-  smallest: '0.8rem',
-  small:    '0.9rem',
-  medium:   '1rem',
-  big:      '1.15rem',
-  biggest:  '1.35rem',
-};
-const FONT_SIZE_KEYS = Object.keys(FONT_SIZES);
-function clampFontSize(v, fallback) {
-  return typeof v === 'string' && FONT_SIZE_KEYS.includes(v) ? v : fallback;
 }
 
 export function defaultConfig() {
@@ -263,19 +179,6 @@ export function defaultConfig() {
     // both chapter translation and per-paragraph retranslation.
     translationGuidance: '',
   };
-}
-
-// Word + non-space character count for one chapter's translated text
-// (title + every paragraph translation, joined). Whitespace-separated
-// tokens for words; `\s` for the chars filter, so newlines don't count.
-export function chapterTranslationStats(chapter) {
-  if (!chapter) return { words: 0, chars: 0 };
-  const parts = [chapter.translatedTitle || ''];
-  for (const p of chapter.paragraphs || []) parts.push(p?.translation || '');
-  const text = parts.join('\n').trim();
-  const words = text ? text.split(/\s+/).length : 0;
-  const chars = text.replace(/\s/g, '').length;
-  return { words, chars };
 }
 
 export function makeComponent() {
@@ -394,12 +297,12 @@ export function makeComponent() {
           // use `glossary`. New wins if both present.
           this.glossary = saved.glossary ?? saved.dictionary ?? [];
           this.currentChapterIndex = saved.currentChapterIndex ?? 0;
-          this.config = { ...defaultConfig(), ..._migrateLegacyConfig(saved.config) };
+          this.config = { ...defaultConfig(), ...migrateLegacyConfig(saved.config) };
           // Stats may be missing on saves predating this feature — fall
           // back to a clean object so getters / view code never crash.
           // Also migrates pre-duration legacy `calls[kind] = N` entries
           // into the `{count, totalMs}` shape so totals/averages work.
-          this.stats = _migrateLegacyStats(saved.stats);
+          this.stats = migrateLegacyStats(saved.stats);
         }
       } catch (e) {
         console.warn('Failed to load state', e);
@@ -979,8 +882,8 @@ export function makeComponent() {
           book: data.book ?? null,
           glossary: importedGlossary,
           currentChapterIndex: data.currentChapterIndex ?? 0,
-          config: { ...defaultConfig(), ..._migrateLegacyConfig(data.config), apiKey: localKey },
-          stats: _migrateLegacyStats(data.stats),
+          config: { ...defaultConfig(), ...migrateLegacyConfig(data.config), apiKey: localKey },
+          stats: migrateLegacyStats(data.stats),
           error: null,
         });
         await this.persistNow();

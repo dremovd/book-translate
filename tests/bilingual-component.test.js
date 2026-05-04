@@ -562,6 +562,44 @@ function withFakeNow(ms, fn) {
 
 // ---------- chapter gate ----------
 
+test('acceptAndNext: rolls back the previous chapter status when the next-chapter translate fails', async () => {
+  // Mirror of the singular editor's invariant: if accept-and-next can't
+  // translate the next chapter (network blip, 500, etc.), the chapter
+  // we were ON must NOT be left as `accepted` — its acceptance was
+  // contingent on the next one materialising. Without rollback the
+  // user's chapter is permanently marked accepted with no successor.
+  clearStore();
+  // Phase 1: succeed everything to reach the editor view with ch0 translated.
+  let restore = withFetch(async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    const userMsg = body.messages.find(m => m.role === 'user')?.content ?? '';
+    if (userMsg.startsWith('Pairs:')) {
+      return mockResponse({ body: { choices: [{ message: { content: '[]' } }] } });
+    }
+    return mockResponse({ body: { choices: [{ message: { content: '[0] T\n\n[1] x' } }] } });
+  });
+  const c = makeBilingualComponent();
+  c._loaded = true;
+  c.config.apiKey = 'k'; c.config.model = 'M'; c.config.baseUrl = 'http://x';
+  c.rawEditor = RAW_EN_3; c.rawReference = RAW_ZH_3;
+  await c.startFromRaw();
+  await c.acceptGlossary();
+  restore();
+
+  const beforeStatus = c.book.chapters[0].status; // 'translated'
+
+  // Phase 2: ch1 translate hits a 500 — the rollback must trigger.
+  restore = withFetch(async () => mockResponse({ ok: false, status: 500, body: 'boom' }));
+  try {
+    await c.acceptAndNext();
+  } finally { restore(); }
+
+  assert.ok(c.error, 'error must be surfaced');
+  assert.equal(c.book.chapters[0].status, beforeStatus,
+    'previous chapter must NOT be left as `accepted` when the next-chapter translate fails');
+  assert.equal(c.currentChapterIndex, 0, 'must not advance past the failure');
+});
+
 test('acceptAndNext: does NOT re-translate an already-translated next chapter', async () => {
   const { c, restore } = await bilingualInEditor();
   try {
