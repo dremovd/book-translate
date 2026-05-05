@@ -29,7 +29,13 @@
   padding: 0.5rem 0.6rem;
 }
 .rules-view .rules-diff th.rules-label,
-.rules-view .rules-diff td.rules-label   { width: 9rem; white-space: nowrap; }
+.rules-view .rules-diff td.rules-label   {
+  width: 2.5rem;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--pico-muted-color, #666);
+}
 .rules-view .rules-diff th.rules-actions,
 .rules-view .rules-diff td.rules-actions { width: 5rem;  text-align: right; white-space: nowrap; }
 .rules-view .rules-diff td.rules-current,

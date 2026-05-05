@@ -1321,12 +1321,14 @@ test('chapterRulesRows: lists title + every paragraph; suggestion field null whe
   // Title row + 2 paragraph rows = 3.
   assert.equal(rows.length, 3);
   assert.equal(rows[0].key, 'title');
+  assert.equal(rows[0].label, 'T', 'title row label is the compact "T"');
   assert.equal(rows[0].suggestion, null);
   assert.equal(rows[1].key, 0);
-  assert.equal(rows[1].label, 'Paragraph 1');
+  assert.equal(rows[1].label, '1', 'paragraph rows show the bare 1-based index');
   assert.equal(rows[1].suggestion, null,
     'no pending pass → all suggestions are null');
   assert.equal(rows[2].key, 1);
+  assert.equal(rows[2].label, '2');
 });
 
 test('chapterRulesRows: suggestion field carries the pending value for paragraphs with a pass', async () => {

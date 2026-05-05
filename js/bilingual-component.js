@@ -671,14 +671,15 @@ export function makeBilingualComponent() {
       const suggestions = pp?.suggestions || {};
       const rows = [{
         key: 'title',
-        label: 'Chapter title',
+        // Compact column: T for title, plain numbers for the body.
+        label: 'T',
         current: ch.translatedTitle || ch.title || '',
         suggestion: titleSug,
       }];
       (ch.paragraphs || []).forEach((p, i) => {
         rows.push({
           key: i,
-          label: `Paragraph ${i + 1}`,
+          label: String(i + 1),
           current: p.translation || '',
           suggestion: Object.prototype.hasOwnProperty.call(suggestions, i)
             ? suggestions[i] : null,

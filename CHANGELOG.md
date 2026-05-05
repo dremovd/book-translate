@@ -18,6 +18,17 @@ tool versions without intervention. Going the other way (a newer
 export into an older tool) silently drops fields the older code
 doesn't know about; the version stamp lets you recognize that case.
 
+## v7 — 2026-05-05
+
+**Apply-rules row labels trimmed.** The first column on the diff
+table previously showed `Chapter title` / `Paragraph 1` / `Paragraph
+2` etc., which was wide and chatty. Now it shows `T` for the title
+row and the bare 1-based index for paragraph rows. Column narrowed
+to ~2.5rem, right-aligned with tabular-nums, muted color — reads
+as a row-number gutter rather than a label column.
+
+State unchanged; pure cosmetic.
+
 ## v6 — 2026-05-05
 
 **Apply-rules tab gets the editor-grid layout.** Previously the tab

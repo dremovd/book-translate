@@ -977,14 +977,17 @@ export function makeComponent() {
       const suggestions = pp?.suggestions || {};
       const rows = [{
         key: 'title',
-        label: 'Chapter title',
+        // Compact column header: T for title, plain numbers for the
+        // body. The chapter heading already names the chapter; this
+        // column is just a row index.
+        label: 'T',
         current: ch.translatedTitle || ch.title || '',
         suggestion: titleSug,
       }];
       (ch.paragraphs || []).forEach((p, i) => {
         rows.push({
           key: i,
-          label: `Paragraph ${i + 1}`,
+          label: String(i + 1),
           current: p.translation || '',
           suggestion: Object.prototype.hasOwnProperty.call(suggestions, i)
             ? suggestions[i] : null,

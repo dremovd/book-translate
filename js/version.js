@@ -37,4 +37,8 @@
 //        highlighting + accept/reject buttons inline only on rows
 //        with a pending suggestion. Sidebar shows a marker on
 //        chapters that have pending suggestions.
-export const APP_VERSION = 6;
+//   v7 — Apply-rules row label trimmed: title row shows `T`,
+//        paragraph rows show the bare 1-based index. Column
+//        narrowed and right-aligned so the row label is a hint,
+//        not a column eating real estate.
+export const APP_VERSION = 7;
