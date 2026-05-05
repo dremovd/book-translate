@@ -25,4 +25,10 @@
 //   v4 — Apply rules tab: per-chapter rule-based edit pass with a
 //        persisted pending-suggestions diff and per-paragraph
 //        accept/reject buttons.
-export const APP_VERSION = 4;
+//   v5 — Russian dialog block extended: gesture/emotion/thought
+//        descriptors that frame the same speaker beat take the same
+//        comma + lowercase as speech-reporting verbs (e.g.
+//        «— Не переживай, — она улыбнулась.»). Period + capital is
+//        now reserved for genuinely independent actions after the
+//        speech ends.
+export const APP_VERSION = 5;

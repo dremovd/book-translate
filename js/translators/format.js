@@ -93,18 +93,24 @@ const DIALOG_CONVENTIONS = {
     'Each speaker line starts with an em-dash (—) on a new line. ' +
     'Speaker tags inside a line are flanked by em-dashes, e.g. «— Привет, — сказал он, — как дела?». ' +
     'Do NOT use English-style "quotation marks" for spoken lines. ' +
-    // After-the-line punctuation switches on what follows. Speech-tag
-    // verbs (verba dicendi) and standalone actions follow different
-    // conventions in Russian; getting this right is the difference
-    // between a model output that reads native and one that reads
-    // translated. Verb examples stay in Russian — the model needs
-    // language-specific signal, not a glossary lookup.
-    'When a spoken line is followed by a speech-reporting verb ' +
-    '(сказал, спросила, прошептал, ответил), end the line with a ' +
-    'comma and lowercase the speaker tag, e.g. «— Не переживай, — сказала она.». ' +
-    'When a spoken line is followed by a standalone action ' +
-    '(улыбнулась, отвернулся, хлопнул дверью), end the line with a ' +
-    'period and capitalise the action as a new sentence, e.g. «— Не переживай. — Она улыбнулась.».',
+    // After-the-line punctuation switches on whether what follows is
+    // STILL part of the speaker's beat or a NEW one. Continuation
+    // tags (speech-reporting verbs OR thought / emotion / gesture
+    // descriptors framing the same beat) take comma + lowercase.
+    // Genuinely independent actions take period + capital. The same
+    // word ("улыбнулась") can land in either form depending on
+    // whether it's the same beat or a new one — see the examples.
+    'When a spoken line is followed by a speaker-tag continuation — ' +
+    'either a speech-reporting verb (сказал, спросила, прошептал, ответил) ' +
+    'OR a thought/emotion/gesture descriptor that frames the same beat ' +
+    '(улыбнулась, кивнула, нахмурилась as part of the speech act) — ' +
+    'end the line with a comma and lowercase the tag, ' +
+    'e.g. «— Не переживай, — сказала она.» or «— Не переживай, — она улыбнулась.». ' +
+    'When a spoken line is followed by a genuinely independent action ' +
+    '(улыбнулась, отвернулся, хлопнул дверью as a separate beat after the speech), ' +
+    'end the line with a period and capitalise the action as a new sentence, ' +
+    'e.g. «— Не переживай. — Она улыбнулась.». ' +
+    'Note that the same word (улыбнулась) takes different punctuation depending on whether the action is part of the same beat or a new one.',
   ukrainian:
     'Each speaker line starts with an em-dash (—) on a new line. ' +
     'Speaker tags inside a line are flanked by em-dashes. ' +

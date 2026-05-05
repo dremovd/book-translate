@@ -413,21 +413,22 @@ test('dialogConventionsFor: Russian → em-dash + new-line guidance', () => {
   assert.match(s, /new line|new speaker|each speaker/i);
 });
 
-test('dialogConventionsFor: Russian explains the speech-tag-vs-action punctuation split', () => {
-  // Russian punctuation after a spoken line depends on what follows.
-  // Speech-reporting verb (verba dicendi) → comma + lowercase tag.
-  // Standalone action                     → period + capitalised sentence.
-  // The block must mention BOTH branches; without that the model
-  // defaults to one or the other and the output reads like translated
-  // prose, not native Russian.
+test('dialogConventionsFor: Russian explains the speaker-tag-vs-action punctuation split', () => {
+  // Three canonical examples must be pinned verbatim:
+  //   1. speech verb tag                  →  comma + lowercase
+  //   2. gesture/emotion AS speaker tag   →  comma + lowercase
+  //   3. independent action AFTER speech  →  period + capital
+  // Note the same word ("улыбнулась") appears in #2 and #3 with
+  // different punctuation — that contrast is the load-bearing part
+  // of the dispatch and must survive any future rewrite of this block.
   const s = dialogConventionsFor('Russian');
-  // Speech-tag branch: must show the comma + lowercased verb pattern.
-  assert.match(s, /сказала она/);
-  // Action branch: must show the period + capitalised action pattern.
-  assert.match(s, /Она улыбнулась/);
-  // The two example sentences pin both rules in their canonical form.
   assert.match(s, /— Не переживай, — сказала она\./);
+  assert.match(s, /— Не переживай, — она улыбнулась\./);
   assert.match(s, /— Не переживай\. — Она улыбнулась\./);
+  // Both verb and gesture lists are present so the model has the
+  // word-level signal, not just abstract dispatch.
+  assert.match(s, /сказал, спросила, прошептал, ответил/);
+  assert.match(s, /улыбнулась/);
 });
 
 test('dialogConventionsFor: French → guillemets', () => {

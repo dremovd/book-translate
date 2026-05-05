@@ -18,6 +18,29 @@ tool versions without intervention. Going the other way (a newer
 export into an older tool) silently drops fields the older code
 doesn't know about; the version stamp lets you recognize that case.
 
+## v5 — 2026-05-05
+
+**Russian dialog block: gesture/emotion/thought tags treated as speaker
+tags.** The auto-injected dialog block previously distinguished only
+between speech-reporting verbs (comma + lowercase) and standalone
+actions (period + capital). The intermediate case — a gesture or
+emotion descriptor that *frames the speaker's beat* — was ambiguous,
+which left users having to spell it out in their Apply-rules prompt.
+
+Now the dispatch is explicit:
+- Continuation tags (verba dicendi OR thought/emotion/gesture
+  descriptors that frame the same beat) → comma + lowercase, e.g.
+  `— Не переживай, — она улыбнулась.`
+- Independent actions after the speech ends → period + capital, e.g.
+  `— Не переживай. — Она улыбнулась.`
+
+The same word (`улыбнулась`) can land in either form depending on
+whether it's part of the same beat or a new one — both forms are
+pinned verbatim in the prompt block and in `format.test.js`.
+
+This means user Apply-rules prompts no longer need to re-state the
+gesture-as-tag rule; the base prompt covers it.
+
 ## v4 — 2026-05-05
 
 **Apply rules tab.** New per-chapter rule-based edit pass alongside
