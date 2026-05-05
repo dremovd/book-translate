@@ -18,6 +18,37 @@ tool versions without intervention. Going the other way (a newer
 export into an older tool) silently drops fields the older code
 doesn't know about; the version stamp lets you recognize that case.
 
+## v4 — 2026-05-05
+
+**Apply rules tab.** New per-chapter rule-based edit pass alongside
+Setup / Glossary / Editor / Stats:
+
+- Type free-form rules (e.g. "normalize ellipses", "use `друг` instead
+  of `товарищ` for strangers"). The model returns ONLY the paragraphs
+  that need to change, in the same `[N]` numbered protocol the chapter
+  translator uses. Identical-roundtrip suggestions are filtered out
+  server-side so the diff view only shows real changes.
+- Glossary subset for the chapter, translation guidance, and target-
+  language dialog conventions are auto-injected into the prompt; the
+  user's rules stack on top.
+- Diff view: side-by-side rows of current vs suggested, with **→**
+  (accept) and **×** (reject) per paragraph. Title slot included as
+  the first row when the model proposes a title change.
+- Persisted: `chapter.pendingPass = {prompt, ranAt, titleSuggestion,
+  suggestions}` rides along with the book in localforage. Pending
+  passes survive reload; auto-clear once every diff has been
+  accepted or rejected.
+- Stale-source warning: if the user has edited a paragraph after the
+  pass ran and the suggestion is now identical to what's there, the
+  warning strip lists the affected paragraph numbers (decision is
+  still the user's — no auto-discard).
+- New translator method `PoeTranslator.applyRules` and new typed
+  call kind `apply-rules`, surfaced in the Stats view's API-calls
+  table.
+- Last-used prompt persisted at `config.applyRulesPrompt` so the
+  same rule applies one click away on the next chapter / next
+  session.
+
 ## v3 — 2026-05-05
 
 **Partial-paragraph retranslate.** The four retranslate buttons under

@@ -131,6 +131,10 @@ export function defaultConfig() {
   return {
     translator: 'dummy',
     apiKey: '',
+    // Last-used "Apply rules" prompt, persisted per book so re-runs
+    // on different chapters don't require re-typing. Pure UI memory —
+    // not used by any other code path.
+    applyRulesPrompt: '',
     // Optional project name. When set, every export filename gets a
     // sanitized version of it as a prefix — `glossary.md` becomes
     // `my-book-glossary.md`, `translation-through-chapter-001.md`
@@ -451,6 +455,7 @@ export function makeComponent() {
         ['glossary-translate',  'Glossary — translate terms'],
         ['bilingual-extract',   'Bilingual glossary — extract pairs'],
         ['bilingual-translate', 'Bilingual glossary — translate pairs'],
+        ['apply-rules',         'Apply rules — edit pass'],
       ];
       const calls = this.stats?.calls || {};
       const out = [];
@@ -840,6 +845,153 @@ export function makeComponent() {
       );
     },
 
+    // ---------- Apply rules (per-chapter rule-based edit pass) ----------
+    //
+    // Stores its result on `chapter.pendingPass`:
+    //   {
+    //     prompt:           the rules text the user typed,
+    //     ranAt:            ISO timestamp,
+    //     titleSuggestion:  string | null,
+    //     suggestions:      { [paragraphIdx_0_based]: string },
+    //   }
+    // Auto-clears (sets back to null) once both .titleSuggestion is
+    // null AND .suggestions is empty — which is what happens after the
+    // user has accepted/rejected every diff.
+
+    async runRulesPass(prompt) {
+      const chIdx = this.currentChapterIndex;
+      const ch = this.book?.chapters?.[chIdx];
+      if (!ch) return;
+      const text = (prompt || '').trim();
+      if (!text) return;
+      // Persist the prompt so the same rule is one click away on the
+      // next chapter / next session.
+      this.config.applyRulesPrompt = prompt;
+      await this._runBusy(async () => {
+        const translator = this._makeTranslator();
+        if (typeof translator.applyRules !== 'function') {
+          throw new Error('This backend does not support the Apply rules pass.');
+        }
+        const glossary = this._glossarySubsetForChapter(chIdx);
+        const { titleSuggestion, suggestions } = await translator.applyRules(
+          ch, glossary, prompt, {}
+        );
+        ch.pendingPass = {
+          prompt,
+          ranAt: new Date().toISOString(),
+          titleSuggestion: titleSuggestion ?? null,
+          suggestions: { ...(suggestions || {}) },
+        };
+        // Self-clear immediately if the model didn't propose anything.
+        this._tidyPendingPass(ch);
+      });
+    },
+
+    // Accept a single suggestion. `idx` is the paragraph index (0-based)
+    // OR the literal string 'title' for the chapter-title suggestion.
+    acceptRule(idx) {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      const pp = ch?.pendingPass;
+      if (!ch || !pp) return;
+      if (idx === 'title') {
+        if (typeof pp.titleSuggestion === 'string') {
+          ch.translatedTitle = pp.titleSuggestion;
+          pp.titleSuggestion = null;
+        }
+      } else if (typeof idx === 'number' && Object.prototype.hasOwnProperty.call(pp.suggestions, idx)) {
+        const text = pp.suggestions[idx];
+        if (ch.paragraphs?.[idx]) {
+          ch.paragraphs[idx].translation = text;
+          ch.paragraphs[idx].status = 'translated';
+        }
+        delete pp.suggestions[idx];
+      }
+      this._recordWork();
+      this._tidyPendingPass(ch);
+      this._autosizeAll();
+    },
+
+    rejectRule(idx) {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      const pp = ch?.pendingPass;
+      if (!ch || !pp) return;
+      if (idx === 'title') {
+        pp.titleSuggestion = null;
+      } else if (typeof idx === 'number') {
+        delete pp.suggestions[idx];
+      }
+      this._tidyPendingPass(ch);
+    },
+
+    discardRulesPass() {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      if (!ch?.pendingPass) return;
+      if (!this._confirm('Discard the pending rule-pass suggestions for this chapter?')) return;
+      ch.pendingPass = null;
+    },
+
+    // Internal: drop pendingPass when nothing's left to decide on.
+    _tidyPendingPass(ch) {
+      const pp = ch?.pendingPass;
+      if (!pp) return;
+      const noTitle = pp.titleSuggestion == null;
+      const noSuggestions = !pp.suggestions || Object.keys(pp.suggestions).length === 0;
+      if (noTitle && noSuggestions) ch.pendingPass = null;
+    },
+
+    // Stale-source flag: paragraph indices whose `.translation` differs
+    // now from what it was when the pass ran. The pass stored the value
+    // at-the-time as part of each suggestion entry indirectly (we
+    // compare suggestion[idx] != null AND paragraph[idx].translation
+    // didn't change between runAt and now)... we don't have a snapshot,
+    // so we approximate by reporting paragraphs where the suggestion
+    // is identical to current — those mean "the user already brought
+    // the source up to where the model wanted it, so the suggestion
+    // is now a noop". Surfaced in the view as a hint.
+    get pendingPassStaleParagraphs() {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      const pp = ch?.pendingPass;
+      if (!pp) return [];
+      const out = [];
+      for (const [k, sugg] of Object.entries(pp.suggestions || {})) {
+        const idx = Number(k);
+        const current = ch.paragraphs?.[idx]?.translation || '';
+        if (current === sugg) out.push(idx);
+      }
+      return out;
+    },
+
+    // View-friendly diff rows for the Apply-rules tab. Returns an
+    // ordered list including the title slot (when present) and one
+    // entry per pending paragraph suggestion. Only paragraphs with a
+    // pending suggestion appear — others are intentionally hidden so
+    // the diff view stays focused on what's left to decide.
+    get pendingPassRows() {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      const pp = ch?.pendingPass;
+      if (!pp) return [];
+      const rows = [];
+      if (typeof pp.titleSuggestion === 'string') {
+        rows.push({
+          key: 'title',
+          label: 'Chapter title',
+          current: ch.translatedTitle || ch.title || '',
+          suggestion: pp.titleSuggestion,
+        });
+      }
+      const idxs = Object.keys(pp.suggestions || {})
+        .map(Number).sort((a, b) => a - b);
+      for (const idx of idxs) {
+        rows.push({
+          key: idx,
+          label: `Paragraph ${idx + 1}`,
+          current: ch.paragraphs?.[idx]?.translation || '',
+          suggestion: pp.suggestions[idx],
+        });
+      }
+      return rows;
+    },
+
     async retranslateCurrent() {
       const idx = this.currentChapterIndex;
       const ch = this.book?.chapters?.[idx];
@@ -901,6 +1053,7 @@ export function makeComponent() {
     gotoSetup()    { this.view = 'setup'; },
     gotoGlossary() { if (this.glossary.length) this.view = 'glossary'; },
     gotoStats()    { this.view = 'stats'; },
+    gotoRules()    { this.view = 'rules'; },
 
     get canExport() {
       return !!(this.book || (this.rawBook && this.rawBook.trim()) || this.glossary.length);

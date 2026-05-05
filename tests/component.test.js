@@ -1193,6 +1193,139 @@ test('charsPerHourTotal: based on ACCEPTED chapters only — in-progress chapter
   assert.equal(c.charsPerHourTotal, 690);
 });
 
+// ---------- Apply rules (per-chapter rule-based edit pass) ----------
+
+test('runRulesPass: stores suggestions on chapter.pendingPass with prompt + ranAt', async () => {
+  const c = await initInEditor();
+  c.config.translator = 'poe';
+  c.config.apiKey = 'k'; c.config.model = 'M'; c.config.baseUrl = 'http://x';
+  c.book.chapters[0].paragraphs[0].translation = 'before';
+  c.book.chapters[0].paragraphs[1].translation = 'unchanged';
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: '[1] AFTER\n\n[2] unchanged' } }] } }));
+  try {
+    await c.runRulesPass('uppercase the first paragraph');
+    const pp = c.book.chapters[0].pendingPass;
+    assert.ok(pp, 'pendingPass must be populated');
+    assert.equal(pp.prompt, 'uppercase the first paragraph');
+    assert.deepEqual(pp.suggestions, { 0: 'AFTER' },
+      'paragraph 1 (idx 0) gets a suggestion; paragraph 2 (idx 1) is identical → filtered');
+    assert.ok(pp.ranAt, 'ranAt timestamp must be set');
+  } finally { restore(); }
+});
+
+test('runRulesPass: persists the prompt at config.applyRulesPrompt for later re-runs', async () => {
+  const c = await initInEditor();
+  c.config.translator = 'poe';
+  c.config.apiKey = 'k'; c.config.model = 'M'; c.config.baseUrl = 'http://x';
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: '' } }] } }));
+  try {
+    await c.runRulesPass('the rule text');
+    assert.equal(c.config.applyRulesPrompt, 'the rule text');
+  } finally { restore(); }
+});
+
+test('acceptRule: mutates paragraphs[idx].translation, clears that suggestion, records work', async () => {
+  const c = await initInEditor();
+  // Plant a pending pass directly so the test doesn't need the network.
+  c.book.chapters[0].paragraphs[0].translation = 'before';
+  c.book.chapters[0].paragraphs[1].translation = 'also before';
+  c.book.chapters[0].pendingPass = {
+    prompt: 'r', ranAt: new Date().toISOString(),
+    titleSuggestion: null,
+    suggestions: { 0: 'after-zero', 1: 'after-one' },
+  };
+  c.acceptRule(0);
+  assert.equal(c.book.chapters[0].paragraphs[0].translation, 'after-zero');
+  assert.deepEqual(c.book.chapters[0].pendingPass.suggestions, { 1: 'after-one' });
+  // Other paragraph untouched.
+  assert.equal(c.book.chapters[0].paragraphs[1].translation, 'also before');
+});
+
+test('rejectRule: clears the suggestion without changing paragraphs[idx]', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].paragraphs[0].translation = 'keep me';
+  c.book.chapters[0].pendingPass = {
+    prompt: 'r', ranAt: new Date().toISOString(),
+    titleSuggestion: null,
+    suggestions: { 0: 'noop' },
+  };
+  c.rejectRule(0);
+  assert.equal(c.book.chapters[0].paragraphs[0].translation, 'keep me',
+    'reject must NOT touch the paragraph');
+  // The pending-pass slot self-clears when nothing's pending — see next test.
+});
+
+test('accept/reject auto-clears pendingPass when no suggestions remain', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].paragraphs[0].translation = 'a';
+  c.book.chapters[0].paragraphs[1].translation = 'b';
+  c.book.chapters[0].pendingPass = {
+    prompt: 'r', ranAt: new Date().toISOString(),
+    titleSuggestion: null,
+    suggestions: { 0: 'A', 1: 'B' },
+  };
+  c.acceptRule(0);
+  assert.ok(c.book.chapters[0].pendingPass, 'still pending after first accept');
+  c.rejectRule(1);
+  assert.equal(c.book.chapters[0].pendingPass, null,
+    'pendingPass clears once both decisions are made');
+});
+
+test('acceptRule for the title (idx === "title") writes to translatedTitle, clears titleSuggestion', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].translatedTitle = 'Old';
+  c.book.chapters[0].pendingPass = {
+    prompt: 'r', ranAt: new Date().toISOString(),
+    titleSuggestion: 'New',
+    suggestions: {},
+  };
+  c.acceptRule('title');
+  assert.equal(c.book.chapters[0].translatedTitle, 'New');
+  // Auto-clears since suggestions object is empty and titleSuggestion is now null.
+  assert.equal(c.book.chapters[0].pendingPass, null);
+});
+
+test('discardRulesPass: clears pendingPass without touching translations', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].paragraphs[0].translation = 'kept';
+  c.book.chapters[0].pendingPass = {
+    prompt: 'r', ranAt: new Date().toISOString(),
+    titleSuggestion: 'TS',
+    suggestions: { 0: 'sugg' },
+  };
+  c._confirm = () => true;
+  c.discardRulesPass();
+  assert.equal(c.book.chapters[0].pendingPass, null);
+  assert.equal(c.book.chapters[0].paragraphs[0].translation, 'kept');
+});
+
+test('discardRulesPass: cancelling the confirm leaves pendingPass intact', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].pendingPass = {
+    prompt: 'r', ranAt: new Date().toISOString(),
+    titleSuggestion: null,
+    suggestions: { 0: 'sugg' },
+  };
+  c._confirm = () => false;
+  c.discardRulesPass();
+  assert.ok(c.book.chapters[0].pendingPass, 'cancelled discard must keep the pass');
+});
+
+test('chapter.pendingPass round-trips through persistNow / loadSaved', async () => {
+  const c1 = await initInEditor();
+  c1.book.chapters[0].pendingPass = {
+    prompt: 'rule X', ranAt: '2026-05-05T12:00:00.000Z',
+    titleSuggestion: 'New Title',
+    suggestions: { 0: 'a', 2: 'c' },
+  };
+  await c1.persistNow();
+  const c2 = makeComponent();
+  await c2.init();
+  assert.deepEqual(c2.book.chapters[0].pendingPass, c1.book.chapters[0].pendingPass);
+});
+
 // ---------- partial-paragraph retranslate (selection mode) ----------
 
 // Build a textarea-shaped object with a selection, the way Alpine's

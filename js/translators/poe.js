@@ -683,6 +683,95 @@ export class PoeTranslator {
       : unwrapOuterQuotes(unlabeled);
   }
 
+  // Rule-based per-paragraph edit pass. Sends the chapter's current
+  // translation along with the user's free-form rules, and asks the
+  // model to emit ONLY the paragraphs that need changing — same [N]
+  // numbered protocol as translateChapter, but with `[0]` reserved
+  // for the chapter title.
+  //
+  // Returns:
+  //   {
+  //     titleSuggestion: string | null,
+  //     suggestions: { [paragraphIdx_0_based]: string }
+  //   }
+  //
+  // Identity guard: if the model returns a paragraph that round-trips
+  // identical to the current text (a noop), we drop it from the result
+  // so the diff view doesn't show empty rows.
+  async applyRules(chapter, glossary, customPrompt, context = {}) {
+    const lang = this.config.targetLanguage || 'the target language';
+    const dialog = dialogConventionsFor(lang);
+    const dialogBlock = dialog
+      ? `\n\nDialog formatting (${lang}): ${dialog}`
+      : '';
+    const guidanceBlock = this._translationGuidanceSection();
+    const markersBlock  = this._inlineMarkersSection();
+    const paras = chapter.paragraphs || [];
+
+    const messages = [
+      {
+        role: 'system',
+        content:
+          `You are a copy editor making a rule-based pass over an existing ${lang} translation. ` +
+          `The user's RULES below describe what to change. Apply them — and ONLY them. ` +
+          `Output the paragraphs that need to be edited, each on its own line, prefixed with [N] where N is the input number. ` +
+          `Output [0] for the chapter title; [1]..[K] for body paragraphs in order. ` +
+          `Do NOT emit unchanged paragraphs; skip unchanged paragraphs entirely so the response stays small. ` +
+          `Do NOT renumber, merge, split, or reorder paragraphs. ` +
+          `Do NOT add commentary, headings, blank labels, or markers other than [N]. ` +
+          `Preserve the existing translation's voice and register everywhere except where the rules require a change.` +
+          guidanceBlock + dialogBlock + markersBlock + `\n\n` +
+          `Use this glossary for consistency:\n${formatGlossary(glossary)}`,
+      },
+      {
+        role: 'user',
+        content: `RULES (apply these, only these):\n\n${customPrompt}`,
+      },
+    ];
+    if (chapter.title) {
+      messages.push({ role: 'user', content: `Chapter source title: ${chapter.title}` });
+    }
+    const refText = (context.referenceText || chapter.referenceText || '').trim();
+    if (refText) {
+      messages.push({
+        role: 'user',
+        content:
+          `REFERENCE (source of truth for meaning, names, idioms — full chapter, ` +
+          `consult while editing but do NOT mirror its phrasing in your output):\n\n${refText}`,
+      });
+    }
+    const numbered = [
+      `[0] ${chapter.translatedTitle || chapter.title || ''}`,
+      ...paras.map((p, i) => `[${i + 1}] ${p.translation || ''}`),
+    ].join('\n\n');
+    messages.push({
+      role: 'user',
+      content:
+        `Current ${lang} translation (numbered, for editing). ` +
+        `Output only the paragraphs your RULES require changing.\n\n${numbered}`,
+    });
+
+    const content = await this.chat(messages, { kind: 'apply-rules' });
+    const parsed = parseNumberedParagraphs(content);
+
+    // Title sits at [0]; paragraphs at [1]..[N].
+    const currentTitle = chapter.translatedTitle || chapter.title || '';
+    const titleProposed = parsed.get(0);
+    const titleSuggestion =
+      typeof titleProposed === 'string' && titleProposed !== currentTitle
+        ? titleProposed : null;
+
+    const suggestions = {};
+    for (let i = 0; i < paras.length; i++) {
+      const proposed = parsed.get(i + 1);
+      if (typeof proposed !== 'string') continue;
+      const current = paras[i].translation || '';
+      if (proposed === current) continue; // identity-guard: drop noops
+      suggestions[i] = proposed;
+    }
+    return { titleSuggestion, suggestions };
+  }
+
   // ---------- chapter / paragraph alignment ----------
   //
   // Two-phase alignment for the A/B comparison view:

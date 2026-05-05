@@ -12,6 +12,49 @@
   transition: opacity 0.2s ease-in;
 }
 
+/* Apply rules — diff table. Rows with a real diff get a coloured
+   left border to make scanning a long pass quick; the (rare) noop
+   rows that survive somehow stay neutral. Cells use word-break to
+   keep long Cyrillic / CJK paragraphs from blowing the column out
+   horizontally. */
+.rules-view .rules-diff {
+  margin-top: 1rem;
+  table-layout: fixed;
+  width: 100%;
+}
+.rules-view .rules-diff th,
+.rules-view .rules-diff td {
+  vertical-align: top;
+  word-break: break-word;
+  padding: 0.5rem 0.6rem;
+}
+.rules-view .rules-diff th.rules-label,
+.rules-view .rules-diff td.rules-label   { width: 9rem; white-space: nowrap; }
+.rules-view .rules-diff th.rules-actions,
+.rules-view .rules-diff td.rules-actions { width: 5rem;  text-align: right; white-space: nowrap; }
+.rules-view .rules-diff td.rules-current,
+.rules-view .rules-diff td.rules-suggested {
+  white-space: pre-wrap;       /* preserve dialog-turn newlines inside paragraph */
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.rules-view .rules-diff td.rules-suggested {
+  background: var(--pico-color-yellow-50, #fffbe6);
+}
+.rules-view .rules-diff tr.has-diff td.rules-current {
+  background: var(--pico-color-red-50, #fff5f5);
+}
+.rules-view .rules-diff tr.has-diff {
+  border-left: 3px solid var(--pico-color-yellow-400, #f0c200);
+}
+.rules-view .rules-diff button.tiny { margin-left: 0.25rem; }
+.rules-view article.warning {
+  border-left: 4px solid var(--pico-color-yellow-500, #d4a700);
+  background: var(--pico-color-yellow-50, #fffbe6);
+  padding: 0.6rem 0.8rem;
+  margin-top: 0.75rem;
+}
+
 /* Editor status bar — tiny, fixed at the bottom of the viewport,
    always visible while editing. Shows total chars / chars left /
    time left for the current chapter. Stays out of the way (low

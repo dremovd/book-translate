@@ -1653,3 +1653,94 @@ test('PoeTranslator.translateChapter: includes glossary and prior accepted chapt
     assert.match(all, /\[1\] Foo/);
   } finally { restore(); }
 });
+
+// ---------- applyRules (rule-based per-paragraph edit pass) ----------
+
+test('PoeTranslator.applyRules: returns only changed paragraphs (round-trip identical ones are filtered)', async () => {
+  // Model returns suggestions for paragraphs 1, 2, 3 — but suggestion
+  // for [2] is identical to the current text. The translator must
+  // drop [2] from the result so the diff view doesn't surface noops.
+  const chapter = {
+    title: 'Chapter Title',
+    paragraphs: [
+      { original: 'src1', translation: 'привет, мир' },
+      { original: 'src2', translation: 'unchanged' },
+      { original: 'src3', translation: 'badword' },
+    ],
+  };
+  const restore = withFetch(async () => mockResponse({ body: { choices: [{ message: { content:
+    '[1] привет, мир!\n\n[2] unchanged\n\n[3] goodword'
+  } }] } }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.applyRules(chapter, [], 'Rules: …');
+    assert.equal(out.titleSuggestion, null,
+      'no title in the response → no suggestion');
+    assert.deepEqual(out.suggestions, {
+      0: 'привет, мир!',
+      2: 'goodword',
+    }, 'paragraph 1 (idx 0) changed; paragraph 2 (idx 1) was a noop and is filtered; paragraph 3 (idx 2) changed');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.applyRules: title suggestion (response includes [0]) lands in titleSuggestion slot', async () => {
+  const chapter = {
+    title: 'Old Title',
+    translatedTitle: 'Old Title',
+    paragraphs: [{ original: 's', translation: 'p' }],
+  };
+  const restore = withFetch(async () => mockResponse({ body: { choices: [{ message: { content:
+    '[0] New Title\n\n[1] p'
+  } }] } }));
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.applyRules(chapter, [], 'normalise titles');
+    assert.equal(out.titleSuggestion, 'New Title');
+    assert.deepEqual(out.suggestions, {}, 'paragraph [1] was identical → filtered');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.applyRules: tags the call "apply-rules" for stats', async () => {
+  const calls = [];
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: '' } }] } }));
+  try {
+    const t = new PoeTranslator({
+      apiKey: 'k', model: 'M', baseUrl: 'http://x',
+      onApiCall: (kind) => calls.push(kind),
+    });
+    await t.applyRules(
+      { title: 'T', paragraphs: [{ original: 's', translation: 'p' }] },
+      [], 'do thing'
+    );
+    assert.deepEqual(calls, ['apply-rules']);
+  } finally { restore(); }
+});
+
+test('PoeTranslator.applyRules: prompt includes the user rules verbatim + glossary + chapter context', async () => {
+  let captured = null;
+  const restore = withFetch(async (_url, opts) => {
+    captured = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: '' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const glossary = [{ term: 'X', translation: 'Икс', notes: '' }];
+    await t.applyRules(
+      { title: 'Ch', paragraphs: [{ original: 'src', translation: 'cur' }] },
+      glossary,
+      'Rule: replace X with Икс where applicable.'
+    );
+    const sys = captured.messages.find(m => m.role === 'system')?.content || '';
+    const allUser = captured.messages.filter(m => m.role === 'user').map(m => m.content).join('\n---\n');
+    // User's rules are reproduced verbatim somewhere in the prompt.
+    assert.match(sys + allUser, /Rule: replace X with Икс where applicable\./);
+    // Glossary block is present (formatGlossary line shape).
+    assert.match(sys, /X → Икс/);
+    // Numbered current translation is sent as input.
+    assert.match(allUser, /\[0\] Ch/);
+    assert.match(allUser, /\[1\] cur/);
+    // The "only changed paragraphs" instruction is in the system prompt.
+    assert.match(sys, /only the paragraphs|only changed|skip unchanged/i);
+  } finally { restore(); }
+});

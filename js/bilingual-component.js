@@ -127,6 +127,8 @@ function defaultConfig() {
     translationPromptPreset: 'v2',
     translationPromptCustom: '',
     translationGuidance: '',
+    // See component.js — last-used Apply-rules prompt, persisted per book.
+    applyRulesPrompt: '',
   };
 }
 
@@ -374,6 +376,7 @@ export function makeBilingualComponent() {
         ['glossary-translate',  'Glossary — translate terms'],
         ['bilingual-extract',   'Bilingual glossary — extract pairs'],
         ['bilingual-translate', 'Bilingual glossary — translate pairs'],
+        ['apply-rules',         'Apply rules — edit pass'],
       ];
       const calls = this.stats?.calls || {};
       const out = [];
@@ -463,6 +466,7 @@ export function makeBilingualComponent() {
     gotoSetup()    { this.view = 'setup'; },
     gotoGlossary() { if (this.glossary.length) this.view = 'glossary'; },
     gotoStats()    { this.view = 'stats'; },
+    gotoRules()    { this.view = 'rules'; },
     selectChapter(i) {
       const ch = this.book?.chapters?.[i];
       if (!ch || ch.status === 'pending') return;
@@ -578,6 +582,111 @@ export function makeBilingualComponent() {
           throw e; // _runBusy surfaces it as this.error
         }
       });
+    },
+
+    // ---------- Apply rules — see component.js for the full doc. ----------
+    async runRulesPass(prompt) {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      if (!ch) return;
+      const text = (prompt || '').trim();
+      if (!text) return;
+      this.config.applyRulesPrompt = prompt;
+      await this._runBusy(async () => {
+        const t = this._makeTranslator();
+        if (typeof t.applyRules !== 'function') {
+          throw new Error('This backend does not support the Apply rules pass.');
+        }
+        const glossary = this._glossarySubsetForChapter(this.currentChapterIndex);
+        const { titleSuggestion, suggestions } = await t.applyRules(
+          ch, glossary, prompt,
+          { referenceText: ch.referenceText },
+        );
+        ch.pendingPass = {
+          prompt,
+          ranAt: new Date().toISOString(),
+          titleSuggestion: titleSuggestion ?? null,
+          suggestions: { ...(suggestions || {}) },
+        };
+        this._tidyPendingPass(ch);
+      });
+    },
+    acceptRule(idx) {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      const pp = ch?.pendingPass;
+      if (!ch || !pp) return;
+      if (idx === 'title') {
+        if (typeof pp.titleSuggestion === 'string') {
+          ch.translatedTitle = pp.titleSuggestion;
+          pp.titleSuggestion = null;
+        }
+      } else if (typeof idx === 'number' && Object.prototype.hasOwnProperty.call(pp.suggestions, idx)) {
+        const text = pp.suggestions[idx];
+        if (ch.paragraphs?.[idx]) {
+          ch.paragraphs[idx].translation = text;
+          ch.paragraphs[idx].status = 'translated';
+        }
+        delete pp.suggestions[idx];
+      }
+      this._recordWork();
+      this._tidyPendingPass(ch);
+    },
+    rejectRule(idx) {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      const pp = ch?.pendingPass;
+      if (!ch || !pp) return;
+      if (idx === 'title') pp.titleSuggestion = null;
+      else if (typeof idx === 'number') delete pp.suggestions[idx];
+      this._tidyPendingPass(ch);
+    },
+    discardRulesPass() {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      if (!ch?.pendingPass) return;
+      if (!this._confirm('Discard the pending rule-pass suggestions for this chapter?')) return;
+      ch.pendingPass = null;
+    },
+    _tidyPendingPass(ch) {
+      const pp = ch?.pendingPass;
+      if (!pp) return;
+      const noTitle = pp.titleSuggestion == null;
+      const noSuggestions = !pp.suggestions || Object.keys(pp.suggestions).length === 0;
+      if (noTitle && noSuggestions) ch.pendingPass = null;
+    },
+    get pendingPassStaleParagraphs() {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      const pp = ch?.pendingPass;
+      if (!pp) return [];
+      const out = [];
+      for (const [k, sugg] of Object.entries(pp.suggestions || {})) {
+        const idx = Number(k);
+        const current = ch.paragraphs?.[idx]?.translation || '';
+        if (current === sugg) out.push(idx);
+      }
+      return out;
+    },
+    get pendingPassRows() {
+      const ch = this.book?.chapters?.[this.currentChapterIndex];
+      const pp = ch?.pendingPass;
+      if (!pp) return [];
+      const rows = [];
+      if (typeof pp.titleSuggestion === 'string') {
+        rows.push({
+          key: 'title',
+          label: 'Chapter title',
+          current: ch.translatedTitle || ch.title || '',
+          suggestion: pp.titleSuggestion,
+        });
+      }
+      const idxs = Object.keys(pp.suggestions || {})
+        .map(Number).sort((a, b) => a - b);
+      for (const idx of idxs) {
+        rows.push({
+          key: idx,
+          label: `Paragraph ${idx + 1}`,
+          current: ch.paragraphs?.[idx]?.translation || '',
+          suggestion: pp.suggestions[idx],
+        });
+      }
+      return rows;
     },
 
     async retranslateCurrent() {

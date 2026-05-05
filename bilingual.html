@@ -28,6 +28,7 @@
         <li><a href="#" @click.prevent="gotoSetup()">Setup</a></li>
         <li><a href="#" @click.prevent="gotoGlossary()" x-show="glossary.length">Glossary</a></li>
         <li><a href="#" @click.prevent="view = 'editor'" x-show="book && anyTranslated">Editor</a></li>
+        <li><a href="#" @click.prevent="gotoRules()" x-show="book && anyTranslated">Apply rules</a></li>
         <li><a href="#" @click.prevent="gotoStats()" x-show="hasAnyStats">Stats</a></li>
         <li>
           <button class="secondary outline" type="button"
@@ -310,6 +311,69 @@
           Reset stats
         </button>
       </p>
+    </section>
+
+    <!-- APPLY RULES — see index.html for the section's structure. -->
+    <section x-show="view === 'rules'" x-cloak class="container rules-view">
+      <hgroup>
+        <h2>Apply rules — chapter <span x-text="(currentChapterIndex + 1)"></span></h2>
+        <p>Run a model pass over the current chapter's translation. Type your rules below — the model returns only the paragraphs that need to change. Review each diff one at a time: <strong>→</strong> accepts the suggestion, <strong>×</strong> rejects it. Glossary, translation guidance, and dialog conventions are auto-injected; the rules below stack on top.</p>
+      </hgroup>
+
+      <label>Rules
+        <textarea rows="6" x-model="config.applyRulesPrompt"
+          placeholder="e.g. Replace every standalone «...» with a short action or facial expression. Or: normalize all em-dashes to use a single space on each side."></textarea>
+      </label>
+
+      <div role="group" style="margin-top: 0.5rem;">
+        <button @click="runRulesPass(config.applyRulesPrompt)"
+                :disabled="busy || !config.applyRulesPrompt?.trim()"
+                :aria-busy="busy && view === 'rules'" type="button">
+          <span x-text="busy ? 'Running…' : (book?.chapters?.[currentChapterIndex]?.pendingPass ? 'Re-run pass' : 'Run pass')"></span>
+        </button>
+        <button class="secondary outline"
+                @click="discardRulesPass()"
+                x-show="book?.chapters?.[currentChapterIndex]?.pendingPass" x-cloak
+                type="button">
+          Discard pending pass
+        </button>
+      </div>
+
+      <article x-show="pendingPassStaleParagraphs.length" x-cloak role="alert" class="warning">
+        <strong>Stale suggestions.</strong>
+        Paragraphs that round-trip identical to the suggestion (you may have already edited them):
+        <span x-text="pendingPassStaleParagraphs.map(i => i + 1).join(', ')"></span>.
+      </article>
+
+      <p x-show="!book?.chapters?.[currentChapterIndex]?.pendingPass" x-cloak>
+        <small>No pending pass. Type rules above and click <em>Run pass</em>.</small>
+      </p>
+
+      <table x-show="pendingPassRows.length" x-cloak class="rules-diff">
+        <thead>
+          <tr>
+            <th class="rules-label">#</th>
+            <th>Current</th>
+            <th>Suggested</th>
+            <th class="rules-actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in pendingPassRows" :key="row.key">
+            <tr class="rules-row" :class="row.current === row.suggestion ? 'is-noop' : 'has-diff'">
+              <td class="rules-label" x-text="row.label"></td>
+              <td class="rules-current"   x-text="row.current"></td>
+              <td class="rules-suggested" x-text="row.suggestion"></td>
+              <td class="rules-actions">
+                <button class="tiny" type="button" @click="acceptRule(row.key)"
+                        title="Accept the suggestion (replaces the paragraph)">→</button>
+                <button class="tiny secondary outline" type="button" @click="rejectRule(row.key)"
+                        title="Reject the suggestion (keeps the current paragraph)">×</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
     </section>
 
     <!-- EDITOR -->

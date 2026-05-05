@@ -22,4 +22,7 @@
 //   v3 — partial-paragraph retranslate: selecting text inside a
 //        translation cell scopes the retranslate buttons to that
 //        fragment only; rest of the paragraph stays intact.
-export const APP_VERSION = 3;
+//   v4 — Apply rules tab: per-chapter rule-based edit pass with a
+//        persisted pending-suggestions diff and per-paragraph
+//        accept/reject buttons.
+export const APP_VERSION = 4;
