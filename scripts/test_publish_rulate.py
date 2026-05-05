@@ -58,6 +58,60 @@ class TestParseChaptersMd(unittest.TestCase):
         self.assertEqual(len(out[0]['paragraphs']), 2)
         self.assertEqual(out[0]['paragraphs'][0].count('\n'), 2)
 
+    def test_strips_leading_zero_from_chapter_numbers(self):
+        # Local .md exports chapters as `Глава 01`, `Глава 02`, …
+        # Rulate stores them as `Глава 1`, `Глава 2`, …
+        # Without normalisation, the publisher's title-based classify
+        # treats `Глава 01` as a brand-new chapter and re-uploads it.
+        md = (
+            '# Глава 01\n\nbody1\n\n'
+            '# Глава 02\n\nbody2\n\n'
+            '# Глава 10\n\nbody10\n'
+        )
+        out = publish_rulate.parse_chapters_md(md)
+        titles = [c['title'] for c in out]
+        # Leading zeros stripped on 01, 02; 10 has none and stays.
+        self.assertEqual(titles, ['Глава 1', 'Глава 2', 'Глава 10'])
+
+    def test_does_not_touch_non_chapter_titles(self):
+        # The normalization is anchored on the literal "Глава " prefix —
+        # other heading shapes pass through verbatim.
+        md = (
+            '# Prologue\n\nbody\n\n'
+            '# Section 01\n\nbody\n'
+        )
+        out = publish_rulate.parse_chapters_md(md)
+        titles = [c['title'] for c in out]
+        self.assertEqual(titles, ['Prologue', 'Section 01'])
+
+
+class TestNormalizeChapterTitle(unittest.TestCase):
+    def test_strips_one_leading_zero(self):
+        self.assertEqual(publish_rulate.normalize_chapter_title('Глава 01'),  'Глава 1')
+        self.assertEqual(publish_rulate.normalize_chapter_title('Глава 09'),  'Глава 9')
+
+    def test_double_digit_chapters_pass_through(self):
+        self.assertEqual(publish_rulate.normalize_chapter_title('Глава 10'),  'Глава 10')
+        self.assertEqual(publish_rulate.normalize_chapter_title('Глава 100'), 'Глава 100')
+
+    def test_strips_multiple_leading_zeros(self):
+        # Edge case: defensive against zero-padded triple-digit forms
+        # like "Глава 001" if anyone configures three-digit padding.
+        self.assertEqual(publish_rulate.normalize_chapter_title('Глава 001'), 'Глава 1')
+        self.assertEqual(publish_rulate.normalize_chapter_title('Глава 012'), 'Глава 12')
+
+    def test_non_chapter_strings_unchanged(self):
+        self.assertEqual(publish_rulate.normalize_chapter_title('Prologue'), 'Prologue')
+        self.assertEqual(publish_rulate.normalize_chapter_title('Часть 01'), 'Часть 01')
+
+    def test_titles_with_subtitles_after_the_number(self):
+        # If the title has more after the number (e.g. "Глава 01: …"),
+        # only the leading zero is stripped, not anything else.
+        self.assertEqual(
+            publish_rulate.normalize_chapter_title('Глава 01: Знакомство'),
+            'Глава 1: Знакомство',
+        )
+
 
 class TestComputeParts(unittest.TestCase):
     def test_threshold_boundaries_target_5000(self):

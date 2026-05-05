@@ -257,17 +257,40 @@ def load_env(path: Path) -> dict:
 # ----------------------------------------------------------------------
 # Pure logic — parse / size / split / queue / render
 # ----------------------------------------------------------------------
+def normalize_chapter_title(title: str) -> str:
+    """Strip leading zeros from chapter numbers in titles like "Глава 01".
+
+    The local .md export pads chapter numbers ("Глава 01", "Глава 02",
+    …); the rulate site stores titles without the pad ("Глава 1", "Глава
+    2", …). Without normalising, the publisher's title-based classify
+    sees "Глава 01" on disk and "Глава 1" on the server, treats them as
+    different chapters, and tries to CREATE a duplicate.
+
+    Anchored on the literal "Глава " prefix and only touches the digits
+    immediately following — anything else (Prologue, Часть, subtitles
+    after the number) passes through verbatim. Multi-digit numbers
+    without a leading zero are unchanged.
+    """
+    if not title:
+        return title
+    return re.sub(r'^(Глава )0+(\d)', r'\1\2', title)
+
+
 def parse_chapters_md(md: str) -> list[dict]:
     """Split the project's standard .md export into chapters.
 
     Each chapter is everything between consecutive H1 headings; any
     content before the first H1 is treated as a book-level preface and
     dropped (matches js/parse.js).
+
+    Chapter titles are normalised through `normalize_chapter_title` so
+    "Глава 01" becomes "Глава 1" — see that function's docstring for
+    the rationale (rulate-side title de-duplication).
     """
     parts = re.split(r'(?m)^# (.+)$', md)
     out = []
     for i in range(1, len(parts), 2):
-        title = parts[i].strip()
+        title = normalize_chapter_title(parts[i].strip())
         body = parts[i + 1] if i + 1 < len(parts) else ''
         paragraphs = [p.strip() for p in body.split('\n\n') if p.strip()]
         out.append({'title': title, 'paragraphs': paragraphs})
