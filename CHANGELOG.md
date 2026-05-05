@@ -18,6 +18,31 @@ tool versions without intervention. Going the other way (a newer
 export into an older tool) silently drops fields the older code
 doesn't know about; the version stamp lets you recognize that case.
 
+## v3 — 2026-05-05
+
+**Partial-paragraph retranslate.** The four retranslate buttons under
+each paragraph (`↻ retranslate`, `↻ stricter`, `↻ more natural`,
+`↻ <model2>`) now respect the user's text selection inside the
+translation cell:
+
+- If a non-empty range is selected inside the textarea (cell in editor
+  mode), the retranslate replaces ONLY that fragment — the rest of the
+  paragraph (including any custom edits the user made elsewhere in the
+  cell) stays untouched. The full paragraph is sent to the model as
+  context so voice/register stays consistent.
+- Cursor-only / no selection / select-all / rendered-view click all
+  fall through to the existing whole-paragraph behavior. No accidental
+  partial mode.
+- Implementation: HTML passes `$refs.editor` (the per-row textarea) to
+  the click handler; `_selectionFromTextarea` decides between partial
+  and full mode; `PoeTranslator._translateParagraphSelection` is the
+  new prompt branch that asks the model for just the replacement text;
+  the component splices the result back at the original `[start, end)`
+  range.
+
+State shape unchanged from v2 — only translator/component behavior and
+the new selection-aware prompt branch.
+
 ## v2 — 2026-05-05
 
 Consolidated changes since `version: 1` was first set in the export

@@ -746,11 +746,23 @@ export function makeComponent() {
     // toward literal fidelity ('strict') or toward native-target fluency
     // ('natural'). Passes only the glossary entries whose provenance
     // includes the current chapter — keeps the prompt focused.
-    async retranslateParagraph(pIdx, mode, modelOverride = null) {
+    //
+    // textareaEl is the live `<textarea x-ref="editor">` for this row,
+    // forwarded by the click handler in the editor template. When the
+    // user has selected a non-empty, strict-subset range inside that
+    // textarea, the retranslate scopes to JUST that fragment — rest of
+    // the paragraph (including any other manual edits) stays untouched.
+    // Cursor-only / no selection / select-all all fall through to the
+    // existing whole-paragraph behavior so this can't accidentally
+    // shrink a click into a partial rewrite.
+    async retranslateParagraph(pIdx, mode, modelOverride = null, textareaEl = null) {
       const chIdx = this.currentChapterIndex;
       const ch = this.book?.chapters?.[chIdx];
       const p = ch?.paragraphs?.[pIdx];
       if (!p) return;
+
+      const selection = this._selectionFromTextarea(textareaEl, p.translation || '');
+
       await this._runBusy(async () => {
         const translator = this._makeTranslator(
           modelOverride ? { model: modelOverride } : {}
@@ -767,20 +779,54 @@ export function makeComponent() {
         const priorParagraphs = ch.paragraphs
           .slice(Math.max(0, pIdx - 5), pIdx)
           .map(pp => ({ original: pp.original, translation: pp.translation }));
-        const newText = await translator.translateParagraph(p, mode, subset, {
-          chapterTitle: ch.title,
-          priorParagraphs,
-        });
-        p.translation = newText;
+
+        if (selection) {
+          // Partial-mode: model returns the replacement text only;
+          // splice it back at the original [start, end) range.
+          const replacement = await translator.translateParagraph(p, mode, subset, {
+            chapterTitle: ch.title,
+            priorParagraphs,
+            currentTranslation: p.translation || '',
+            selection,
+          });
+          const before = (p.translation || '').slice(0, selection.start);
+          const after  = (p.translation || '').slice(selection.end);
+          p.translation = before + replacement + after;
+        } else {
+          const newText = await translator.translateParagraph(p, mode, subset, {
+            chapterTitle: ch.title,
+            priorParagraphs,
+          });
+          p.translation = newText;
+        }
         p.status = 'translated';
         this._autosizeAll();
       });
     },
-    async retranslateParagraphWithModel2(pIdx) {
+    async retranslateParagraphWithModel2(pIdx, textareaEl = null) {
       const m2 = (this.config.model2 || '').trim();
       if (!m2) return;
       // Default mode + the alt model — see `config.model2` for use case.
-      await this.retranslateParagraph(pIdx, 'default', m2);
+      await this.retranslateParagraph(pIdx, 'default', m2, textareaEl);
+    },
+
+    // Pull a textarea selection into the {start, end, text} shape the
+    // translator expects, OR null if there's nothing useful to scope
+    // to. Three reasons to fall through to whole-paragraph mode:
+    //   1. No textarea was provided (rendered-view click path).
+    //   2. Selection is cursor-only (start == end).
+    //   3. Selection covers the entire field (effectively whole-paragraph).
+    // For #2 and #3, "whole paragraph" is what the user almost certainly
+    // wants and matches the pre-selection-mode behavior, so falling
+    // through is the safe default.
+    _selectionFromTextarea(textareaEl, fullText) {
+      if (!textareaEl) return null;
+      const start = textareaEl.selectionStart;
+      const end   = textareaEl.selectionEnd;
+      if (typeof start !== 'number' || typeof end !== 'number') return null;
+      if (end <= start) return null;
+      if (start === 0 && end === (fullText || '').length) return null;
+      return { start, end, text: (fullText || '').slice(start, end) };
     },
 
     // Glossary entries whose provenance includes the given chapter index.

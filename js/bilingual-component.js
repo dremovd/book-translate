@@ -600,7 +600,12 @@ export function makeBilingualComponent() {
     // Per-paragraph retranslate. Sends the full reference chapter as
     // context so the model can find the corresponding passage on the
     // source-of-truth side and translate from its meaning.
-    async retranslateParagraph(i, mode, modelOverride = null) {
+    //
+    // textareaEl: same selection-aware contract as the singular editor;
+    // when the user has a non-trivial range selected inside the cell's
+    // textarea, only that fragment is replaced. See component.js for
+    // the rationale + the safeguards against accidental partial mode.
+    async retranslateParagraph(i, mode, modelOverride = null, textareaEl = null) {
       if (!this.book || this.busy) return;
       const ch = this.book.chapters[this.currentChapterIndex];
       if (!ch) return;
@@ -608,22 +613,48 @@ export function makeBilingualComponent() {
       if (!p) return;
       const subset = this._glossarySubsetForChapter(this.currentChapterIndex);
       const priorParagraphs = ch.paragraphs.slice(Math.max(0, i - 5), i);
+      const selection = this._selectionFromTextarea(textareaEl, p.translation || '');
       this._recordWork();
       await this._runBusy(async () => {
         const t = this._makeTranslator(modelOverride ? { model: modelOverride } : {});
-        const out = await t.translateParagraph(p, mode, subset, {
-          chapterTitle: ch.title,
-          priorParagraphs,
-          referenceText: ch.referenceText,
-        });
-        p.translation = out;
+        if (selection) {
+          const replacement = await t.translateParagraph(p, mode, subset, {
+            chapterTitle: ch.title,
+            priorParagraphs,
+            referenceText: ch.referenceText,
+            currentTranslation: p.translation || '',
+            selection,
+          });
+          const before = (p.translation || '').slice(0, selection.start);
+          const after  = (p.translation || '').slice(selection.end);
+          p.translation = before + replacement + after;
+        } else {
+          const out = await t.translateParagraph(p, mode, subset, {
+            chapterTitle: ch.title,
+            priorParagraphs,
+            referenceText: ch.referenceText,
+          });
+          p.translation = out;
+        }
         p.status = 'translated';
       });
     },
-    async retranslateParagraphWithModel2(i) {
+    async retranslateParagraphWithModel2(i, textareaEl = null) {
       const m2 = (this.config.model2 || '').trim();
       if (!m2) return;
-      await this.retranslateParagraph(i, 'default', m2);
+      await this.retranslateParagraph(i, 'default', m2, textareaEl);
+    },
+
+    // See component.js#_selectionFromTextarea — same shape, same
+    // safeguards for falling through to whole-paragraph mode.
+    _selectionFromTextarea(textareaEl, fullText) {
+      if (!textareaEl) return null;
+      const start = textareaEl.selectionStart;
+      const end   = textareaEl.selectionEnd;
+      if (typeof start !== 'number' || typeof end !== 'number') return null;
+      if (end <= start) return null;
+      if (start === 0 && end === (fullText || '').length) return null;
+      return { start, end, text: (fullText || '').slice(start, end) };
     },
 
     _glossarySubsetForChapter(chapterIdx) {

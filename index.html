@@ -389,30 +389,35 @@
                           @blur="editing = false"
                           @input="autosize($event.target)"></textarea>
                 <div class="paragraph-actions">
+                  <!-- $refs.editor is the per-row textarea (x-data scope).
+                       When the user has selected text inside it, the
+                       retranslate replaces only that fragment; otherwise
+                       it retranslates the whole paragraph (current
+                       behavior). See _selectionFromTextarea. -->
                   <button class="tiny" type="button"
-                          @click="retranslateParagraph(i, 'default')"
+                          @click="retranslateParagraph(i, 'default', null, $refs.editor)"
                           :disabled="busy || config.translator === 'dummy'"
-                          title="Re-translate this paragraph with the default prompt (no strict/natural bias)">
+                          title="Re-translate this paragraph (default — no strict/natural bias). If text is selected inside the cell, only the selection is replaced.">
                     ↻ retranslate
                   </button>
                   <button class="tiny" type="button"
-                          @click="retranslateParagraph(i, 'strict')"
+                          @click="retranslateParagraph(i, 'strict', null, $refs.editor)"
                           :disabled="busy || config.translator === 'dummy'"
-                          title="Retranslate this paragraph, biased toward literal fidelity">
+                          title="Retranslate biased toward literal fidelity. If text is selected, only the selection is replaced.">
                     ↻ stricter
                   </button>
                   <button class="tiny" type="button"
-                          @click="retranslateParagraph(i, 'natural')"
+                          @click="retranslateParagraph(i, 'natural', null, $refs.editor)"
                           :disabled="busy || config.translator === 'dummy'"
-                          title="Retranslate this paragraph, biased toward native-target naturalness">
+                          title="Retranslate biased toward native-target naturalness. If text is selected, only the selection is replaced.">
                     ↻ more natural
                   </button>
                   <button class="tiny" type="button"
-                          @click="retranslateParagraphWithModel2(i)"
+                          @click="retranslateParagraphWithModel2(i, $refs.editor)"
                           :disabled="busy || config.translator === 'dummy'"
                           x-show="(config.model2 || '').trim()"
                           x-cloak
-                          :title="`Retranslate this paragraph via ${config.model2} (default mode)`">
+                          :title="`Retranslate via ${config.model2} (default mode). If text is selected, only the selection is replaced.`">
                     ↻ <span x-text="(config.model2 || '').trim().slice(0, 15)"></span>
                   </button>
                 </div>

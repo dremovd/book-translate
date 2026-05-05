@@ -499,9 +499,17 @@ export class PoeTranslator {
   //   paragraph: { original, translation?, status? }
   //   mode: 'strict' | 'natural'
   //   glossary: subset of entries the caller deems relevant
-  //   context: { chapterTitle?, priorParagraphs?: [{original, translation}] }
-  // Returns the translated text as a plain string.
+  //   context: { chapterTitle?, priorParagraphs?: [{original, translation}],
+  //              referenceText?, currentTranslation?,
+  //              selection?: { start, end, text } }
+  // Returns the translated text as a plain string. With context.selection
+  // present, the prompt switches to "rewrite only this fragment" mode and
+  // the caller is expected to splice the result back in — see
+  // _translateParagraphSelection below.
   async translateParagraph(paragraph, mode, glossary, context = {}) {
+    if (context.selection) {
+      return this._translateParagraphSelection(paragraph, mode, glossary, context);
+    }
     const lang = this.config.targetLanguage || 'the target language';
     // Three modes: 'strict' (literal-bias), 'natural' (native-target-bias),
     // anything else (default / no bias) — the per-book style preset alone.
@@ -589,6 +597,88 @@ export class PoeTranslator {
     // speech line surrounded by quotes, the matching quotes around the
     // output are carrying the same meaning and must stay.
     return isWrappedInMatchingQuotes(paragraph.original)
+      ? unlabeled
+      : unwrapOuterQuotes(unlabeled);
+  }
+
+  // Partial-paragraph rewrite. The caller has selected a range inside
+  // the paragraph's CURRENT translation; we ask the model to rewrite
+  // ONLY that fragment, with the rest of the paragraph as context so
+  // voice/register stay consistent. Returns just the replacement text;
+  // the component splices it back at [selection.start, selection.end].
+  //
+  // Why a separate method: the prompt shape diverges enough that
+  // multiplexing inside translateParagraph hurts readability. Same
+  // glossary, dialog, markers, and translationGuidance blocks still
+  // apply — they're appended to the system message as before.
+  async _translateParagraphSelection(paragraph, mode, glossary, context = {}) {
+    const lang = this.config.targetLanguage || 'the target language';
+    const strict  = mode === 'strict';
+    const natural = mode === 'natural';
+    const modeInstruction =
+        strict  ? `BIAS (strict): keep the replacement faithful to the original at the sentence/clause level. Conservative phrasing.`
+      : natural ? `BIAS (natural): make the replacement read as native ${lang} prose; restructure within the fragment freely so it reads idiomatically.`
+                : '';
+
+    const sel = context.selection;
+    const fullTr = context.currentTranslation ?? paragraph.translation ?? '';
+
+    const dialog = dialogConventionsFor(lang);
+    const dialogBlock = dialog
+      ? `\n\nDialog formatting (${lang}): ${dialog}`
+      : '';
+    const guidanceBlock = this._translationGuidanceSection();
+    const markersBlock  = this._inlineMarkersSection();
+
+    const messages = [
+      {
+        role: 'system',
+        content:
+          `You are revising ONE small fragment inside a paragraph translation into ${lang}. ` +
+          `The rest of the paragraph stays untouched — only the SELECTED FRAGMENT will be replaced with your output. ` +
+          `Output ONLY the replacement text for the selected fragment. No labels, no leading/trailing blank lines, ` +
+          `and do NOT wrap your output in quotation marks unless the selected fragment itself was wrapped in matching quotes (then preserve them). ` +
+          `Match the voice, register, and rhythm of the surrounding paragraph so the replacement reads naturally when spliced back into place. ` +
+          `${modeInstruction}${guidanceBlock}${dialogBlock}${markersBlock}\n\n` +
+          `Use this glossary for consistency:\n${formatGlossary(glossary)}`,
+      },
+    ];
+    if (context.chapterTitle) {
+      messages.push({ role: 'user', content: `Chapter: ${context.chapterTitle}` });
+    }
+    const refText = (context.referenceText || '').trim();
+    if (refText) {
+      messages.push({
+        role: 'user',
+        content:
+          `REFERENCE (source of truth for meaning, names, idioms — full chapter, ` +
+          `find the passage that corresponds to the paragraph below and translate from it):\n\n${refText}`,
+      });
+    }
+    messages.push({
+      role: 'user',
+      content:
+        `Original paragraph (source language):\n\n${paragraph.original}`,
+    });
+    messages.push({
+      role: 'user',
+      content:
+        `Current full translation (the SELECTED FRAGMENT below will be replaced):\n\n${fullTr}`,
+    });
+    messages.push({
+      role: 'user',
+      content:
+        `Selected fragment to revise (output ONLY the replacement):\n\n${sel.text}`,
+    });
+
+    const content = await this.chat(messages, {
+      temperature: strict ? 0.15 : 0.5,
+      kind: 'paragraph-translate',
+    });
+    const unlabeled = content.replace(/^\s*(?:Translation|Перевод)\s*:\s*/i, '').trim();
+    // Quote-unwrap rule mirrors the full-paragraph path: only strip
+    // outer quotes when the SELECTED FRAGMENT wasn't itself wrapped.
+    return isWrappedInMatchingQuotes(sel.text)
       ? unlabeled
       : unwrapOuterQuotes(unlabeled);
   }

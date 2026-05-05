@@ -1193,6 +1193,127 @@ test('charsPerHourTotal: based on ACCEPTED chapters only — in-progress chapter
   assert.equal(c.charsPerHourTotal, 690);
 });
 
+// ---------- partial-paragraph retranslate (selection mode) ----------
+
+// Build a textarea-shaped object with a selection, the way Alpine's
+// $refs.editor would surface to the click handler in a real browser.
+function fakeTextarea({ start, end, value }) {
+  return { selectionStart: start, selectionEnd: end, value };
+}
+
+test('retranslateParagraph: with non-trivial textarea selection, splices replacement only', async () => {
+  const c = await initInEditor();
+  c.config.translator = 'poe';
+  c.config.apiKey = 'k'; c.config.model = 'M'; c.config.baseUrl = 'http://x';
+  c.book.chapters[0].paragraphs[0].translation = 'Hello world, this is a test paragraph.';
+  // Select "world, this is a test" (indices 6..27, 21 chars).
+  const ta = fakeTextarea({ start: 6, end: 27, value: c.book.chapters[0].paragraphs[0].translation });
+
+  let captured = null;
+  const restore = withFetch(async (_url, opts) => {
+    captured = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'a different bit' } }] } });
+  });
+  try {
+    await c.retranslateParagraph(0, 'default', null, ta);
+    assert.equal(c.book.chapters[0].paragraphs[0].translation,
+      'Hello a different bit paragraph.');
+    // Prompt mentions the selection mode.
+    const sys = captured.messages.find(m => m.role === 'system')?.content || '';
+    assert.match(sys, /selected fragment|SELECTED FRAGMENT/i);
+  } finally { restore(); }
+});
+
+test('retranslateParagraph: empty/cursor-only selection falls through to full-paragraph mode', async () => {
+  const c = await initInEditor();
+  c.config.translator = 'poe';
+  c.config.apiKey = 'k'; c.config.model = 'M'; c.config.baseUrl = 'http://x';
+  c.book.chapters[0].paragraphs[0].translation = 'unchanged';
+  // start == end → cursor only, no real selection.
+  const ta = fakeTextarea({ start: 4, end: 4, value: 'unchanged' });
+
+  let captured = null;
+  const restore = withFetch(async (_url, opts) => {
+    captured = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'WHOLE PARAGRAPH' } }] } });
+  });
+  try {
+    await c.retranslateParagraph(0, 'default', null, ta);
+    assert.equal(c.book.chapters[0].paragraphs[0].translation, 'WHOLE PARAGRAPH');
+    const sys = captured.messages.find(m => m.role === 'system')?.content || '';
+    assert.doesNotMatch(sys, /selected fragment|SELECTED FRAGMENT/i,
+      'cursor-only selection must not engage partial-mode prompt');
+  } finally { restore(); }
+});
+
+test('retranslateParagraph: select-all also falls through to full-paragraph mode', async () => {
+  const c = await initInEditor();
+  c.config.translator = 'poe';
+  c.config.apiKey = 'k'; c.config.model = 'M'; c.config.baseUrl = 'http://x';
+  const text = 'all of it';
+  c.book.chapters[0].paragraphs[0].translation = text;
+  const ta = fakeTextarea({ start: 0, end: text.length, value: text });
+  let captured = null;
+  const restore = withFetch(async (_url, opts) => {
+    captured = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'whole replaced' } }] } });
+  });
+  try {
+    await c.retranslateParagraph(0, 'default', null, ta);
+    assert.equal(c.book.chapters[0].paragraphs[0].translation, 'whole replaced');
+    const sys = captured.messages.find(m => m.role === 'system')?.content || '';
+    assert.doesNotMatch(sys, /selected fragment|SELECTED FRAGMENT/i,
+      'whole-text selection is treated as full-paragraph retranslate');
+  } finally { restore(); }
+});
+
+test('retranslateParagraph: omitted textareaEl preserves the prior full-paragraph behavior', async () => {
+  // Calls from the rendered (non-edit) view path don't pass a
+  // textarea — must keep working exactly as before.
+  const c = await initInEditor();
+  c.config.translator = 'poe';
+  c.config.apiKey = 'k'; c.config.model = 'M'; c.config.baseUrl = 'http://x';
+  c.book.chapters[0].paragraphs[0].translation = 'original';
+  const restore = withFetch(async () =>
+    mockResponse({ body: { choices: [{ message: { content: 'fresh' } }] } }));
+  try {
+    await c.retranslateParagraph(0, 'default'); // no textareaEl
+    assert.equal(c.book.chapters[0].paragraphs[0].translation, 'fresh');
+  } finally { restore(); }
+});
+
+test('PoeTranslator.translateParagraph: with context.selection, prompt asks for replacement of just that fragment', async () => {
+  const { PoeTranslator } = await import('../js/translators/poe.js');
+  let captured = null;
+  const restore = withFetch(async (_url, opts) => {
+    captured = JSON.parse(opts.body);
+    return mockResponse({ body: { choices: [{ message: { content: 'replacement' } }] } });
+  });
+  try {
+    const t = new PoeTranslator({ apiKey: 'k', model: 'M', baseUrl: 'http://x' });
+    const out = await t.translateParagraph(
+      { original: 'Source paragraph here.' },
+      'default',
+      [],
+      {
+        chapterTitle: 'Ch 1',
+        priorParagraphs: [],
+        currentTranslation: 'Hello world, this is a test paragraph.',
+        selection: { start: 6, end: 27, text: 'world, this is a test' },
+      },
+    );
+    assert.equal(out, 'replacement');
+    const sys = captured.messages.find(m => m.role === 'system')?.content || '';
+    assert.match(sys, /selected fragment|SELECTED FRAGMENT/i);
+    // The current translation must be visible to the model so it can
+    // match voice/register.
+    const allUserMsgs = captured.messages
+      .filter(m => m.role === 'user').map(m => m.content).join('\n---\n');
+    assert.match(allUserMsgs, /Hello world, this is a test paragraph/);
+    assert.match(allUserMsgs, /world, this is a test/);
+  } finally { restore(); }
+});
+
 // ---------- chapter progress / status bar ----------
 
 test('chapterProgressInfo: null outside the editor view (no chapter to estimate)', async () => {

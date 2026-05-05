@@ -14,10 +14,12 @@
 //
 // History (full detail in CHANGELOG.md):
 //   v1 — initial shape, before glossary/stats/projectName landed.
-//   v2 — current shape: glossary terminology, projectName field,
-//        per-book stats with typed call counts and per-chapter
-//        work-minute tracking, ✓ Saved indicator (replaces Save
-//        button), chars/h header rate, Avg time column with
-//        untimed-call exclusion, Reset stats action, Russian
-//        speech-tag vs action dialog rule.
-export const APP_VERSION = 2;
+//   v2 — glossary rename, projectName field, stats (typed call
+//        counts + per-chapter work minutes), ✓ Saved indicator,
+//        chars/h header rate, Avg time column with untimed-call
+//        exclusion, Reset stats, Russian speech-tag vs action rule,
+//        editor status bar with chars-left / time-left estimates.
+//   v3 — partial-paragraph retranslate: selecting text inside a
+//        translation cell scopes the retranslate buttons to that
+//        fragment only; rest of the paragraph stays intact.
+export const APP_VERSION = 3;
