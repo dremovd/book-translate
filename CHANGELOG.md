@@ -18,6 +18,30 @@ tool versions without intervention. Going the other way (a newer
 export into an older tool) silently drops fields the older code
 doesn't know about; the version stamp lets you recognize that case.
 
+## v6 — 2026-05-05
+
+**Apply-rules tab gets the editor-grid layout.** Previously the tab
+showed only the diff table after a pass had run, with no way to
+navigate between chapters or read the source while typing the rules.
+
+Now:
+- **Chapter sidebar** on the left (same affordance as the editor
+  view): click any non-pending chapter to switch the rules tab to
+  that chapter. A small dot marker next to chapter titles flags
+  chapters with pending suggestions so multi-chapter passes are
+  easy to spot.
+- **Full chapter visible** on the right at all times: title row
+  plus every paragraph in order, even when no pass has run yet.
+  Useful for reading the chapter while typing the rules.
+- **Diff inline**: rows with a pending suggestion light up the
+  `Suggested` column + accept/reject buttons. Rows without a
+  suggestion stay neutral.
+
+Renamed the view-friendly getter from `pendingPassRows` (diffs
+only) to `chapterRulesRows` (all paragraphs annotated with optional
+suggestion) since the new layout shows every paragraph regardless
+of pending state.
+
 ## v5 — 2026-05-05
 
 **Russian dialog block: gesture/emotion/thought tags treated as speaker

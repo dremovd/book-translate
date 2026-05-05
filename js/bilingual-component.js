@@ -663,29 +663,27 @@ export function makeBilingualComponent() {
       }
       return out;
     },
-    get pendingPassRows() {
+    get chapterRulesRows() {
       const ch = this.book?.chapters?.[this.currentChapterIndex];
-      const pp = ch?.pendingPass;
-      if (!pp) return [];
-      const rows = [];
-      if (typeof pp.titleSuggestion === 'string') {
+      if (!ch) return [];
+      const pp = ch.pendingPass;
+      const titleSug = (pp && typeof pp.titleSuggestion === 'string') ? pp.titleSuggestion : null;
+      const suggestions = pp?.suggestions || {};
+      const rows = [{
+        key: 'title',
+        label: 'Chapter title',
+        current: ch.translatedTitle || ch.title || '',
+        suggestion: titleSug,
+      }];
+      (ch.paragraphs || []).forEach((p, i) => {
         rows.push({
-          key: 'title',
-          label: 'Chapter title',
-          current: ch.translatedTitle || ch.title || '',
-          suggestion: pp.titleSuggestion,
+          key: i,
+          label: `Paragraph ${i + 1}`,
+          current: p.translation || '',
+          suggestion: Object.prototype.hasOwnProperty.call(suggestions, i)
+            ? suggestions[i] : null,
         });
-      }
-      const idxs = Object.keys(pp.suggestions || {})
-        .map(Number).sort((a, b) => a - b);
-      for (const idx of idxs) {
-        rows.push({
-          key: idx,
-          label: `Paragraph ${idx + 1}`,
-          current: ch.paragraphs?.[idx]?.translation || '',
-          suggestion: pp.suggestions[idx],
-        });
-      }
+      });
       return rows;
     },
 

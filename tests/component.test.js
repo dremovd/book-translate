@@ -1313,6 +1313,38 @@ test('discardRulesPass: cancelling the confirm leaves pendingPass intact', async
   assert.ok(c.book.chapters[0].pendingPass, 'cancelled discard must keep the pass');
 });
 
+test('chapterRulesRows: lists title + every paragraph; suggestion field null when no pending pass', async () => {
+  const c = await initInEditor();
+  // SAMPLE has chapter 1 with two paragraphs; setDummyBook + acceptGlossary
+  // already populated translations.
+  const rows = c.chapterRulesRows;
+  // Title row + 2 paragraph rows = 3.
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].key, 'title');
+  assert.equal(rows[0].suggestion, null);
+  assert.equal(rows[1].key, 0);
+  assert.equal(rows[1].label, 'Paragraph 1');
+  assert.equal(rows[1].suggestion, null,
+    'no pending pass → all suggestions are null');
+  assert.equal(rows[2].key, 1);
+});
+
+test('chapterRulesRows: suggestion field carries the pending value for paragraphs with a pass', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].pendingPass = {
+    prompt: 'r', ranAt: new Date().toISOString(),
+    titleSuggestion: 'New Title',
+    suggestions: { 1: 'paragraph 2 suggestion' },  // only paragraph idx=1
+  };
+  const rows = c.chapterRulesRows;
+  assert.equal(rows[0].suggestion, 'New Title',
+    'title slot picks up titleSuggestion');
+  assert.equal(rows[1].suggestion, null,
+    'paragraph 1 (idx 0) has no suggestion → null');
+  assert.equal(rows[2].suggestion, 'paragraph 2 suggestion',
+    'paragraph 2 (idx 1) has a suggestion');
+});
+
 test('chapter.pendingPass round-trips through persistNow / loadSaved', async () => {
   const c1 = await initInEditor();
   c1.book.chapters[0].pendingPass = {

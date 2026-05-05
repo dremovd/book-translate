@@ -38,7 +38,11 @@
   font-size: 0.95rem;
   line-height: 1.45;
 }
-.rules-view .rules-diff td.rules-suggested {
+/* Diff highlighting only fires on rows with a pending suggestion;
+   plain paragraph rows (no suggestion → empty `Suggested` cell)
+   stay neutral so reading the chapter doesn't feel like reading a
+   diff. */
+.rules-view .rules-diff tr.has-diff td.rules-suggested {
   background: var(--pico-color-yellow-50, #fffbe6);
 }
 .rules-view .rules-diff tr.has-diff td.rules-current {
@@ -46,6 +50,16 @@
 }
 .rules-view .rules-diff tr.has-diff {
   border-left: 3px solid var(--pico-color-yellow-400, #f0c200);
+}
+
+/* Sidebar marker: tiny dot next to a chapter title when it has a
+   pending Apply-rules pass. Lets the user spot pending work without
+   clicking through every chapter. */
+.rules-view .sidebar .rules-pending-mark {
+  color: var(--pico-color-yellow-500, #d4a700);
+  margin-left: 0.25rem;
+  font-size: 0.7rem;
+  vertical-align: super;
 }
 .rules-view .rules-diff button.tiny { margin-left: 0.25rem; }
 .rules-view article.warning {

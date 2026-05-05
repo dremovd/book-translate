@@ -31,4 +31,10 @@
 //        «— Не переживай, — она улыбнулась.»). Period + capital is
 //        now reserved for genuinely independent actions after the
 //        speech ends.
-export const APP_VERSION = 5;
+//   v6 — Apply-rules tab gets the editor-grid layout: chapter
+//        sidebar on the left for navigation, full chapter (title +
+//        every paragraph) always visible on the right, diff
+//        highlighting + accept/reject buttons inline only on rows
+//        with a pending suggestion. Sidebar shows a marker on
+//        chapters that have pending suggestions.
+export const APP_VERSION = 6;
