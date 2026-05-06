@@ -18,6 +18,73 @@ tool versions without intervention. Going the other way (a newer
 export into an older tool) silently drops fields the older code
 doesn't know about; the version stamp lets you recognize that case.
 
+## v9 — 2026-05-05
+
+**Apply-rules tab adopts the editor's grid layout.** The 4-column
+diff table (`# / Current / Suggested / Actions`) becomes the same
+two-column `.paragraphs` grid the editor uses: translation on the
+left at `--split-pct`, original on the right. Each row carries:
+
+- A tiny row-number badge above the translation (`T` / `1` / `2` …,
+  same compact label introduced in v7).
+- The current translation, rendered through `renderMd` so `**bold**`
+  shows as bold (the editor already did this in rendered mode; the
+  rules tab used `x-text` and showed literal asterisks).
+- On diff rows, the layout reads top-to-bottom as
+  **current → accept/reject buttons → suggestion**, so the eye
+  finds the decision point right at the boundary. The "before"
+  side gets a thin red left bar, the "after" side a thin yellow
+  one — no background fills (those were drowning out the text on
+  short paragraphs and looking like alert boxes). Non-diff rows
+  stay completely neutral so reading the chapter doesn't feel
+  like reading a diff.
+- The original paragraph in the right column, also markdown-
+  rendered.
+
+`chapterRulesRows` gained an `original` field for the new column;
+existing `current` / `suggestion` / `key` / `label` shape unchanged.
+The deprecated `.rules-diff` table CSS was replaced with grid-mode
+styles (`.rules-paragraphs`, `.rules-suggestion-block`, etc.).
+
+**Markdown bold in the Apply-rules tab.** The editor's rendered
+mode already mapped `**...**` → `<strong>` via `renderInlineMd`;
+the rules tab now does the same in both the current-translation
+and suggestion cells (and the original column on the right). The
+title row in the editor stays a plain `<input>` — single-line
+inputs can't render rich text without contenteditable, which would
+break paste behavior.
+
+## v8 — 2026-05-05
+
+**Apply-rules work tracked separately from translation work.**
+`stats.byChapter[idx]` is now split into two sub-buckets:
+
+- `editor` — minutes spent in the translation tab (typing, scrolling,
+  per-paragraph retranslate). Same shape as the previous flat entry.
+- `rules` — minutes spent in the Apply-rules tab (running passes,
+  scrolling the diff, accepting/rejecting suggestions).
+
+Each sub-bucket has its own `_lastMinute` dedup, so editor and rules
+work in the same wall-clock minute each get one bump rather than one
+combined. Multiple rules passes on the same chapter accumulate into
+the same `rules` sub-bucket, so iterations sum.
+
+`charsPerHourTotal` (and the editor status bar's time-left estimate)
+now denominate on **editor minutes only** — rules polishes existing
+text, it doesn't produce new chars, so mixing those minutes in would
+understate the editor's typing rate.
+
+The Stats table gains an **Rules min** column, sitting next to the
+existing Editor-min column. Chapters with only rules-tab work (no
+editor minutes) show `—` for chars/h since the rate is undefined.
+
+**Migration.** Pre-split `byChapter[idx] = {minutes, _lastMinute,
+firstWorkAt, lastWorkAt}` saves are lifted into `{editor: <flat>,
+rules: emptyBucket}` on read — historical work was all editor work
+(the rules tab didn't exist), so the attribution is exact. The
+bilingual editor uses the same shape; only the editor sub-bucket
+is ever written there.
+
 ## v7 — 2026-05-05
 
 **Apply-rules row labels trimmed.** The first column on the diff

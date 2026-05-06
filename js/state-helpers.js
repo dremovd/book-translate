@@ -66,23 +66,39 @@ export function defaultStats() {
     //   'glossary-extract',  'glossary-translate',
     //   'bilingual-extract', 'bilingual-translate' (bilingual editor only)
     calls: {},
-    // byChapter[idx] = {
-    //   minutes:     count of distinct wall-clock minutes the user did
-    //                work in this chapter (read-as-scrolled, edited, or
-    //                retranslated) while the editor was visible.
-    //   _lastMinute: the minute index (Math.floor(now/60000)) of the
-    //                most-recently counted bump — used to dedup events
-    //                fired within the same minute so we don't double-
-    //                count rapid scroll bursts.
-    //   firstWorkAt: ISO timestamp of the first counted minute. Set once,
-    //                never overwritten — useful for "session started" UX.
-    //   lastWorkAt:  ISO timestamp of the most-recently counted minute.
-    //                Updated only when `minutes` bumps, NOT on every
-    //                event — that keeps the persistence debounce from
-    //                churning during continuous scroll.
-    // }
+    // byChapter[idx] = { editor: <bucket>, rules: <bucket> }
+    //
+    // Two sub-buckets so translation-throughput math (charsPerHourTotal)
+    // doesn't get diluted by Apply-rules polish minutes — those polish
+    // existing chars rather than producing new ones, so mixing them
+    // would understate the editor's typing rate.
+    //
+    // Each bucket (see defaultWorkBucket below) has its own minute
+    // counter and dedup, so editor and rules work in the same wall-clock
+    // minute each get one bump, not just one combined.
     byChapter: {},
   };
+}
+
+// One per-chapter, per-view work bucket. Two of these live under each
+// `byChapter[idx]` (`.editor` and `.rules`) so the editor and Apply-rules
+// tabs accumulate independently.
+//
+//   minutes:     count of distinct wall-clock minutes the user did
+//                work in this chapter from this view.
+//   _lastMinute: the minute index (Math.floor(now/60000)) of the
+//                most-recently counted bump — used to dedup events
+//                fired within the same minute. Independent per
+//                sub-bucket so editor + rules can both bump in the
+//                same minute.
+//   firstWorkAt: ISO timestamp of the first counted minute. Set once,
+//                never overwritten.
+//   lastWorkAt:  ISO timestamp of the most-recently counted minute.
+//                Updated only when `minutes` bumps, NOT on every
+//                event — keeps the persistence debounce idle during
+//                continuous scroll.
+export function defaultWorkBucket() {
+  return { minutes: 0, _lastMinute: null, firstWorkAt: null, lastWorkAt: null };
 }
 
 // Lift saved stats into the current shape. Migrations stack:
@@ -99,6 +115,11 @@ export function defaultStats() {
 //      "all post-fix calls" and "all pre-fix calls", and the worst
 //      case is that a mixed bucket gets one round of either-or
 //      attribution before fresh calls fix it.
+//   4. Pre-rules-bucket saves had `byChapter[idx]` as a flat
+//      `{minutes, _lastMinute, firstWorkAt, lastWorkAt}`. Lift those
+//      into `{editor: <flat>, rules: defaultWorkBucket()}` — all
+//      historical work was editor-tab work (the rules tab didn't
+//      exist), so attributing it to `.editor` is exact.
 export function migrateLegacyStats(raw) {
   const fresh = defaultStats();
   if (!raw || typeof raw !== 'object') return fresh;
@@ -116,11 +137,35 @@ export function migrateLegacyStats(raw) {
       calls[k] = { count: v, totalMs: 0, timedCount: 0 };
     }
   }
+  const byChapter = {};
+  for (const [k, v] of Object.entries(raw.byChapter || {})) {
+    if (!v || typeof v !== 'object') continue;
+    // Already in nested shape: pass through, filling any missing
+    // sub-bucket with an empty default.
+    if (v.editor || v.rules) {
+      byChapter[k] = {
+        editor: v.editor && typeof v.editor === 'object' ? v.editor : defaultWorkBucket(),
+        rules:  v.rules  && typeof v.rules  === 'object' ? v.rules  : defaultWorkBucket(),
+      };
+      continue;
+    }
+    // Legacy flat shape — lift into the editor sub-bucket. Rules
+    // starts empty: the rules tab didn't exist when this was written.
+    byChapter[k] = {
+      editor: {
+        minutes:     typeof v.minutes === 'number' ? v.minutes : 0,
+        _lastMinute: typeof v._lastMinute === 'number' ? v._lastMinute : null,
+        firstWorkAt: v.firstWorkAt || null,
+        lastWorkAt:  v.lastWorkAt  || null,
+      },
+      rules: defaultWorkBucket(),
+    };
+  }
   return {
     ...fresh,
     ...raw,
     calls,
-    byChapter: { ...(raw.byChapter || {}) },
+    byChapter,
   };
 }
 

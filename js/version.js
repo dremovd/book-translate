@@ -41,4 +41,19 @@
 //        paragraph rows show the bare 1-based index. Column
 //        narrowed and right-aligned so the row label is a hint,
 //        not a column eating real estate.
-export const APP_VERSION = 7;
+//   v8 — stats.byChapter[idx] split into {editor, rules}
+//        sub-buckets so Apply-rules-tab work-minutes accumulate
+//        separately from editor-tab translation work. The Stats
+//        table gains an "Rules min" column; charsPerHourTotal
+//        denominates on editor-min only (rules polishes existing
+//        chars, doesn't produce new ones). Pre-split saves migrate
+//        flat byChapter entries into the editor sub-bucket.
+//   v9 — Apply-rules tab adopts the editor's two-column grid
+//        (translation left, original right) instead of a 4-column
+//        diff table. Suggestions appear inline below the current
+//        translation on diff rows with accept/reject buttons.
+//        Both `current` and `suggestion` render through renderMd,
+//        so `**bold**` shows as bold inside the rules tab too
+//        (the editor view already did this for translation +
+//        original cells via the rendered-mode fallback).
+export const APP_VERSION = 9;

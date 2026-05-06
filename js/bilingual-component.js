@@ -18,7 +18,8 @@ import { renderTranslationMarkdown, renderGlossaryMarkdown } from './translators
 import { renderInlineMd } from './markdown.js';
 import {
   clampSplit, SAVE_BADGE_MS, chapterTranslationStats,
-  defaultStats, migrateLegacyStats, migrateLegacyConfig, LEGACY_QUERY_KEY_MAP,
+  defaultStats, defaultWorkBucket,
+  migrateLegacyStats, migrateLegacyConfig, LEGACY_QUERY_KEY_MAP,
 } from './state-helpers.js';
 import { APP_VERSION } from './version.js';
 
@@ -135,7 +136,9 @@ function defaultConfig() {
 export function makeBilingualComponent() {
   return {
     // ---- state ----
-    view: 'setup',                // 'setup' | 'glossary' | 'editor'
+    view: 'setup',                // 'setup' | 'project' | 'glossary' | 'editor' | 'rules' | 'stats'
+    // See component.js — editor-sidebar visibility, persisted across reloads.
+    sidebarHidden: false,
     // Two raw markdown inputs, named by their role (not by abstract A/B):
     //   rawEditor    — the side the user reads & edits against; paragraphs
     //                  are split from this and shown in the editor's
@@ -187,6 +190,7 @@ export function makeBilingualComponent() {
         this.$watch('editorHeadingLevel',     schedule);
         this.$watch('referenceHeadingLevel',  schedule);
         this.$watch('splitPercent',        schedule);
+        this.$watch('sidebarHidden',       schedule);
         this.$watch('originalFontSize',    schedule);
         this.$watch('showAdvanced',        schedule);
         this.$watch('translationFontSize', schedule);
@@ -226,6 +230,7 @@ export function makeBilingualComponent() {
           this.editorHeadingLevel    = saved.editorHeadingLevel    ?? saved.headingLevelA ?? 1;
           this.referenceHeadingLevel = saved.referenceHeadingLevel ?? saved.headingLevelB ?? 1;
           this.splitPercent          = clampSplit(saved.splitPercent ?? 60);
+          this.sidebarHidden         = !!saved.sidebarHidden;
           this.originalFontSize    = clampFontSize(saved.originalFontSize,    'medium');
           this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
           this.showAdvanced        = !!saved.showAdvanced;
@@ -256,6 +261,7 @@ export function makeBilingualComponent() {
           originalFontSize: this.originalFontSize,
           translationFontSize: this.translationFontSize,
           showAdvanced: this.showAdvanced,
+          sidebarHidden: this.sidebarHidden,
           book: this.book,
           glossary: this.glossary,
           currentChapterIndex: this.currentChapterIndex,
@@ -290,8 +296,12 @@ export function makeBilingualComponent() {
         bucket.timedCount += 1;
       }
     },
+    // Tracks editor-tab AND rules-tab work into separate sub-buckets so
+    // chars/h math (translation throughput) doesn't get diluted by polish
+    // minutes. Mirrors the singular component; see component.js for the
+    // detailed comment.
     _recordWork() {
-      if (this.view !== 'editor') return;
+      if (this.view !== 'editor' && this.view !== 'rules') return;
       if (typeof document !== 'undefined'
           && document.visibilityState
           && document.visibilityState !== 'visible') return;
@@ -302,15 +312,19 @@ export function makeBilingualComponent() {
       const minute = Math.floor(Date.now() / 60000);
       let entry = this.stats.byChapter[idx];
       if (!entry) {
-        entry = { minutes: 0, _lastMinute: null, firstWorkAt: null, lastWorkAt: null };
+        entry = { editor: defaultWorkBucket(), rules: defaultWorkBucket() };
         this.stats.byChapter[idx] = entry;
+      } else {
+        if (!entry.editor) entry.editor = defaultWorkBucket();
+        if (!entry.rules)  entry.rules  = defaultWorkBucket();
       }
-      if (entry._lastMinute === minute) return;
-      entry._lastMinute = minute;
-      entry.minutes += 1;
+      const sub = entry[this.view];
+      if (sub._lastMinute === minute) return;
+      sub._lastMinute = minute;
+      sub.minutes += 1;
       const nowIso = new Date(minute * 60000).toISOString();
-      entry.lastWorkAt = nowIso;
-      if (entry.firstWorkAt == null) entry.firstWorkAt = nowIso;
+      sub.lastWorkAt = nowIso;
+      if (sub.firstWorkAt == null) sub.firstWorkAt = nowIso;
     },
     _makeTranslator(configPatch = {}) {
       return createTranslator({
@@ -325,7 +339,7 @@ export function makeBilingualComponent() {
       let totalChars = 0, totalMin = 0;
       chapters.forEach((ch, i) => {
         if (ch?.status !== 'accepted') return;
-        const mins = this.stats?.byChapter?.[i]?.minutes || 0;
+        const mins = this.stats?.byChapter?.[i]?.editor?.minutes || 0;
         if (mins <= 0) return;
         totalMin += mins;
         totalChars += chapterTranslationStats(ch).chars;
@@ -366,7 +380,9 @@ export function makeBilingualComponent() {
       );
       if (anyCalls) return true;
       const byCh = this.stats?.byChapter || {};
-      return Object.values(byCh).some(c => (c?.minutes || 0) > 0);
+      return Object.values(byCh).some(c =>
+        (c?.editor?.minutes || 0) > 0 || (c?.rules?.minutes || 0) > 0
+      );
     },
     get apiCallRows() {
       const order = [
@@ -396,17 +412,25 @@ export function makeBilingualComponent() {
       const out = [];
       chapters.forEach((ch, i) => {
         const entry = this.stats?.byChapter?.[i];
-        if (!entry || !entry.minutes) return;
+        const editorMin = entry?.editor?.minutes || 0;
+        const rulesMin  = entry?.rules?.minutes  || 0;
+        if (editorMin === 0 && rulesMin === 0) return;
         const stats = chapterTranslationStats(ch);
         out.push({
           index: i,
           title: ch.title,
           status: ch.status,
           chars: stats.chars,
-          minutes: entry.minutes,
-          charsPerHour: Math.round((stats.chars / entry.minutes) * 60),
-          firstWorkAt: entry.firstWorkAt || null,
-          lastWorkAt:  entry.lastWorkAt  || null,
+          minutes: editorMin,
+          rulesMinutes: rulesMin,
+          charsPerHour: editorMin > 0
+            ? Math.round((stats.chars / editorMin) * 60)
+            : null,
+          rulesCharsPerHour: rulesMin > 0
+            ? Math.round((stats.chars / rulesMin) * 60)
+            : null,
+          firstWorkAt: entry?.editor?.firstWorkAt || entry?.rules?.firstWorkAt || null,
+          lastWorkAt:  entry?.editor?.lastWorkAt  || entry?.rules?.lastWorkAt  || null,
         });
       });
       return out;
@@ -464,9 +488,12 @@ export function makeBilingualComponent() {
 
     // ---- actions ----
     gotoSetup()    { this.view = 'setup'; },
+    gotoProject()  { this.view = 'project'; },
     gotoGlossary() { if (this.glossary.length) this.view = 'glossary'; },
     gotoStats()    { this.view = 'stats'; },
     gotoRules()    { this.view = 'rules'; },
+    gotoEditor()   { if (this.book && this.anyTranslated) this.view = 'editor'; },
+    toggleSidebar() { this.sidebarHidden = !this.sidebarHidden; },
     selectChapter(i) {
       const ch = this.book?.chapters?.[i];
       if (!ch || ch.status === 'pending') return;
@@ -591,6 +618,9 @@ export function makeBilingualComponent() {
       const text = (prompt || '').trim();
       if (!text) return;
       this.config.applyRulesPrompt = prompt;
+      // Clicking "Run rules" is itself rules-tab work — count even
+      // before the pass returns or the user starts scrolling the diff.
+      this._recordWork();
       await this._runBusy(async () => {
         const t = this._makeTranslator();
         if (typeof t.applyRules !== 'function') {
@@ -636,6 +666,7 @@ export function makeBilingualComponent() {
       if (!ch || !pp) return;
       if (idx === 'title') pp.titleSuggestion = null;
       else if (typeof idx === 'number') delete pp.suggestions[idx];
+      this._recordWork();
       this._tidyPendingPass(ch);
     },
     discardRulesPass() {
@@ -669,11 +700,16 @@ export function makeBilingualComponent() {
       const pp = ch.pendingPass;
       const titleSug = (pp && typeof pp.titleSuggestion === 'string') ? pp.titleSuggestion : null;
       const suggestions = pp?.suggestions || {};
+      // `original` carries the source-language text so the rules-tab
+      // grid can mirror the editor's translation/original layout. The
+      // bilingual side concatenates the two source columns (the editor
+      // textarea is the splitting source; the reference side is full-
+      // chapter context the model sees).
       const rows = [{
         key: 'title',
-        // Compact column: T for title, plain numbers for the body.
         label: 'T',
         current: ch.translatedTitle || ch.title || '',
+        original: ch.title || '',
         suggestion: titleSug,
       }];
       (ch.paragraphs || []).forEach((p, i) => {
@@ -681,6 +717,7 @@ export function makeBilingualComponent() {
           key: i,
           label: String(i + 1),
           current: p.translation || '',
+          original: p.original || '',
           suggestion: Object.prototype.hasOwnProperty.call(suggestions, i)
             ? suggestions[i] : null,
         });
@@ -917,10 +954,12 @@ export function makeBilingualComponent() {
       // Slug source: projectName when set, else first chapter's title,
       // else generic 'translation'.
       const projectSlug = this._projectFilenamePrefix().replace(/-$/, '');
+      // Slug regex matches the project-name path: any Unicode letter or
+      // digit survives, runs of everything else collapse to '-'.
       const fallbackTitle = this.book?.chapters?.[0]?.title || 'translation';
       const fallbackSlug = String(fallbackTitle)
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 40);
       const slug = projectSlug || fallbackSlug || 'translation';
@@ -1038,12 +1077,14 @@ export function makeBilingualComponent() {
     get canExportSoFar() {
       return !!this.book?.chapters?.length && this.acceptedCount > 0;
     },
-    // See component.js#_projectFilenamePrefix.
+    // See component.js#_projectFilenamePrefix. Unicode-aware slug so a
+    // Cyrillic / CJK / etc. project name survives instead of being
+    // stripped to an empty prefix.
     _projectFilenamePrefix() {
       const raw = (this.config.projectName || '').trim();
       if (!raw) return '';
       const slug = raw.toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 40);
       return slug ? `${slug}-` : '';

@@ -1,245 +1,50 @@
 #!/usr/bin/env python3
-"""Publish translated chapters to tl.rulate.ru.
+"""Publish translated chapters from a .md file to tl.rulate.ru.
 
-Status: scaffold. The upload algorithm is being specified by the user
-step-by-step; this file accumulates the spec until enough is known to
-implement.
+Two-phase upload per chapter:
+  Phase A (POST /book/<id>/0/mass_edit) creates a chapter shell with
+  metadata (title, status, subscription, deferred-publish, …).
+  Phase B (POST /book/<id>/<ch>/<frag>/translate) uploads the rendered
+  HTML body. Chapters that already exist on rulate are classified as
+  skip / update_body / create against the live book before any write.
 
-----------------------------------------------------------------------
-Algorithm — overview
-----------------------------------------------------------------------
-Inputs:
-  - Markdown file in this project's standard export format:
-      # Chapter Title
-      <blank line>
-      paragraph 1
-      <blank line>
-      paragraph 2
-      ...
-      # Next Chapter Title
-      ...
-  - .env values: RULATE_LOGIN, RULATE_PASSWORD, RULATE_BOOK_ID,
-                 RULATE_TARGET_CHARS_NO_SPACES,
-                 [optional] RULATE_SUBSCRIPTION_FROM_CHAPTER.
+Auth uses a browser-extracted Cookie header (rulate sits behind
+DDoS-Guard; scripted login is fragile). See cookies/rulate.txt and
+the RULATE_* keys in .env.
 
-Pipeline:
-  1. Parse the .md into source chapters.
-  2. Build the upload queue — for each source chapter, decide whether
-     to split it into multiple rulate chapters (see "Long-chapter
-     splitting" below). Output: a flat list of rulate-chapter specs
-     `{title, paragraphs, source_chapter_index}` in upload order.
-  3. For each rulate-chapter spec in the queue, run the per-chapter
-     fill algorithm below (Phase A, then Phase B).
-
-Long-chapter splitting (queue-build rule):
-  target = int(env.RULATE_TARGET_CHARS_NO_SPACES or 5000)
-  n      = source chapter's no-space character count
-  parts  = 1                              if n <= 2*target
-           floor((n - 1) / target)        otherwise
-  # n=10000 → 1 part; n=10001 → 2 parts;
-  # n=15000 → 2 parts; n=15001 → 3 parts; ...
-
-  When parts > 1:
-    - Split paragraphs (NOT mid-paragraph) into `parts` groups so each
-      group's no-space character count is as close to n/parts as
-      possible. Greedy balanced split: at each boundary i ∈ [1..N-1],
-      pick the paragraph index whose cumulative size is closest to
-      i*n/parts; never produce empty groups; preserve order.
-    - Each group becomes its own rulate chapter. Phase A metadata
-      (volume, status, access, subscription) is copied from the
-      source chapter; only the title and body differ.
-    - Title transformation: append ".K" (1-indexed) to the END of
-      the source title, regardless of its shape. Examples:
-          "Глава 1"             → "Глава 1.1", "Глава 1.2"
-          "Глава 12"            → "Глава 12.1", "Глава 12.2"
-          "Пролог"              → "Пролог.1", "Пролог.2"
-          "Глава 1. Прибытие"   → "Глава 1. Прибытие.1", "Глава 1. Прибытие.2"
-    - Subscription gating (per-chapter step 6) is keyed on the SOURCE
-      chapter index, so all parts of one .md chapter share the same
-      subscription state.
-
-----------------------------------------------------------------------
-Per-chapter fill algorithm (work in progress)
-----------------------------------------------------------------------
-For each rulate-chapter spec in the queue, perform the steps below.
-
-Steps:
-  1. Title — taken from the chapter's H1 line in the .md
-     (corresponds to `book.chapters[i].translatedTitle` in the
-     translation app's state). For some books the title is just a
-     number ("Глава 01", "Глава 02"), but the algorithm should
-     preserve whatever H1 text the .md contains, including any
-     subtitle.
-
-  2. Volume / Arc ("Том / Арка") — empty by default. The script
-     accepts an optional `--volume <name>` flag for books that DO
-     use this field.
-
-  3. Status ("Статус") — "перевод редактируется" by default. This is
-     the rulate-side translation-progress flag. The script should send
-     this value unless overridden via `--status <value>`. Valid values:
-     "идёт перевод" (1), "перевод редактируется" (2), "перевод готов" (3).
-
-  4. "Особые права доступа" checkbox — OPT-IN via the
-     `--moderators-only` CLI flag. Off by default: the chapter
-     inherits the book-level access settings, no per-chapter override
-     is sent. When the flag is set: `Chapter[has_override]=1`.
-
-  5. Access-rights matrix — only sent when `--moderators-only` is
-     active. In that case every per-action level (`ac_read`,
-     `ac_trread`, `ac_gen`, `ac_rate`, `ac_comment`, `ac_tr`) is set
-     to "Модераторы" (`m`) — moderator-only draft mode. With
-     `--moderators-only` off, these fields are omitted entirely.
-
-  6. "Подписка" toggle — driven by the .env variable
-     RULATE_SUBSCRIPTION_FROM_CHAPTER:
-       - if unset or empty → DO NOT touch the subscription field
-         (leave whatever rulate's default is on chapter creation).
-       - if set to an integer N → for the N-th chapter and every
-         chapter after it, send subscription=true. Chapters with
-         (1-based) index < N keep the default (no override).
-     Chapter index is the 1-based position in the parsed .md, not a
-     parsed number from the title — keeps the rule consistent for
-     books whose H1 isn't a clean number.
-
-  ----  Phase A complete: chapter shell exists on rulate.  ----
-
-  HTTP details for Phase A (verified by inspecting the live rulate
-  modal at /book/<id>/0/mass_edit?ajax=1&placement=0):
-
-    POST /book/<book_id>/0/mass_edit?ajax=1&placement=0
-    Headers:
-      X-Requested-With: XMLHttpRequest
-      Cookie: <auth + DDoS-Guard, see cookies/rulate.txt>
-      Referer: https://tl.rulate.ru/book/<book_id>
-    Form fields (urlencoded):
-      Chapter[title][]            — array; one entry per chapter.
-                                    `mass_edit` accepts batches.
-      Chapter[volume]             — text, empty by default.
-      Chapter[status]             — "1" (идёт перевод) | "2"
-                                    (редактируется) | "3" (готов).
-      Chapter[has_override]       — "1" to enable "Особые права".
-      Chapter[ac_read]            — "m" (Модераторы) for our flow.
-      Chapter[ac_trread]          — "m"
-      Chapter[ac_gen]             — "m"
-      Chapter[ac_rate]            — "m"
-      Chapter[ac_comment]         — "m"
-      Chapter[ac_tr]              — "m"
-                                    Other allowed: "a"=Все,
-                                    "g"=Группа, "o"=Никто,
-                                    ""=Как в переводе (default).
-      Chapter[post_open]          — "Отложенная публикация" toggle.
-                                    Always "0" hidden + "1" checkbox
-                                    by default (deferred publishing
-                                    enabled). Pass
-                                    --no-deferred-publish to drop the
-                                    "1" and publish immediately.
-                                    The actual release schedule is
-                                    configured on the book itself
-                                    (not per-chapter).
-      Chapter[subscription]       — "0" (hidden) plus optional
-                                    "1" (checkbox). Driven by
-                                    RULATE_SUBSCRIPTION_FROM_CHAPTER
-                                    rule (step 6).
-      Chapter[subscription_price] — empty unless a price is
-                                    explicitly required.
-      Chapter[audio_subscription] — "0"
-      Chapter[audio_subscription_price] — empty
-      yt0                         — "Сохранить" (submit button).
-
-  7. Submit Phase A (steps 1-6) and follow into the chapter itself
-     (UI: click the chapter title in the book's chapter list).
-     HTTP-side: take the chapter-id assigned to the just-created
-     chapter (returned in the redirect Location header / parsed from
-     the post-submit page) and GET that chapter's edit page to load
-     the body editor for Phase B.
-
-  ----  Phase B: filling chapter body. ----
-
-  8-10. (skipped) — empirically, the Phase A POST that creates the
-     chapter shell ALSO seeds an empty first fragment AND a default
-     source-side stub, so the original "create first fragment" /
-     "fill source with 1" / "save source" / "click arrow" steps are
-     no longer separate actions. The chapter ends up immediately
-     ready for the translation-side editor (CKEditor).
-
-  11. Translation editor — the panel that opens is a WYSIWYG editor
-      (CKEditor) with a "Источник" / "Source" toggle that accepts
-      raw HTML. CKEditor whitelists a SUBSET of CSS on save; it
-      strips `font-family`, `margin-bottom`, `line-height` and
-      similar from inline `style` blocks. The shape we send is the
-      already-normalised form rulate ends up storing — so a
-      sent → saved → re-fetched roundtrip is byte-stable:
-
-          <p style="margin-left:0px; margin-right:0px; text-align:justify">
-            <span style="color:#000000; font-size:11pt">{escaped text}</span>
-          </p>
-
-      Style choices that survive the sanitiser:
-        - font-size:   11pt
-        - text-align:  justify
-        - color:       black
-        - margin-l/r:  0px (no side gutter)
-
-      Style choices the user might want but rulate WILL DROP:
-        - font-family (e.g. Calibri) — site enforces its own font.
-        - margin-bottom / paragraph "after" spacing — controlled by
-          the site's reader CSS, not per-paragraph inline.
-        - line-height — same.
-
-      (single line in the actual payload — line breaks here are for
-      readability). Escaping rules for `{escaped text}`:
-        - `&` → `&amp;` (must come first)
-        - `<` → `&lt;`
-        - `>` → `&gt;`
-        - quotes are left as-is (they sit inside text, not attribute
-          values).
-      Paragraphs are joined together with no separator between the
-      `</p>` of one and the `<p>` of the next.
-
-      Open question (need confirmation): a paragraph in this
-      project's .md may contain in-paragraph newlines for dialog
-      turns (Russian convention — multiple speech lines inside one
-      paragraph slot, separated by `\n`). Two reasonable mappings:
-        (a) emit each line as its OWN `<p>` block; or
-        (b) keep one `<p>` and split lines with `<br>` inside the
-            inner `<span>`.
-      Defaulting to (a) — each `\n` inside a paragraph becomes a new
-      `<p>` block — until told otherwise, since rulate's reader
-      renders paragraphs with vertical spacing while `<br>` collapses
-      to a hard line break with no spacing.
-
-  12. [TBD]
-  ...
-
-----------------------------------------------------------------------
-Notes for implementation
-----------------------------------------------------------------------
-- rulate is fronted by DDoS-Guard. A `requests.Session` going through
-  the public login form (POST credentials, follow redirects, keep
-  cookies) handles this; raw API hits without the cookie warm-up will
-  be blocked.
-- Auth: RULATE_LOGIN / RULATE_PASSWORD from .env. Read as raw lines
-  (don't `source` — values may contain shell-special chars).
-- Book ID: RULATE_BOOK_ID from .env.
+Pure engine helpers (parser, splitter, renderer, sentinel codec, hash,
+manifest persistence) are imported from `_publish_engine`.
 """
+
 
 import argparse
 import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _publish_engine import (
+    PARA_TEMPLATE,
+    _BOLD_MARK, _EM_MARK, _INLINE_MD_RE,
+    parse_chapters_md, normalize_chapter_title,
+    no_space_chars, chapter_no_space_chars, _queue_size_summary,
+    compute_parts, split_paragraphs_balanced, build_upload_queue,
+    html_escape, render_inline_md, render_paragraph_html, render_chapter_body_html,
+    _canonicalize_inline_md, _inline_text_with_markdown,
+    _humanize_sentinels, _collapse_ws,
+    _our_chapter_text,
+    _body_hash, _format_first_n_hunks,
+    encode_form,
+    record_manifest as _record_manifest,
+    load_manifest as _engine_load_manifest,
+    save_manifest as _engine_save_manifest,
+)
 
-# ----------------------------------------------------------------------
-# .env loading
-# ----------------------------------------------------------------------
+
 def load_env(path: Path) -> dict:
-    """Read a flat KEY=VALUE .env file, preserving raw values.
-
-    Splits on the FIRST `=` so values may legitimately contain `=`.
-    Comments (#) and blank lines are skipped. The cookie itself is no
-    longer kept inline (see RULATE_COOKIE_FILE).
-    """
+    """Read a flat KEY=VALUE .env file. Splits on the first `=` so
+    values may contain `=`. Cookies live in their own file (see
+    RULATE_COOKIE_FILE) to dodge .env shell-escaping headaches."""
     out = {}
     if not path.exists():
         return out
@@ -254,218 +59,12 @@ def load_env(path: Path) -> dict:
     return out
 
 
-# ----------------------------------------------------------------------
-# Pure logic — parse / size / split / queue / render
-# ----------------------------------------------------------------------
-def normalize_chapter_title(title: str) -> str:
-    """Strip leading zeros from chapter numbers in titles like "Глава 01".
-
-    The local .md export pads chapter numbers ("Глава 01", "Глава 02",
-    …); the rulate site stores titles without the pad ("Глава 1", "Глава
-    2", …). Without normalising, the publisher's title-based classify
-    sees "Глава 01" on disk and "Глава 1" on the server, treats them as
-    different chapters, and tries to CREATE a duplicate.
-
-    Anchored on the literal "Глава " prefix and only touches the digits
-    immediately following — anything else (Prologue, Часть, subtitles
-    after the number) passes through verbatim. Multi-digit numbers
-    without a leading zero are unchanged.
-    """
-    if not title:
-        return title
-    return re.sub(r'^(Глава )0+(\d)', r'\1\2', title)
+# --- below: rulate-specific HTTP, auth, scraping, form fields, orchestration ---
 
 
-def parse_chapters_md(md: str) -> list[dict]:
-    """Split the project's standard .md export into chapters.
-
-    Each chapter is everything between consecutive H1 headings; any
-    content before the first H1 is treated as a book-level preface and
-    dropped (matches js/parse.js).
-
-    Chapter titles are normalised through `normalize_chapter_title` so
-    "Глава 01" becomes "Глава 1" — see that function's docstring for
-    the rationale (rulate-side title de-duplication).
-    """
-    parts = re.split(r'(?m)^# (.+)$', md)
-    out = []
-    for i in range(1, len(parts), 2):
-        title = normalize_chapter_title(parts[i].strip())
-        body = parts[i + 1] if i + 1 < len(parts) else ''
-        paragraphs = [p.strip() for p in body.split('\n\n') if p.strip()]
-        out.append({'title': title, 'paragraphs': paragraphs})
-    return out
-
-
-def no_space_chars(text: str) -> int:
-    """Length excluding all whitespace (matches the editor's
-    "characters (no spaces)" stat in component.js)."""
-    return len(re.sub(r'\s', '', text))
-
-
-def chapter_no_space_chars(paragraphs: list[str]) -> int:
-    return sum(no_space_chars(p) for p in paragraphs)
-
-
-def _queue_size_summary(queue: list[dict]) -> str:
-    """One-line size summary for the queue: total no-space character
-    count across all parts, plus the mean per part. Used by --dry-run
-    and --live-full-all output so the user sees how the split landed."""
-    if not queue:
-        return 'queue size: 0 parts'
-    sizes = [chapter_no_space_chars(item['paragraphs']) for item in queue]
-    total = sum(sizes)
-    avg = total / len(sizes)
-    return f'chars (no spaces): total {total}, avg per part {avg:.0f}'
-
-
-def compute_parts(n_no_ws: int, target: int) -> int:
-    """Number of rulate chapters to split a source chapter into.
-
-    Rule (user-specified):
-        n <= 2*target → 1 part (don't split)
-        otherwise     → floor((n - 1) / target) parts
-    Examples for target=5000:
-        n = 10000 → 1 part   (≤ 2*target)
-        n = 10001 → 2 parts
-        n = 15000 → 2 parts  (still ≤ 3*target by the boundary)
-        n = 15001 → 3 parts
-    """
-    if target <= 0:
-        return 1
-    if n_no_ws <= 2 * target:
-        return 1
-    return (n_no_ws - 1) // target
-
-
-def split_paragraphs_balanced(paragraphs: list[str], parts: int) -> list[list[str]]:
-    """Split a paragraph list into `parts` contiguous groups so the
-    no-space char count of each group is as close to total/parts as
-    possible. Greedy: at boundary i ∈ [1..parts-1], pick the paragraph
-    index whose cumulative size is closest to i*total/parts. Never
-    produces empty groups; preserves order.
-    """
-    if parts <= 1 or len(paragraphs) <= 1:
-        return [list(paragraphs)] if paragraphs else []
-    if parts >= len(paragraphs):
-        # One paragraph per group, drop excess parts.
-        return [[p] for p in paragraphs]
-
-    sizes = [no_space_chars(p) for p in paragraphs]
-    total = sum(sizes)
-    target_per_part = total / parts
-    cumsum = []
-    s = 0
-    for sz in sizes:
-        s += sz
-        cumsum.append(s)
-
-    boundaries: list[int] = []
-    for i in range(1, parts):
-        target_at = i * target_per_part
-        prev_b = boundaries[-1] if boundaries else 0
-        # The j-th boundary cuts AFTER paragraph index j-1 (i.e. group
-        # = paragraphs[start:j]). Need: prev_b < j ≤ N - (parts - i),
-        # so each remaining boundary still has at least one paragraph.
-        lo = prev_b + 1
-        hi = len(paragraphs) - (parts - i) + 1
-        best_j, best_diff = lo, abs(cumsum[lo - 1] - target_at)
-        for j in range(lo + 1, hi + 1):
-            d = abs(cumsum[j - 1] - target_at)
-            if d < best_diff:
-                best_diff = d
-                best_j = j
-        boundaries.append(best_j)
-    boundaries.append(len(paragraphs))
-
-    groups: list[list[str]] = []
-    start = 0
-    for b in boundaries:
-        groups.append(list(paragraphs[start:b]))
-        start = b
-    return groups
-
-
-def build_upload_queue(chapters: list[dict], target: int) -> list[dict]:
-    """Apply the splitting rule to each source chapter; emit a flat
-    list of rulate-chapter specs in upload order.
-
-    Each item:
-        title:                 str (original or "...K" suffixed)
-        paragraphs:            list[str]
-        source_chapter_index:  int (1-based, used for subscription rule)
-        part_index:            int (1-based)
-        total_parts:           int
-    """
-    queue: list[dict] = []
-    for src_idx, ch in enumerate(chapters, start=1):
-        n = chapter_no_space_chars(ch['paragraphs'])
-        parts = compute_parts(n, target)
-        if parts <= 1:
-            queue.append({
-                'title': ch['title'],
-                'paragraphs': list(ch['paragraphs']),
-                'source_chapter_index': src_idx,
-                'part_index': 1,
-                'total_parts': 1,
-            })
-            continue
-        groups = split_paragraphs_balanced(ch['paragraphs'], parts)
-        actual_parts = len(groups)
-        for k, group in enumerate(groups, start=1):
-            queue.append({
-                'title': f"{ch['title']}.{k}",
-                'paragraphs': group,
-                'source_chapter_index': src_idx,
-                'part_index': k,
-                'total_parts': actual_parts,
-            })
-    return queue
-
-
-# ----------------------------------------------------------------------
-# Phase B HTML rendering (per algorithm step 11)
-# ----------------------------------------------------------------------
-PARA_TEMPLATE = (
-    '<p style="margin-left:0px; margin-right:0px; text-align:justify">'
-    '<span style="color:#000000; font-size:11pt">{}</span>'
-    '</p>'
-)
-
-
-def html_escape(text: str) -> str:
-    """Escape & < > for HTML body text. Quotes are left as-is — they
-    sit inside content, not attribute values."""
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
-
-def render_paragraph_html(paragraph: str) -> str:
-    """Wrap one .md paragraph as one or more `<p>` blocks.
-
-    A paragraph in this project's .md may contain newlines for dialog
-    turns (Russian convention — multiple speech lines in one paragraph
-    slot). Each non-empty line becomes its own `<p>` block so rulate's
-    reader gives them vertical spacing.
-    """
-    lines = [ln for ln in paragraph.split('\n') if ln.strip()]
-    return ''.join(PARA_TEMPLATE.format(html_escape(ln)) for ln in lines)
-
-
-def render_chapter_body_html(paragraphs: list[str]) -> str:
-    """Concatenate every paragraph's `<p>` blocks with no separator —
-    matches the upstream editor's serialised output."""
-    return ''.join(render_paragraph_html(p) for p in paragraphs)
-
-
-# ----------------------------------------------------------------------
-# Subscription rule (per-chapter step 6)
-# ----------------------------------------------------------------------
 def subscription_for(source_chapter_index: int, env: dict):
-    """Resolve the "Подписка" toggle for a chapter:
-        None  → don't touch the field (env unset / blank / non-int)
-        True  → force subscription on (source_chapter_index >= N)
-        False → force subscription off (source_chapter_index < N)
-    """
+    """`Подписка` toggle: True forces on, False forces off, None means
+    don't override (env key unset/blank/non-int)."""
     raw = env.get('RULATE_SUBSCRIPTION_FROM_CHAPTER', '').strip()
     if not raw:
         return None
@@ -476,9 +75,6 @@ def subscription_for(source_chapter_index: int, env: dict):
     return source_chapter_index >= n
 
 
-# ----------------------------------------------------------------------
-# Phase A POST body builder
-# ----------------------------------------------------------------------
 STATUS_CODES = {
     'идёт перевод': '1',
     'перевод редактируется': '2',
@@ -490,44 +86,26 @@ ACCESS_FIELDS = ('ac_read', 'ac_trread', 'ac_gen', 'ac_rate', 'ac_comment', 'ac_
 
 
 def build_phase_a_form(item: dict, env: dict, args) -> list[tuple[str, str]]:
-    """Compose the form fields for the Phase A POST that creates a
-    chapter shell. Returns a list of (key, value) pairs (not a dict —
-    `Chapter[title][]` is repeatable, and even single-chapter requests
-    use the same key shape mass_edit expects).
+    """Form fields for the Phase A POST (creates a chapter shell).
 
-    Per-step mapping:
-      1. title           → Chapter[title][] (single value here; batch
-                           uploads can repeat the key.)
-      2. volume          → Chapter[volume]
-      3. status          → Chapter[status] (1/2/3)
-      4. special access  → Chapter[has_override]=1
-      5. access matrix   → Chapter[ac_*]=m for all six fields
-      6. subscription    → Chapter[subscription]=1 if rule says so;
-                           the hidden=0 default is always sent so the
-                           field is unambiguous.
+    Returns (key, value) pairs rather than a dict because rulate's
+    Yii-style fields appear twice for booleans: a hidden `=0` default
+    plus an optional `=1` override that Yii merges as the final value.
+    `Chapter[title][]` is also repeatable for batched uploads.
     """
     fields: list[tuple[str, str]] = []
     fields.append(('Chapter[title][]', item['title']))
     fields.append(('Chapter[volume]', args.volume or ''))
     status_value = STATUS_CODES.get(args.status, args.status)
     fields.append(('Chapter[status]', status_value))
-    # "Особые права доступа" is opt-in via --moderators-only. Without
-    # it we don't send the override flag or the per-action levels at
-    # all; the chapter inherits the book-level access settings.
     if getattr(args, 'moderators_only', False):
         fields.append(('Chapter[has_override]', '1'))
         for ac in ACCESS_FIELDS:
             fields.append((f'Chapter[{ac}]', ACCESS_LEVEL_MODERATORS))
-    # `Chapter[post_open]` is rulate's "Отложенная публикация" toggle:
-    # when on (and a release schedule is configured on the book), the
-    # chapter goes live on schedule rather than immediately. The
-    # hidden=0 default is always sent so the field is unambiguous; the
-    # opt-in checkbox=1 is added when --deferred-publish is set.
+    # post_open = «Отложенная публикация» (deferred until book schedule).
     fields.append(('Chapter[post_open]', '0'))
     if getattr(args, 'deferred_publish', False):
         fields.append(('Chapter[post_open]', '1'))
-    # Subscription: send hidden=0 always; if rule says enable, ALSO
-    # send the checkbox=1 value, which Yii merges as the final.
     sub = subscription_for(item['source_chapter_index'], env)
     fields.append(('Chapter[subscription]', '0'))
     if sub is True:
@@ -594,9 +172,6 @@ def dry_run(queue: list[dict], env: dict, args: argparse.Namespace) -> None:
         print()
 
 
-# ----------------------------------------------------------------------
-# CLI
-# ----------------------------------------------------------------------
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog='publish-rulate',
@@ -604,53 +179,35 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument('md', help='Path to the .md export of the translation')
     parser.add_argument('--dry-run', action='store_true',
-                        help='Print what would be uploaded without making any HTTP calls.')
+                        help='Print what would be uploaded without HTTP calls.')
     parser.add_argument('--show-payload', action='store_true',
-                        help='In --dry-run mode, also print the exact urlencoded POST body for the first queued chapter.')
+                        help='With --dry-run, also print the exact urlencoded POST body for the first chapter.')
     parser.add_argument('--live-create-first', action='store_true',
-                        help='Send ONE Phase A POST for the FIRST queued chapter, then stop. '
-                             'Use to verify the create-chapter flow against a real account. '
-                             'Logs the full request and the full response.')
+                        help='Phase A only, first chapter only — sanity-check the create flow.')
     parser.add_argument('--live-full-first', action='store_true',
-                        help='Phase A + Phase B for the FIRST queued chapter only: create '
-                             'the chapter shell, locate the auto-created fragment, POST the '
-                             'rendered HTML body. Stops after one chapter.')
+                        help='Phase A + B, first chapter only — sanity-check the full flow.')
     parser.add_argument('--live-full-all', action='store_true',
-                        help='Like --live-full-first, but iterates the entire queue. Each '
-                             'item is classified against the live book (skip / update body / '
-                             'create) before any write. Prints a summary at the end.')
+                        help='Phase A + B for every queued chapter (skip/update_body/create classified per chapter).')
     parser.add_argument('--volume', default='',
-                        help='"Том / Арка" value for every chapter. Empty by default.')
+                        help='«Том / Арка» on every chapter. Empty by default.')
     parser.add_argument('--status', default='перевод редактируется',
-                        help='"Статус" value for every chapter. Allowed: '
-                             '"идёт перевод" / "перевод редактируется" / "перевод готов". '
-                             'Default "перевод редактируется".')
+                        help='«Статус»: «идёт перевод» / «перевод редактируется» / «перевод готов».')
     parser.add_argument('--up-to', type=int, default=None, metavar='N',
-                        help='Limit processing to the first N SOURCE chapters of the .md '
-                             '(applied BEFORE the long-chapter splitting, so e.g. --up-to 3 '
-                             'still uploads all parts of source chapters 1..3).')
+                        help='Limit processing to source chapters with index <= N.')
+    parser.add_argument('--from', dest='from_source', type=int, default=None, metavar='N',
+                        help='Start from source chapter N (1-based, inclusive). Original index preserved for the subscription rule.')
     parser.add_argument('--force-update', action='store_true',
-                        help='Treat every existing-and-text-matching chapter as "update_body" '
-                             'instead of "skip". Re-uploads the body for chapters whose text '
-                             'is identical — useful after a PARA_TEMPLATE / formatting change '
-                             'when you want to push the new HTML to chapters that were already '
-                             'on rulate.')
+                        help='Re-upload bodies whose text already matches — useful after a renderer/template change.')
     parser.add_argument('--moderators-only', action='store_true',
-                        help='Enable "Особые права доступа" and set every per-action access '
-                             'level to "Модераторы" — i.e. publish chapters as moderator-only '
-                             'drafts. Off by default, in which case the chapter inherits the '
-                             'book-level access settings (no per-chapter override is sent).')
+                        help='Enable «Особые права доступа» = «Модераторы» (moderator-only draft mode).')
     parser.add_argument('--deferred-publish', action=argparse.BooleanOptionalAction, default=True,
-                        help='Tick "Отложенная публикация" on every chapter — rulate will '
-                             'release them on the schedule configured in the book settings. '
-                             'On by default; pass --no-deferred-publish to publish chapters '
-                             'immediately. Without a deferred schedule on the book, the flag '
-                             'has no visible effect either way.')
+                        help='Tick «Отложенная публикация» (release on book schedule). On by default.')
     parser.add_argument('--yes-to-all', action='store_true',
-                        help='Skip the per-chapter overwrite confirmation that fires when '
-                             'rulate\'s current body differs from the local .md. Use to keep '
-                             '--live-full-all non-interactive when you are sure you want to '
-                             'overwrite every diverged chapter.')
+                        help='Skip the per-chapter overwrite prompt; non-interactive overwrite of every diverged chapter.')
+    parser.add_argument('--skip-rulate-edited', action='store_true',
+                        help='Inverse of --yes-to-all: skip every chapter whose rulate body '
+                             'has diverged from our last push, OR isn\'t in the manifest. '
+                             'Use to safely re-run a publish without clobbering rulate-side edits.')
     args = parser.parse_args(argv[1:])
 
     repo = Path(__file__).resolve().parent.parent
@@ -659,12 +216,24 @@ def main(argv: list[str]) -> int:
 
     md_path = Path(args.md).expanduser().resolve()
     chapters = parse_chapters_md(md_path.read_text(encoding='utf-8'))
+    # Tag with the original 1-based index so it survives --from/--up-to slicing
+    # (subscription rule keys on the absolute number, not the position).
+    for src_idx, ch in enumerate(chapters, start=1):
+        ch['_source_index'] = src_idx
+    if args.from_source is not None:
+        if args.from_source < 1:
+            print(f'--from must be >= 1 (got {args.from_source})', file=sys.stderr)
+            return 2
+        chapters = [c for c in chapters if c['_source_index'] >= args.from_source]
+        print(f'--from {args.from_source}: starting at chapter {args.from_source}, '
+              f'{len(chapters)} chapter(s) remain.')
     if args.up_to is not None:
         if args.up_to < 1:
             print(f'--up-to must be >= 1 (got {args.up_to})', file=sys.stderr)
             return 2
-        chapters = chapters[:args.up_to]
-        print(f'--up-to {args.up_to}: limited to first {len(chapters)} source chapter(s).')
+        chapters = [c for c in chapters if c['_source_index'] <= args.up_to]
+        print(f'--up-to {args.up_to}: keeping chapters with index <= {args.up_to}; '
+              f'{len(chapters)} chapter(s) remain.')
     queue = build_upload_queue(chapters, target=target)
 
     if args.dry_run:
@@ -862,11 +431,16 @@ def _existing_chapter_text(s, book_id: str, chapter_id: str) -> "str | None":
         return None
     soup = BeautifulSoup(r.text, 'html.parser')
     # Each translation version is wrapped in a `<div class='text'>`.
+    # We flatten with `_inline_text_with_markdown` rather than plain
+    # `.get_text()` so `<strong>` / `<em>` boundaries survive into
+    # the comparison form (sentinel-wrapped) and stay distinct from
+    # a literal `**...**` text node left over from a pre-renderer-fix
+    # push.
     candidates = []
     for div in soup.select('div.text'):
         paras = []
         for p in div.find_all('p'):
-            t = p.get_text('\n').strip()
+            t = _inline_text_with_markdown(p).strip()
             if t:
                 paras.append(_collapse_ws(t))
         if paras:
@@ -878,40 +452,10 @@ def _existing_chapter_text(s, book_id: str, chapter_id: str) -> "str | None":
     return max(candidates, key=len)
 
 
-def _collapse_ws(text: str) -> str:
-    """Collapse runs of horizontal whitespace to a single space and
-    strip line endings — so two pieces of HTML that differ only in
-    indentation / nbsp / trailing spaces compare equal."""
-    return re.sub(r'[ \t ]+', ' ', text).strip()
-
-
-def _our_chapter_text(paragraphs: list) -> str:
-    """Apply the same normalisation to our own paragraph list so it
-    can be compared with the rulate-rendered output. Mirrors
-    `render_paragraph_html`: dialog-line splits become `\\n` between
-    paragraphs, exactly the same way the renderer would expand them
-    to separate `<p>` blocks."""
-    out = []
-    for p in paragraphs:
-        for line in p.split('\n'):
-            t = _collapse_ws(line)
-            if t:
-                out.append(t)
-    return '\n\n'.join(out)
-
-
 def classify_queue_item(s, book_id: str, item: dict, existing: dict) -> dict:
-    """Decide what action a queue item needs against rulate:
-        {'action': 'create'}                    — title not present
-        {'action': 'skip',          'chapter_id': ...}  — title and body match
-        {'action': 'update_body',   'chapter_id': ..., 'fragment_id': ...,
-                                    'rulate_text': str, 'local_text': str}
-            — title present, body differs. The two texts are returned so
-            the caller can show a diff before overwriting.
-    The classification is read-only — it does NOT mutate anything on
-    rulate; it just decides what `live_full_first`/`live_full_all`
-    should do.
-    """
+    """Decide skip / update_body / create for a queue item against rulate.
+    Read-only: doesn't mutate anything. `update_body` returns both texts
+    so the caller can show a diff before overwriting."""
     title = item['title']
     if title not in existing:
         return {'action': 'create'}
@@ -930,15 +474,9 @@ def classify_queue_item(s, book_id: str, item: dict, existing: dict) -> dict:
     }
 
 
-# ----------------------------------------------------------------------
-# State manifest — local record of `{chapter_id → hash_of_last_pushed_body}`
-# so we can tell apart "rulate body == our last push" (safe overwrite,
-# no third party touched the chapter) from "rulate body was edited since
-# our last push" (someone else changed it; require explicit confirmation).
-# ----------------------------------------------------------------------
-import hashlib
-import json
-
+# Manifest = `{chapter_id → {hash, last_pushed_at}}` per chapter, used to
+# distinguish "rulate body == our last push" (safe to overwrite) from
+# "rulate body has external edits since" (prompt before overwrite).
 MANIFEST_NAME = '.rulate-state.json'
 
 
@@ -947,80 +485,38 @@ def _manifest_path() -> Path:
 
 
 def _load_manifest() -> dict:
-    p = _manifest_path()
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text(encoding='utf-8'))
-    except Exception:
-        return {}
+    return _engine_load_manifest(_manifest_path())
 
 
 def _save_manifest(manifest: dict) -> None:
-    _manifest_path().write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True),
-        encoding='utf-8',
-    )
+    _engine_save_manifest(_manifest_path(), manifest)
 
 
-def _body_hash(text: str) -> str:
-    """Stable hash of the normalised chapter text. Same input string
-    that drives the skip/update_body classification, so a manifest
-    entry and a `_existing_chapter_text(...)` reading hash to the
-    same value when nothing changed."""
-    return hashlib.sha256((text or '').encode('utf-8')).hexdigest()
-
-
-def _format_first_n_hunks(rulate_text: str, local_text: str, n: int = 5):
-    """Generate up to `n` unified-diff hunks. Each hunk is the lines
-    between two `@@` markers (inclusive of the leading `@@`). Returns
-    `(hunks_list, total_hunks_count)` so the caller can show "first
-    5 of 12 changes"."""
-    import difflib
-    raw = list(difflib.unified_diff(
-        rulate_text.splitlines(),
-        local_text.splitlines(),
-        fromfile='rulate (current)',
-        tofile='local (.md)',
-        lineterm='',
-    ))
-    hunks = []
-    current = None
-    for line in raw:
-        if line.startswith('@@'):
-            if current is not None:
-                hunks.append(current)
-            current = [line]
-        elif current is not None:
-            current.append(line)
-    if current is not None:
-        hunks.append(current)
-    return hunks[:n], len(hunks)
+def _initial_state(args) -> dict:
+    """Per-run prompt state seeded from CLI flags.
+        --yes-to-all          → all_yes  (overwrite every diverged chapter)
+        --skip-rulate-edited  → all_no   (skip every diverged chapter — manifest
+                                          match path still overwrites freely)
+    The two are mutually exclusive in spirit; when both are set, --yes-to-all
+    wins because the manifest-match check happens first in _confirm_overwrite."""
+    return {
+        'all_yes': bool(getattr(args, 'yes_to_all', False)),
+        'all_no':  bool(getattr(args, 'skip_rulate_edited', False)),
+    }
 
 
 def _confirm_overwrite(item: dict, decision: dict, manifest: dict,
                        state: dict) -> bool:
-    """Decide whether to proceed with an `update_body` POST.
-
-    Always-overwrite case (no prompt): rulate's current body hash
-    matches our manifest entry — rulate hasn't been touched since our
-    last push, so we are the only ones who could have produced the
-    diff and can safely overwrite.
-
-    Prompt cases: manifest mismatch (someone edited rulate after our
-    last push) OR no manifest entry (first time we touch this
-    chapter — be cautious). The user sees a conflict header + the
-    first 5 diff hunks and answers y / n / a / Y / N.
-    """
+    """Auto-True when manifest hash matches rulate's current hash (we're
+    the only ones who could have produced the diff). Otherwise prompt
+    with the diff and accept y / n / Y / N."""
     chapter_id = str(decision['chapter_id'])
     rulate_hash = _body_hash(decision['rulate_text'])
     entry = manifest.get(chapter_id) or {}
     last_pushed_hash = entry.get('hash')
 
     if last_pushed_hash == rulate_hash:
-        # We pushed this exact body; rulate hasn't changed since.
-        # Local .md changed → just push the new local body.
-        print(f'  manifest match: safe to overwrite (no external edits since last push)')
+        print('  manifest match: safe to overwrite (no external edits since last push)')
         return True
 
     if state.get('all_yes'):
@@ -1209,36 +705,13 @@ def _phase_b_post(s, html_body: str, book_id: str, chapter_id: str,
 def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
                         csrf: str, user_id: "str | None", existing: dict,
                         manifest: dict, state: dict) -> str:
-    """Classify one queue item against rulate and execute the matching
-    action. Mutates `existing` after a successful create and `manifest`
-    after every successful body push. Returns one of:
-        'created' | 'updated' | 'skipped'
-    Raises on any HTTP / parse error (caller decides whether to keep
-    going through the rest of the queue).
-
-    Conflict handling (option D + manifest A):
-      - On `update_body`, compare the rulate-current body hash to the
-        manifest entry. If they match, we know we're the only one who
-        touched the chapter since our last push → safe to overwrite.
-      - If they don't match (or no manifest entry exists), prompt the
-        user with the first 5 diff hunks before overwriting.
-      - `--yes-to-all` short-circuits the prompt.
-
-    Version housekeeping:
-      - `create` / `update_body` prune empty stubs and obsolete copies
-        of our own translation BEFORE posting the fresh body — so each
-        chapter ends with exactly one of our versions and no system
-        stub. Other translators' real (non-empty) versions are never
-        touched.
-      - `skip` also prunes (keeps the newest of our versions; drops
-        stubs and any older accumulated duplicates from prior buggy
-        runs).
-    """
+    """Classify + execute one queue item. Returns 'created' | 'updated' |
+    'skipped'. Mutates `existing` after a create, `manifest` after any
+    successful body push. `--force-update` rewrites a `skip` decision to
+    `update_body` (used after a renderer/template change that's invisible
+    in a text-level diff but changes what rulate actually stores)."""
     decision = classify_queue_item(s, book_id, item, existing)
     if getattr(args, 'force_update', False) and decision['action'] == 'skip':
-        # Force a body re-upload even though text matches — used after
-        # PARA_TEMPLATE / format changes that don't show up in a text
-        # diff but do change what rulate stores.
         chapter_id = decision['chapter_id']
         fragment_id = _find_first_fragment_id(s, book_id, chapter_id)
         rulate_text = _existing_chapter_text(s, book_id, chapter_id) or ''
@@ -1257,9 +730,8 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
 
     if decision['action'] == 'skip':
         chapter_id = decision['chapter_id']
-        # Record the manifest hash even for skip — rulate's body
-        # already matches our local text, so logging this push-level
-        # state lets future runs short-circuit the conflict prompt.
+        # Manifest gets the hash even on skip — gives future runs a
+        # match-point so the overwrite prompt stays out of the way.
         _record_manifest(manifest, chapter_id, _our_chapter_text(item['paragraphs']))
         if user_id:
             fragment_id = _find_first_fragment_id(s, book_id, chapter_id)
@@ -1317,15 +789,9 @@ def _process_queue_item(s, book_id: str, item: dict, env: dict, args,
     return 'created'
 
 
-def _record_manifest(manifest: dict, chapter_id: str, local_text: str) -> None:
-    """Write our last-pushed body hash for `chapter_id` into the
-    manifest dict in-memory. The caller persists the file to disk
-    after each batch."""
-    from datetime import datetime, timezone
-    manifest[str(chapter_id)] = {
-        'hash': _body_hash(local_text),
-        'last_pushed_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    }
+# `_record_manifest` is imported from `_publish_engine` as an alias at
+# the top of this file — same hash + timestamp logic, no site-specific
+# bits, so both publishers produce identical manifest entries.
 
 
 def live_full_first(queue: list[dict], env: dict, args) -> int:
@@ -1356,7 +822,7 @@ def live_full_first(queue: list[dict], env: dict, args) -> int:
     print(f'Existing chapters on rulate: {len(existing)}')
 
     manifest = _load_manifest()
-    state: dict = {}
+    state = _initial_state(args)
 
     item = queue[0]
     print(f'\n=== [1/1] {item["title"]!r} ===')
@@ -1401,7 +867,7 @@ def live_full_all(queue: list[dict], env: dict, args) -> int:
     print('Queue: ' + _queue_size_summary(queue))
 
     manifest = _load_manifest()
-    state: dict = {}
+    state = _initial_state(args)
 
     import time
     stats = {'created': 0, 'updated': 0, 'skipped': 0, 'failed': 0}

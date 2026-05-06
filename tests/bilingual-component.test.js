@@ -745,8 +745,11 @@ test('_recordWork: bumps minute counter for current chapter, sets first/lastWork
   try {
     withFakeNow(1_700_000_000_000, () => c._recordWork());
     const ch = c.stats.byChapter[0];
-    assert.equal(ch.minutes, 1);
-    assert.equal(ch.firstWorkAt, ch.lastWorkAt);
+    // Bilingual editor has no Apply-rules tab — every work minute lands
+    // in the editor sub-bucket (rules stays empty).
+    assert.equal(ch.editor.minutes, 1);
+    assert.equal(ch.editor.firstWorkAt, ch.editor.lastWorkAt);
+    assert.equal(ch.rules.minutes, 0);
   } finally { restore(); }
 });
 
@@ -757,7 +760,7 @@ test('_recordWork: same minute → no double-count; new minute → +1', async ()
     withFakeNow(t,         () => c._recordWork());
     withFakeNow(t + 30000, () => c._recordWork()); // same minute
     withFakeNow(t + 60000, () => c._recordWork()); // next minute
-    assert.equal(c.stats.byChapter[0].minutes, 2);
+    assert.equal(c.stats.byChapter[0].editor.minutes, 2);
   } finally { restore(); }
 });
 
@@ -935,6 +938,19 @@ test('exportSoFar (bilingual): filename uses projectName slug when set', async (
     c.exportSoFar();
     assert.equal(captured.filename, 'meiyou-translation.md');
   } finally { restore(); }
+});
+
+test('exportGlossary (bilingual): Cyrillic projectName survives the slug', () => {
+  // Mirrors tests/component.test.js — the slug regex must keep any
+  // Unicode letter/digit (Cyrillic, CJK, etc.) so a non-ASCII project
+  // name doesn't collapse to an empty prefix.
+  const c = makeBilingualComponent();
+  c.config.projectName = 'Такого, как ты, больше нет';
+  c.glossary = [{ term: 'X', originalForm: 'X', translation: 'Х', notes: '', chapters: [0] }];
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportGlossary();
+  assert.equal(captured.filename, 'такого-как-ты-больше-нет-glossary.md');
 });
 
 test('exportGlossary: renders a 4-column markdown table (Reference / Editor / Target / Notes)', () => {

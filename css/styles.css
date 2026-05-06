@@ -1,5 +1,56 @@
 [x-cloak] { display: none !important; }
 
+/* Slim header — just the brand. Pico's default `nav` has generous
+   vertical padding suited to a multi-link top bar; with only the
+   project name there, the chrome should be a thin strip. */
+header.container {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  margin-bottom: 0.5rem;
+}
+header.container nav {
+  padding: 0;
+  min-height: 0;
+}
+header.container nav ul {
+  margin: 0;
+  padding: 0.15rem 0;
+  /* Pack everything to the left; pico nav's default would push the
+     last <ul> to the right with space-between, but we only have one
+     <ul> now so we want it strictly left-aligned. */
+  justify-content: flex-start;
+  gap: 0.6rem;
+}
+header.container .brand {
+  text-decoration: none;
+}
+header.container .brand strong {
+  font-size: 1rem;
+}
+header.container .lang-pair small {
+  color: var(--pico-muted-color);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+/* Compact chapter-position indicator: "27/70" + a tiny progress bar.
+   The bar is purely cosmetic — exact numbers are in the text. */
+header.container .chapter-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+header.container .chapter-progress small {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+}
+header.container .chapter-progress progress {
+  width: 80px;
+  height: 5px;
+  margin: 0;
+}
+
 /* Header "✓ Saved" badge — fades in briefly after every successful
    persistNow, fades out under JS control after SAVE_BADGE_MS. The
    transition only applies to the show direction (no exit animation)
@@ -12,50 +63,92 @@
   transition: opacity 0.2s ease-in;
 }
 
-/* Apply rules — diff table. Rows with a real diff get a coloured
-   left border to make scanning a long pass quick; the (rare) noop
-   rows that survive somehow stay neutral. Cells use word-break to
-   keep long Cyrillic / CJK paragraphs from blowing the column out
-   horizontally. */
-.rules-view .rules-diff {
+/* Apply rules — three-column grid: translation (left) | buttons
+   (middle) | original (right). The translation column carries the
+   current paragraph and, on diff rows, the suggestion stacked
+   beneath it. The middle column holds the accept/reject buttons
+   when a suggestion is pending and stays empty otherwise — its
+   width is fixed so non-diff rows keep the same layout, just with
+   nothing in the middle slot. */
+.rules-view .rules-paragraphs {
   margin-top: 1rem;
-  table-layout: fixed;
-  width: 100%;
+  /* 3-col template: prose | icon-button column | prose. The middle
+     column is just wide enough for a single ✓/✕ icon button (~2.5rem
+     including padding), eaten symmetrically out of the two prose
+     columns so they keep the editor's --split-pct ratio. */
+  grid-template-columns:
+    calc(var(--split-pct, 50%) - 1.5rem)
+    2.5rem
+    calc(100% - var(--split-pct, 50%) - 1.5rem);
 }
-.rules-view .rules-diff th,
-.rules-view .rules-diff td {
-  vertical-align: top;
-  word-break: break-word;
-  padding: 0.5rem 0.6rem;
+
+/* Explicit column placement so non-diff rows (which only emit
+   left + right + an empty middle marker) still land in cols 1
+   and 3, leaving col 2 visually empty. */
+.rules-view .rules-col-left  { grid-column: 1; }
+.rules-view .rules-col-mid   { grid-column: 2; }
+.rules-view .rules-col-mid-empty {
+  grid-column: 2;
+  /* Marker only — the empty middle column needs an explicit grid
+     item so the next sibling lands in col 3 instead of col 2.
+     Zero size so it doesn't shift the row vertically. */
+  width: 0; height: 0; overflow: hidden;
 }
-.rules-view .rules-diff th.rules-label,
-.rules-view .rules-diff td.rules-label   {
-  width: 2.5rem;
-  white-space: nowrap;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--pico-muted-color, #666);
+.rules-view .rules-col-right { grid-column: 3; }
+
+/* Left column wrap: current on top, suggestion stacked below it
+   on diff rows. Spacing between is set by the suggestion's margin
+   so non-diff rows don't get an extra gap. */
+.rules-view .rules-wrap {
+  display: flex;
+  flex-direction: column;
 }
-.rules-view .rules-diff th.rules-actions,
-.rules-view .rules-diff td.rules-actions { width: 5rem;  text-align: right; white-space: nowrap; }
-.rules-view .rules-diff td.rules-current,
-.rules-view .rules-diff td.rules-suggested {
-  white-space: pre-wrap;       /* preserve dialog-turn newlines inside paragraph */
+
+/* Diff highlighting is intentionally restrained: text reads as
+   prose, with just enough marking to spot the before-vs-after
+   boundary. Current gets a thin red gutter; suggestion gets a
+   thin yellow gutter. No fills — backgrounds drowned out short
+   paragraphs and made the column look like an alert box. */
+.rules-view .rules-pair.has-diff .rules-current {
+  border-left: 3px solid var(--pico-color-red-400, #e58383);
+  padding-left: 0.6rem;
+}
+.rules-view .rules-suggestion {
+  margin-top: 0.6rem;
+  border-left: 3px solid var(--pico-color-yellow-500, #d4a700);
+  padding-left: 0.6rem;
+  white-space: pre-wrap;
+}
+
+/* Buttons stack vertically inside the middle column so the
+   column stays narrow regardless of label length. align-self:
+   center on the col-mid item itself centers the button stack
+   VERTICALLY in the row — so on diff rows they sit literally
+   between the current (top of left col) and the suggestion
+   (bottom of left col). Equi-width via column's fixed track +
+   width: 100% on each button so labels never look ragged. */
+.rules-view .rules-actions {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+/* Square-ish icon buttons: just the symbol, no label, fixed width
+   so accept and reject align vertically. Slightly larger font so
+   the ✓ / ✕ glyphs are readable at this size. */
+.rules-view .rules-actions button.tiny {
+  width: 2rem;
+  height: 1.7rem;
+  padding: 0;
   font-size: 0.95rem;
-  line-height: 1.45;
-}
-/* Diff highlighting only fires on rows with a pending suggestion;
-   plain paragraph rows (no suggestion → empty `Suggested` cell)
-   stay neutral so reading the chapter doesn't feel like reading a
-   diff. */
-.rules-view .rules-diff tr.has-diff td.rules-suggested {
-  background: var(--pico-color-yellow-50, #fffbe6);
-}
-.rules-view .rules-diff tr.has-diff td.rules-current {
-  background: var(--pico-color-red-50, #fff5f5);
-}
-.rules-view .rules-diff tr.has-diff {
-  border-left: 3px solid var(--pico-color-yellow-400, #f0c200);
+  line-height: 1;
+  margin: 0;
+  min-height: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Sidebar marker: tiny dot next to a chapter title when it has a
@@ -67,7 +160,6 @@
   font-size: 0.7rem;
   vertical-align: super;
 }
-.rules-view .rules-diff button.tiny { margin-left: 0.25rem; }
 .rules-view article.warning {
   border-left: 4px solid var(--pico-color-yellow-500, #d4a700);
   background: var(--pico-color-yellow-50, #fffbe6);
@@ -190,6 +282,17 @@ article[role="alert"] .close {
   list-style: none;
   padding: 0;
   margin: 0 0 0.75rem 0;
+  /* 2-column flow so a long book doesn't run as one mile-long
+     vertical list. `column-fill: balance` keeps the two columns
+     roughly equal height. */
+  columns: 2;
+  column-gap: 0.4rem;
+  column-fill: balance;
+}
+.sidebar ul.chapters li {
+  /* Prevent a single chapter row from being split across columns
+     (e.g. title on one column, status dot on the next). */
+  break-inside: avoid;
 }
 
 .sidebar ul.chapters li a {
@@ -413,6 +516,10 @@ textarea.translation,
   background: transparent;
   font-family: var(--pico-font-family);
   line-height: 1.6;
+  /* Justify paragraphs by width — both source and translation columns
+     read as proper prose blocks instead of left-ragged lines. */
+  text-align: justify;
+  hyphens: auto;
 }
 
 .original {
@@ -448,6 +555,15 @@ textarea.translation:focus {
   white-space: pre-wrap;
   cursor: text;
   min-height: 1.6em;
+  /* Subtle hover-focus on rendered paragraphs — the click target needs
+     SOME visible affordance even before the user mouses over the
+     hover-revealed retranslate buttons. Theme-neutral gray so it
+     reads on both light and dark Pico themes. */
+  border-radius: 3px;
+  transition: background-color 0.12s ease;
+}
+.translation.rendered:hover {
+  background-color: rgba(127, 127, 127, 0.07);
 }
 .translation.rendered em { font-style: italic; }
 .translation.rendered strong { font-weight: 600; }
@@ -563,21 +679,141 @@ input.translation.title-row:focus {
   opacity: 0.7;
 }
 
-/* ---------- sticky actions ---------- */
-
+/* End-of-chapter action row: NOT sticky — surfaces only when the
+   reader scrolls to the bottom of the chapter. Keeps the chapter
+   reading experience uncluttered until a decision is needed. */
 .editor-actions {
   margin-top: 1.5rem;
   display: flex;
   gap: 0.5rem;
   justify-content: flex-end;
   flex-wrap: wrap;
-  position: sticky;
-  bottom: 0;
-  background: linear-gradient(to bottom, transparent, var(--pico-background-color) 25%);
-  padding: 1rem 0 0.5rem;
+  padding: 1rem 0 2rem;
 }
 
 .editor-actions button { margin: 0; }
+
+/* Sidebar collapse. The grid normally has [sidebar | main]; in
+   sidebar-hidden mode the main spans the full width. The sidebar
+   itself is hidden via x-show, which clears the slot in the grid. */
+.editor-grid.sidebar-hidden {
+  grid-template-columns: 1fr;
+}
+.sidebar-toggle {
+  margin-right: 0.6rem;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  line-height: 1.4;
+  min-height: 0;
+  width: auto;
+  white-space: nowrap;
+}
+
+/* Project view — landing dashboard. Cards link to each section so
+   the editor view can stay focused on the chapter being edited. */
+.project-view hgroup p { color: var(--pico-muted-color); margin-top: 0.25rem; }
+.project-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 1.5rem;
+}
+.project-card {
+  display: block;
+  padding: 1rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--pico-color);
+  transition: border-color 0.12s, background-color 0.12s;
+}
+.project-card:hover {
+  border-color: var(--pico-primary);
+  background-color: rgba(127, 127, 127, 0.04);
+}
+.project-card.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.project-card strong { display: block; }
+.project-card small {
+  color: var(--pico-muted-color);
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* Section title that introduces a row of project cards (Pipeline /
+   Tools). Small, muted; double-acts as a hierarchy hint. */
+.project-section-title {
+  margin: 0.5rem 0 0.4rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pico-muted-color);
+}
+
+/* Numbered step badge in the top-right of pipeline cards (1, 2, 3).
+   When the step is `checked` (Alpine class on the card), the same
+   slot becomes a green ✓ — bigger, brighter — to show "this stage
+   is done" at a glance. */
+.project-card .step-num {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--pico-muted-color);
+  letter-spacing: 0;
+}
+.project-card.checked {
+  border-color: var(--pico-color-green-300, #9bd3a4);
+}
+.project-card .check-mark {
+  color: var(--pico-color-green-600, #2c8c3a);
+  margin-right: 0.25rem;
+}
+.project-card { position: relative; }
+
+/* Progress bar inside the Editor card (accepted / total). */
+.project-card .step-progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 0.4rem;
+}
+.project-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.project-actions .project-save {
+  margin-left: auto;
+}
+
+/* Setup view's Import-project button — sits above the book-input
+   block so the user can either paste fresh markdown or restore a
+   previously exported project. */
+.setup-import {
+  margin: 0.5rem 0 1rem;
+}
+
+/* Bottom of Setup. Red-tinted outline so the destructive action is
+   unmistakable; not solid-filled so it doesn't look inviting to click. */
+.setup-danger {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+.setup-danger .danger-action {
+  color: var(--pico-color-red-600, #c14040);
+  border-color: var(--pico-color-red-300, #e8a4a4);
+}
+.setup-danger .danger-action:hover:not(:disabled) {
+  background: var(--pico-color-red-50, #fff5f5);
+  border-color: var(--pico-color-red-500, #d35454);
+}
 
 .translation-stats {
   margin: 1rem 0 0;

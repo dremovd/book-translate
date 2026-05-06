@@ -12,39 +12,29 @@
 <body x-data="bookTranslator" x-cloak>
   <header class="container">
     <nav>
-      <ul><li><strong>Book Translate</strong></li></ul>
       <ul>
-        <li><small x-show="book" x-text="(book?.chapters?.length || 0) + ' chapters · ' + (acceptedCount) + ' accepted'"></small></li>
-        <li>
-          <small class="rate-indicator" x-show="charsPerHourTotal != null" x-cloak
-                 :title="`Rolling rate over accepted chapters only. Current chapter is excluded — its chars are partial.`">
-            <span x-text="charsPerHourTotal"></span> chars/h
-          </small>
-        </li>
-        <li>
-          <small class="save-indicator" x-show="saveIndicator" x-cloak
-                 title="State auto-saved to your browser (localforage).">✓ Saved</small>
-        </li>
-        <li><a href="#" @click.prevent="gotoSetup()">Setup</a></li>
-        <li><a href="#" @click.prevent="gotoGlossary()" x-show="glossary.length">Glossary</a></li>
-        <li><a href="#" @click.prevent="view = 'editor'" x-show="book && anyTranslated">Editor</a></li>
-        <li><a href="#" @click.prevent="gotoRules()" x-show="book && anyTranslated">Apply rules</a></li>
-        <li><a href="#" @click.prevent="gotoStats()" x-show="hasAnyStats">Stats</a></li>
-        <li>
-          <button class="secondary outline" type="button"
-                  @click="$refs.importFile.click()" :disabled="busy"
-                  title="Load a previously exported state file">Import…</button>
-          <input type="file" accept=".json,application/json" x-ref="importFile"
-                 style="display:none" @change="importState($event)">
-        </li>
-        <li>
-          <button class="secondary outline" type="button"
-                  @click="exportState()" :disabled="!canExport"
-                  title="Download the current book, glossary, and settings as JSON (API key blanked)">
-            Export
+        <li x-show="view === 'editor'" x-cloak>
+          <button class="tiny secondary outline sidebar-toggle" type="button"
+                  @click="toggleSidebar()"
+                  :title="sidebarHidden ? 'Show chapters sidebar' : 'Hide chapters sidebar'">
+            <span x-text="sidebarHidden ? '▸ Chapters' : '◂ Hide'"></span>
           </button>
         </li>
-        <li><button class="secondary outline" @click="reset()">Reset</button></li>
+        <li>
+          <a href="#" @click.prevent="gotoProject()" class="brand"
+             :title="config.projectName ? 'Project: ' + config.projectName : 'Project'">
+            <strong x-text="config.projectName || 'Translation'"></strong>
+          </a>
+        </li>
+        <li class="lang-pair" x-show="config.targetLanguage" x-cloak>
+          <small x-text="'→ ' + config.targetLanguage"
+                 :title="'Translating into ' + config.targetLanguage"></small>
+        </li>
+        <li class="chapter-progress" x-show="view === 'editor' && book?.chapters?.length" x-cloak
+            :title="`Chapter ${currentChapterIndex + 1} of ${book?.chapters?.length} · status ${book?.chapters?.[currentChapterIndex]?.status}`">
+          <small x-text="(currentChapterIndex + 1) + '/' + (book?.chapters?.length || 0)"></small>
+          <progress :value="currentChapterIndex + 1" :max="book?.chapters?.length || 1"></progress>
+        </li>
       </ul>
     </nav>
   </header>
@@ -55,9 +45,104 @@
       <button class="close" @click="error = null">×</button>
     </article>
 
+    <!-- PROJECT — landing dashboard once a book is loaded; navigation
+         hub for the other views. Export-so-far also lives here so the
+         editor view can stay focused on the chapter you're editing. -->
+    <section x-show="view === 'project'" x-cloak class="container project-view">
+      <h2 x-text="config.projectName || 'Project'"></h2>
+      <!-- Main flow — numbered stages of the book translation pipeline.
+           Setup → Glossary → Editor. The Editor card shows accepted/total
+           progress so the user can see at a glance where they are. -->
+      <h4 class="project-section-title">Pipeline</h4>
+      <div class="project-cards">
+        <a class="project-card" href="#" @click.prevent="gotoSetup()"
+           :class="{ checked: !!book?.chapters?.length }">
+          <span class="step-num">1</span>
+          <strong>
+            <span class="check-mark" x-show="!!book?.chapters?.length" x-cloak>✓</span>
+            Setup
+          </strong>
+          <small x-show="config.model" x-cloak>
+            Model: <span x-text="config.model"></span>
+          </small>
+          <small x-show="(config.model2 || '').trim()" x-cloak>
+            2nd: <span x-text="config.model2"></span>
+          </small>
+        </a>
+        <a class="project-card" href="#" @click.prevent="gotoGlossary()"
+           :class="{ disabled: !glossary.length, checked: !!(book && anyTranslated) }">
+          <span class="step-num">2</span>
+          <strong>
+            <span class="check-mark" x-show="!!(book && anyTranslated)" x-cloak>✓</span>
+            Glossary
+          </strong>
+          <small><span x-text="glossary.length || 0"></span> term(s)</small>
+        </a>
+        <a class="project-card" href="#" @click.prevent="gotoEditor()"
+           :class="{ disabled: !(book && anyTranslated),
+                     checked: !!(book?.chapters?.length && acceptedCount === book.chapters.length) }">
+          <span class="step-num">3</span>
+          <strong>
+            <span class="check-mark"
+                  x-show="!!(book?.chapters?.length && acceptedCount === book.chapters.length)" x-cloak>✓</span>
+            Editor
+          </strong>
+          <small x-show="book?.chapters?.length"
+                 x-text="acceptedCount + ' / ' + book.chapters.length + ' accepted'"></small>
+          <small x-show="!book?.chapters?.length">Per-paragraph review &amp; edits</small>
+          <progress class="step-progress" x-show="book?.chapters?.length" x-cloak
+                    :value="acceptedCount" :max="book?.chapters?.length || 1"></progress>
+        </a>
+      </div>
+
+      <!-- Tools — sit alongside the pipeline; available on demand once
+           the book has at least one translated chapter. -->
+      <h4 class="project-section-title">Tools</h4>
+      <div class="project-cards">
+        <a class="project-card" href="#" @click.prevent="gotoRules()"
+           :class="{ disabled: !(book && anyTranslated) }">
+          <strong>Apply rules</strong>
+          <small>Rule-based edit pass</small>
+        </a>
+        <a class="project-card" href="#" @click.prevent="gotoStats()"
+           :class="{ disabled: !hasAnyStats }">
+          <strong>Stats</strong>
+          <small>Throughput &amp; API calls</small>
+        </a>
+      </div>
+
+      <div class="project-actions">
+        <button class="secondary outline" @click="exportSoFar()"
+                :disabled="!canExportSoFar" type="button"
+                title="Download every accepted chapter through the current one as a single Markdown file">
+          Export translation (.md)
+        </button>
+        <button class="secondary outline" type="button"
+                @click="exportState()" :disabled="!canExport"
+                title="Download the current book, glossary, and settings as JSON (API key blanked)">
+          Export project
+        </button>
+        <small class="save-indicator project-save" x-show="saveIndicator" x-cloak
+               title="State auto-saved to your browser (localforage).">✓ Saved</small>
+      </div>
+    </section>
+
     <!-- SETUP -->
     <section x-show="view === 'setup'" x-cloak class="container">
       <h2>Book translator</h2>
+
+      <!-- Import a previously exported project (JSON state envelope).
+           Lives here rather than in the Project view because Setup is
+           the natural entry point for "load something to start from". -->
+      <div class="setup-import">
+        <button class="secondary outline" type="button"
+                @click="$refs.importFile.click()" :disabled="busy"
+                title="Load a previously exported project (JSON)">
+          Import project…
+        </button>
+        <input type="file" accept=".json,application/json" x-ref="importFile"
+               style="display:none" @change="importState($event)">
+      </div>
 
       <!-- ===== Simple fields (always visible) ===== -->
       <label>Book (.md)
@@ -75,14 +160,6 @@
         <input x-model="config.projectName" placeholder="e.g. hpmor — used as a filename prefix on every export">
       </label>
       <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
-      <label x-show="config.translator === 'poe'">
-        Glossary guidance
-        <textarea rows="6" x-model="config.glossaryGuidance"></textarea>
-      </label>
-      <label x-show="config.translator === 'poe'">
-        Translation guidance
-        <textarea rows="6" x-model="config.translationGuidance"></textarea>
-      </label>
 
       <!-- ===== Toggle for advanced fields ===== -->
       <button class="secondary outline" type="button"
@@ -159,6 +236,16 @@
           Algorithmic Palladius (Палладий) for Chinese names
           <small>When the source has Chinese characters, run each CJK term through the Palladius transliteration system and pass the result to the model as a per-term hint. Off by default — enable for Chinese-source books where you want canonical Russian renderings (Жуань Мянь, Чжан Сань) instead of model-invented ones.</small>
         </label>
+        <h3 x-show="config.translator === 'poe'">Guidance</h3>
+        <label x-show="config.translator === 'poe'">
+          Glossary guidance
+          <textarea rows="6" x-model="config.glossaryGuidance"></textarea>
+        </label>
+        <label x-show="config.translator === 'poe'">
+          Translation guidance
+          <textarea rows="6" x-model="config.translationGuidance"></textarea>
+        </label>
+
         <label x-show="config.translator === 'poe'">
           Translation prompt
           <select x-model="config.translationPromptPreset">
@@ -180,7 +267,7 @@
 
       <button @click="startFromRaw()" :disabled="busy || !rawBook.trim()" :aria-busy="busy && view === 'setup'"
               style="margin-top: 1rem;">
-        <span x-text="busy ? 'Building glossary…' : 'Parse book & build glossary'"></span>
+        <span x-text="busy ? 'Building glossary…' : 'Build glossary'"></span>
       </button>
       <div class="gloss-progress" x-show="glossaryProgress" x-cloak>
         <small>
@@ -189,6 +276,17 @@
           <span x-text="`${glossaryProgress?.current ?? 0} / ${glossaryProgress?.total ?? 0}`"></span>
         </small>
         <progress :value="glossaryProgress?.current ?? 0" :max="Math.max(1, glossaryProgress?.total ?? 1)"></progress>
+      </div>
+
+      <!-- Destructive: wipes book, glossary, edits, settings, stats.
+           Sits at the bottom so it's not the first button the eye
+           lands on; styled in danger contrast so it's unmistakable. -->
+      <div class="setup-danger">
+        <button class="contrast outline danger-action" type="button"
+                @click="reset()" :disabled="busy"
+                title="Clears the loaded book, glossary, translations, settings, and stats. Asks for confirmation.">
+          Clear all project data
+        </button>
       </div>
     </section>
 
@@ -263,8 +361,10 @@
             <th>Chapter</th>
             <th>Status</th>
             <th class="num">Chars (no spaces)</th>
-            <th class="num">Minutes worked</th>
-            <th class="num">Chars / h</th>
+            <th class="num" title="Minutes worked in the editor (translation) tab">Editor min</th>
+            <th class="num" title="Chapter chars / editor minutes — translation throughput">Editor chars/h</th>
+            <th class="num" title="Minutes worked in the Apply-rules tab">Rules min</th>
+            <th class="num" title="Chapter chars / rules minutes — polish throughput">Rules chars/h</th>
             <th>First worked</th>
             <th>Last worked</th>
           </tr>
@@ -276,8 +376,10 @@
               <td x-text="row.title"></td>
               <td><span class="chapter-status" :class="row.status" :title="row.status"></span></td>
               <td class="num" x-text="row.chars"></td>
-              <td class="num" x-text="row.minutes"></td>
+              <td class="num" x-text="row.minutes || '—'"></td>
               <td class="num" x-text="row.charsPerHour == null ? '—' : row.charsPerHour"></td>
+              <td class="num" x-text="row.rulesMinutes || '—'"></td>
+              <td class="num" x-text="row.rulesCharsPerHour == null ? '—' : row.rulesCharsPerHour"></td>
               <td x-text="formatWorkTime(row.firstWorkAt)"></td>
               <td x-text="formatWorkTime(row.lastWorkAt)"></td>
             </tr>
@@ -351,45 +453,62 @@
           <span x-text="pendingPassStaleParagraphs.map(i => i + 1).join(', ')"></span>.
         </article>
 
-        <!-- Full-chapter table: every paragraph (and the title) is
+        <!-- Full-chapter grid: every paragraph (and the title) is
              always visible so the user can read while typing rules.
-             Suggestion column + accept/reject buttons light up only
-             on rows where there's a pending suggestion. -->
-        <table x-show="chapterRulesRows.length" x-cloak class="rules-diff">
-          <thead>
-            <tr>
-              <th class="rules-label">#</th>
-              <th>Current</th>
-              <th>Suggested</th>
-              <th class="rules-actions"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <template x-for="row in chapterRulesRows" :key="row.key">
-              <tr class="rules-row" :class="row.suggestion != null ? 'has-diff' : ''">
-                <td class="rules-label" x-text="row.label"></td>
-                <td class="rules-current"   x-text="row.current"></td>
-                <td class="rules-suggested" x-text="row.suggestion ?? ''"></td>
-                <td class="rules-actions">
-                  <template x-if="row.suggestion != null">
-                    <span>
-                      <button class="tiny" type="button" @click="acceptRule(row.key)"
-                              title="Accept the suggestion (replaces the paragraph)">→</button>
-                      <button class="tiny secondary outline" type="button" @click="rejectRule(row.key)"
-                              title="Reject the suggestion (keeps the current paragraph)">×</button>
-                    </span>
-                  </template>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
+             Same two-column layout as the editor — current translation
+             on the left, original on the right — so the auto-edit view
+             reads like the editor. The suggestion block + accept/reject
+             buttons appear inline beneath the current translation only
+             on rows where there's a pending suggestion (`has-diff`). -->
+        <div x-show="chapterRulesRows.length" x-cloak
+             class="paragraphs rules-paragraphs"
+             :style="`--split-pct: ${splitPercent}%; --original-font-size: ${FONT_SIZES[originalFontSize]}; --translation-font-size: ${FONT_SIZES[translationFontSize]}`">
+          <template x-for="row in chapterRulesRows" :key="row.key">
+            <!-- Three-column row, consistent across diff and non-diff:
+                 col 1 (left): current translation, with the suggestion stacked beneath it
+                               on diff rows (yellow left bar marks the "after" candidate).
+                 col 2 (middle): accept/reject buttons on diff rows, vertically centered so
+                               they sit literally between the current and suggestion blocks.
+                               Empty on non-diff rows.
+                 col 3 (right): original — always, so the right column doesn't flip languages
+                               between diff and non-diff rows. -->
+            <div class="rules-pair" style="display:contents;"
+                 :class="row.suggestion != null ? 'has-diff' : ''">
+              <div class="rules-col-left rules-wrap">
+                <div class="translation rendered rules-current"
+                     :class="row.key === 'title' ? 'title-row' : ''"
+                     x-html="renderMd(row.current) || '<span class=&quot;translation-placeholder&quot;>(empty)</span>'"></div>
+                <template x-if="row.suggestion != null">
+                  <div class="translation rendered rules-suggestion"
+                       :class="row.key === 'title' ? 'title-row' : ''"
+                       x-html="renderMd(row.suggestion)"></div>
+                </template>
+              </div>
+
+              <template x-if="row.suggestion != null">
+                <div class="rules-actions rules-col-mid">
+                  <button class="tiny rules-accept" type="button" @click="acceptRule(row.key)"
+                          title="Accept the suggestion (replaces the paragraph)" aria-label="Accept">✓</button>
+                  <button class="tiny secondary outline rules-reject" type="button" @click="rejectRule(row.key)"
+                          title="Reject the suggestion (keeps the current paragraph)" aria-label="Reject">✕</button>
+                </div>
+              </template>
+              <template x-if="row.suggestion == null">
+                <span class="rules-col-mid-empty"></span>
+              </template>
+
+              <div class="original rules-col-right" :class="row.key === 'title' ? 'title-row' : ''"
+                   x-html="renderMd(row.original)"></div>
+            </div>
+          </template>
+        </div>
       </div>
     </section>
 
     <!-- EDITOR -->
-    <section x-show="view === 'editor'" x-cloak class="editor-grid">
-      <aside class="sidebar">
+    <section x-show="view === 'editor'" x-cloak class="editor-grid"
+             :class="{ 'sidebar-hidden': sidebarHidden }">
+      <aside class="sidebar" x-show="!sidebarHidden" x-cloak>
         <h4>Chapters</h4>
         <ul class="chapters">
           <template x-for="(ch, i) in (book?.chapters || [])" :key="i">
@@ -424,12 +543,6 @@
 
       <div class="editor-main">
         <div class="editor-toolbar">
-          <p class="chapter-info">
-            <small>
-              Chapter <span x-text="currentChapterIndex + 1"></span> of <span x-text="book?.chapters?.length"></span>
-              · status: <span x-text="book?.chapters?.[currentChapterIndex]?.status"></span>
-            </small>
-          </p>
           <div class="font-size-controls">
             <label>
               <small>Original</small>
@@ -522,14 +635,14 @@
         <p class="translation-stats"
            x-text="`${currentChapterStats.words} words · ${currentChapterStats.chars} characters (no spaces)`"></p>
 
+        <!-- End-of-chapter action: ONLY appears when scrolled to the
+             bottom (no sticky positioning), so the user moves through
+             the chapter naturally and the accept-and-next button
+             surfaces when they're done. Re-translate-this-chapter and
+             Export so far have been moved out of the editor — Export
+             lives in the Project view; Re-translate is intentionally
+             out of the UI for now. -->
         <div class="editor-actions">
-          <button class="secondary outline" @click="exportSoFar()" :disabled="!canExportSoFar" type="button"
-                  title="Download Markdown of every translated chapter through the one you're viewing">
-            Export so far
-          </button>
-          <button class="secondary outline" @click="retranslateCurrent()" :disabled="busy" type="button">
-            Re-translate this chapter
-          </button>
           <button @click="acceptAndNext()" :disabled="busy" :aria-busy="busy">
             <span x-text="nextButtonLabel"></span>
           </button>

@@ -5,7 +5,8 @@ import { renderTranslationMarkdown, renderGlossaryMarkdown } from './translators
 import { renderInlineMd } from './markdown.js';
 import {
   clampSplit, SAVE_BADGE_MS, chapterTranslationStats,
-  defaultStats, migrateLegacyStats, migrateLegacyConfig, LEGACY_QUERY_KEY_MAP,
+  defaultStats, defaultWorkBucket,
+  migrateLegacyStats, migrateLegacyConfig, LEGACY_QUERY_KEY_MAP,
 } from './state-helpers.js';
 import { APP_VERSION } from './version.js';
 
@@ -189,7 +190,12 @@ export function defaultConfig() {
 export function makeComponent() {
   return {
     // ---- state ----
-    view: 'setup',               // 'setup' | 'glossary' | 'editor'
+    view: 'setup',               // 'setup' | 'project' | 'glossary' | 'editor' | 'rules' | 'stats'
+    // Editor sidebar (chapters list + glossary mini) shown by default;
+    // toggle via the "Hide chapters" button in the editor toolbar.
+    // Persisted with the rest of the state so the user's choice
+    // survives a page reload.
+    sidebarHidden: false,
     rawBook: '',
     headingLevel: 1,             // 1 = split on `#`, 2 = split on `##`, …
     splitPercent: 60,            // editor column split — % of width given to translation, clamped 20..80
@@ -253,6 +259,7 @@ export function makeComponent() {
         this.$watch('originalFontSize',    schedule);
         this.$watch('translationFontSize', schedule);
         this.$watch('showAdvanced',        schedule);
+        this.$watch('sidebarHidden',       schedule);
 
         // Resize all translation textareas whenever the editor becomes
         // visible or the shown chapter changes — these are the two moments
@@ -303,6 +310,7 @@ export function makeComponent() {
           this.rawBook = saved.rawBook ?? '';
           this.headingLevel = saved.headingLevel ?? 1;
           this.splitPercent = clampSplit(saved.splitPercent ?? 60);
+          this.sidebarHidden = !!saved.sidebarHidden;
           this.originalFontSize    = clampFontSize(saved.originalFontSize,    'medium');
           this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
           this.showAdvanced = !!saved.showAdvanced;
@@ -361,13 +369,17 @@ export function makeComponent() {
     // Hour rather than minute because typical literary throughput puts
     // the per-minute number in the high-hundreds, which is harder to
     // read at a glance than the per-hour figure.
+    //
+    // Denominator is editor-view minutes ONLY. Apply-rules polish
+    // doesn't produce new chars, so mixing those minutes in would
+    // understate the editor's typing rate for time-left estimates.
     get charsPerHourTotal() {
       const chapters = this.book?.chapters;
       if (!chapters?.length) return null;
       let totalChars = 0, totalMin = 0;
       chapters.forEach((ch, i) => {
         if (ch?.status !== 'accepted') return;
-        const mins = this.stats?.byChapter?.[i]?.minutes || 0;
+        const mins = this.stats?.byChapter?.[i]?.editor?.minutes || 0;
         if (mins <= 0) return;
         totalMin += mins;
         totalChars += chapterTranslationStats(ch).chars;
@@ -438,7 +450,9 @@ export function makeComponent() {
       );
       if (anyCalls) return true;
       const byCh = this.stats?.byChapter || {};
-      return Object.values(byCh).some(c => (c?.minutes || 0) > 0);
+      return Object.values(byCh).some(c =>
+        (c?.editor?.minutes || 0) > 0 || (c?.rules?.minutes || 0) > 0
+      );
     },
 
     // Stats view helpers — surface the API-call counters as a stable,
@@ -475,26 +489,42 @@ export function makeComponent() {
     },
 
     // Stats view — per-chapter table rows. Only chapters with at least
-    // one recorded minute of work appear, so historical runs from before
-    // the stats feature shipped (or chapters the user never opened) don't
-    // pad the table with zero rows. The chars/min rate computation uses
-    // the same filter via charsPerMinuteTotal.
+    // one recorded minute of work (in either sub-bucket) appear, so
+    // historical runs from before the stats feature shipped (or chapters
+    // the user never opened) don't pad the table with zero rows.
+    //
+    // Two separate throughput columns:
+    //   `charsPerHour`      — chapter chars / editor minutes
+    //                         (translation throughput)
+    //   `rulesCharsPerHour` — chapter chars / rules minutes
+    //                         (polish throughput — how fast the user
+    //                         decides on suggestions per chapter)
+    // firstWorkAt/lastWorkAt prefer the editor sub-bucket and fall back
+    // to rules when the chapter has only seen rules-tab work.
     get chapterStatsRows() {
       const chapters = this.book?.chapters || [];
       const out = [];
       chapters.forEach((ch, i) => {
         const entry = this.stats?.byChapter?.[i];
-        if (!entry || !entry.minutes) return;
+        const editorMin = entry?.editor?.minutes || 0;
+        const rulesMin  = entry?.rules?.minutes  || 0;
+        if (editorMin === 0 && rulesMin === 0) return;
         const stats = chapterTranslationStats(ch);
         out.push({
           index: i,
           title: ch.title,
           status: ch.status,
           chars: stats.chars,
-          minutes: entry.minutes,
-          charsPerHour: Math.round((stats.chars / entry.minutes) * 60),
-          firstWorkAt: entry.firstWorkAt || null,
-          lastWorkAt:  entry.lastWorkAt  || null,
+          minutes: editorMin,
+          rulesMinutes: rulesMin,
+          charsPerHour: editorMin > 0
+            ? Math.round((stats.chars / editorMin) * 60)
+            : null,
+          rulesCharsPerHour: rulesMin > 0
+            ? Math.round((stats.chars / rulesMin) * 60)
+            : null,
+          firstWorkAt: entry?.editor?.firstWorkAt || entry?.rules?.firstWorkAt || null,
+          lastWorkAt:  entry?.editor?.lastWorkAt  || entry?.rules?.lastWorkAt  || null,
         });
       });
       return out;
@@ -525,6 +555,7 @@ export function makeComponent() {
           originalFontSize: this.originalFontSize,
           translationFontSize: this.translationFontSize,
           showAdvanced: this.showAdvanced,
+          sidebarHidden: this.sidebarHidden,
           book: this.book,
           glossary: this.glossary,
           currentChapterIndex: this.currentChapterIndex,
@@ -598,20 +629,29 @@ export function makeComponent() {
     // Stats — minute-bucketed work tracker. Fired by every event we
     // consider "engagement with the book" (see _installWorkListeners +
     // the @input wiring in the editor view): scroll, textarea edits,
-    // retranslate buttons, title edits.
+    // retranslate buttons, title edits, Apply-rules accept/reject.
     //
     // Two gates so we don't count phantom work:
-    //   - view must be 'editor' (no setup-view scroll, no glossary edits
-    //     get attributed to a chapter — the glossary is book-wide).
-    //   - document.visibilityState must be 'visible' (a backgrounded tab
-    //     can fire scroll events on iOS / momentum-scroll edge cases).
+    //   - view must be 'editor' or 'rules' (no setup-view scroll, no
+    //     glossary edits — the glossary is book-wide, can't be
+    //     attributed to a single chapter).
+    //   - document.visibilityState must be 'visible' (a backgrounded
+    //     tab can fire scroll events on iOS / momentum-scroll edge
+    //     cases).
     //
-    // Same-minute events are no-ops after the first — they don't even
-    // mutate `lastWorkAt`. That keeps the persistence debounce idle
-    // during continuous reading-scroll, and keeps lastWorkAt at the
-    // start-of-the-counted-minute (good enough at minute resolution).
+    // The view dispatches into the right sub-bucket — `entry.editor`
+    // for translation-tab work, `entry.rules` for Apply-rules-tab
+    // work. Each sub-bucket has its own `_lastMinute` for independent
+    // dedup, so editor and rules in the same wall-clock minute each
+    // get one bump (not just one combined).
+    //
+    // Same-minute events within a single sub-bucket are no-ops after
+    // the first — they don't even mutate `lastWorkAt`. That keeps the
+    // persistence debounce idle during continuous reading-scroll, and
+    // keeps lastWorkAt at the start-of-the-counted-minute (good
+    // enough at minute resolution).
     _recordWork() {
-      if (this.view !== 'editor') return;
+      if (this.view !== 'editor' && this.view !== 'rules') return;
       if (typeof document !== 'undefined'
           && document.visibilityState
           && document.visibilityState !== 'visible') return;
@@ -622,15 +662,21 @@ export function makeComponent() {
       const minute = Math.floor(Date.now() / 60000);
       let entry = this.stats.byChapter[idx];
       if (!entry) {
-        entry = { minutes: 0, _lastMinute: null, firstWorkAt: null, lastWorkAt: null };
+        entry = { editor: defaultWorkBucket(), rules: defaultWorkBucket() };
         this.stats.byChapter[idx] = entry;
+      } else {
+        // Defensive: a partial migration somehow left only one
+        // sub-bucket. Keep the present one, fill the missing.
+        if (!entry.editor) entry.editor = defaultWorkBucket();
+        if (!entry.rules)  entry.rules  = defaultWorkBucket();
       }
-      if (entry._lastMinute === minute) return;
-      entry._lastMinute = minute;
-      entry.minutes += 1;
+      const sub = entry[this.view];
+      if (sub._lastMinute === minute) return;
+      sub._lastMinute = minute;
+      sub.minutes += 1;
       const nowIso = new Date(minute * 60000).toISOString();
-      entry.lastWorkAt = nowIso;
-      if (entry.firstWorkAt == null) entry.firstWorkAt = nowIso;
+      sub.lastWorkAt = nowIso;
+      if (sub.firstWorkAt == null) sub.firstWorkAt = nowIso;
     },
 
     // Registry exposed to the setup view so x-for can populate the dropdown.
@@ -867,6 +913,9 @@ export function makeComponent() {
       // Persist the prompt so the same rule is one click away on the
       // next chapter / next session.
       this.config.applyRulesPrompt = prompt;
+      // Clicking "Run rules" is itself rules-tab work — count even
+      // before the pass returns or the user starts scrolling the diff.
+      this._recordWork();
       await this._runBusy(async () => {
         const translator = this._makeTranslator();
         if (typeof translator.applyRules !== 'function') {
@@ -920,6 +969,7 @@ export function makeComponent() {
       } else if (typeof idx === 'number') {
         delete pp.suggestions[idx];
       }
+      this._recordWork();
       this._tidyPendingPass(ch);
     },
 
@@ -966,9 +1016,14 @@ export function makeComponent() {
     // with each row's pending-pass suggestion (if any) attached on
     // the `suggestion` field. Rows without a suggestion get null;
     // those rows are still shown so the user can read the chapter
-    // while typing the rules. The diff treatment (suggestion column
+    // while typing the rules. The diff treatment (suggestion block
     // + accept/reject buttons) lights up only on rows where
     // `suggestion != null`.
+    //
+    // `original` carries the source-language text so the Apply-rules
+    // grid can mirror the editor's two-column layout (translation
+    // left, original right) — useful when judging a suggestion against
+    // what the source actually says.
     get chapterRulesRows() {
       const ch = this.book?.chapters?.[this.currentChapterIndex];
       if (!ch) return [];
@@ -977,11 +1032,12 @@ export function makeComponent() {
       const suggestions = pp?.suggestions || {};
       const rows = [{
         key: 'title',
-        // Compact column header: T for title, plain numbers for the
-        // body. The chapter heading already names the chapter; this
-        // column is just a row index.
+        // Compact row label: T for title, plain numbers for the body.
+        // The chapter heading already names the chapter; this is just
+        // a row index.
         label: 'T',
         current: ch.translatedTitle || ch.title || '',
+        original: ch.title || '',
         suggestion: titleSug,
       }];
       (ch.paragraphs || []).forEach((p, i) => {
@@ -989,6 +1045,7 @@ export function makeComponent() {
           key: i,
           label: String(i + 1),
           current: p.translation || '',
+          original: p.original || '',
           suggestion: Object.prototype.hasOwnProperty.call(suggestions, i)
             ? suggestions[i] : null,
         });
@@ -1055,9 +1112,12 @@ export function makeComponent() {
     },
 
     gotoSetup()    { this.view = 'setup'; },
+    gotoProject()  { this.view = 'project'; },
     gotoGlossary() { if (this.glossary.length) this.view = 'glossary'; },
     gotoStats()    { this.view = 'stats'; },
     gotoRules()    { this.view = 'rules'; },
+    gotoEditor()   { if (this.book && this.anyTranslated) this.view = 'editor'; },
+    toggleSidebar() { this.sidebarHidden = !this.sidebarHidden; },
 
     get canExport() {
       return !!(this.book || (this.rawBook && this.rawBook.trim()) || this.glossary.length);
@@ -1099,7 +1159,7 @@ export function makeComponent() {
       const fallbackTitle = this.book?.chapters?.[0]?.title || 'translation';
       const fallbackSlug = String(fallbackTitle)
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 40);
       const slug = projectSlug || fallbackSlug || 'translation';
@@ -1183,15 +1243,18 @@ export function makeComponent() {
 
     // Sanitized projectName usable as a filename prefix. Empty when
     // config.projectName is unset, so callers can `${prefix}base.md`
-    // and get the pre-projectName filename for free. The slug rules are
-    // the same the state-export already uses for the chapter-title
-    // fallback: lowercase, non-[a-z0-9] runs collapse to '-', leading
-    // and trailing dashes trimmed, capped at 40 chars.
+    // and get the pre-projectName filename for free. Slug rules:
+    // lowercase; runs of "not Unicode letter/digit" (whitespace,
+    // punctuation, em-dashes, …) collapse to '-'; leading/trailing
+    // dashes trimmed; capped at 40 chars. Cyrillic and CJK letters
+    // survive — the slug must round-trip a Russian book title like
+    // "Такого, как ты, больше нет" to "такого-как-ты-больше-нет"
+    // rather than dropping all of them and yielding an empty prefix.
     _projectFilenamePrefix() {
       const raw = (this.config.projectName || '').trim();
       if (!raw) return '';
       const slug = raw.toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 40);
       return slug ? `${slug}-` : '';

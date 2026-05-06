@@ -163,6 +163,38 @@ test('exportSoFar: filename has no project prefix when projectName is empty', as
   assert.equal(captured.filename, 'translation-through-chapter-001.md');
 });
 
+test('exportSoFar: Cyrillic projectName survives the slug instead of being stripped to empty', async () => {
+  // The original `[^a-z0-9]+` slug regex stripped every non-ASCII char,
+  // so a Cyrillic-only name like the actual book title became an empty
+  // string and the filename had no prefix at all. The slug must keep
+  // Unicode letters/digits — Cyrillic, CJK, etc. — and only collapse
+  // punctuation/whitespace to hyphens.
+  const c = await initFresh();
+  setDummyBook(c);
+  c.config.projectName = 'Такого, как ты, больше нет';
+  await c.startFromRaw();
+  await c.acceptGlossary();
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportSoFar();
+  // Lowercase, commas + spaces collapse to single hyphens, trimmed.
+  assert.equal(
+    captured.filename,
+    'такого-как-ты-больше-нет-translation-through-chapter-001.md'
+  );
+});
+
+test('exportGlossary: Cyrillic projectName slug works for the glossary filename too', async () => {
+  const c = await initFresh();
+  c.config.targetLanguage = 'Russian';
+  c.config.projectName = 'Такого, как ты, больше нет';
+  c.glossary = [{ term: 'X', translation: 'Х', notes: '', chapters: [0] }];
+  let captured = null;
+  c._downloadMarkdown = (md, filename) => { captured = { md, filename }; };
+  c.exportGlossary();
+  assert.equal(captured.filename, 'такого-как-ты-больше-нет-glossary.md');
+});
+
 test('exportGlossary: produces a 3-column markdown table for the singular editor', async () => {
   const c = await initFresh();
   c.config.targetLanguage = 'Russian';
@@ -877,42 +909,56 @@ test('stats: default-empty stats present after init', async () => {
   assert.deepEqual(c.stats.byChapter, {}, 'no chapter work yet');
 });
 
-test('_recordWork: bumps minute counter for current chapter, sets first/lastWorkAt', async () => {
+test('_recordWork: editor view bumps the editor sub-bucket; rules untouched', async () => {
   const c = await initInEditor();
   withFakeNow(1_700_000_000_000, () => c._recordWork());
   const ch = c.stats.byChapter[0];
-  assert.equal(ch.minutes, 1);
-  assert.equal(ch.firstWorkAt, ch.lastWorkAt, 'first/last identical on first event');
+  assert.equal(ch.editor.minutes, 1);
+  assert.equal(ch.rules.minutes, 0,
+    'work in the editor view must NOT bump the rules bucket');
+  assert.equal(ch.editor.firstWorkAt, ch.editor.lastWorkAt,
+    'first/last identical on first event');
 });
 
-test('_recordWork: same minute, same chapter → no double-count', async () => {
+test('_recordWork: rules view bumps the rules sub-bucket; editor untouched', async () => {
+  const c = await initInEditor();
+  c.view = 'rules';
+  withFakeNow(1_700_000_000_000, () => c._recordWork());
+  const ch = c.stats.byChapter[0];
+  assert.equal(ch.rules.minutes, 1);
+  assert.equal(ch.editor.minutes, 0,
+    'work in the rules view must NOT bump the editor bucket');
+});
+
+test('_recordWork: each view dedupes its own minute counter independently', async () => {
   const c = await initInEditor();
   const t = 1_700_000_000_000;
+  // Same minute, editor view → 1 bump.
+  c.view = 'editor';
   withFakeNow(t,        () => c._recordWork());
-  withFakeNow(t + 1000, () => c._recordWork()); // 1 second later
-  withFakeNow(t + 30000,() => c._recordWork()); // 30 seconds later
-  assert.equal(c.stats.byChapter[0].minutes, 1, 'all three events in the same minute count once');
-});
-
-test('_recordWork: minute boundary crossed → new minute counted', async () => {
-  const c = await initInEditor();
-  const t = 1_700_000_000_000;          // arbitrary minute boundary
-  withFakeNow(t,         () => c._recordWork());
+  withFakeNow(t + 1000, () => c._recordWork()); // dedup
+  // Same minute, switch to rules view → still bumps rules once.
+  c.view = 'rules';
+  withFakeNow(t + 5000, () => c._recordWork()); // first rules event
+  withFakeNow(t + 7000, () => c._recordWork()); // dedup within rules
+  // Next minute boundary, both views eligible to bump again.
+  c.view = 'editor';
   withFakeNow(t + 60000, () => c._recordWork());
-  withFakeNow(t + 90000, () => c._recordWork()); // same as second minute
-  assert.equal(c.stats.byChapter[0].minutes, 2);
+  c.view = 'rules';
+  withFakeNow(t + 60500, () => c._recordWork());
+  assert.equal(c.stats.byChapter[0].editor.minutes, 2);
+  assert.equal(c.stats.byChapter[0].rules.minutes, 2);
 });
 
-test('_recordWork: switching chapters tracks each independently', async () => {
+test('_recordWork: switching chapters tracks each independently (editor sub-bucket)', async () => {
   const c = await initInEditor();
   const t = 1_700_000_000_000;
-  // Translate chapter 1 so it's selectable.
   await c.acceptAndNext();
   withFakeNow(t,         () => { c.currentChapterIndex = 0; c._recordWork(); });
   withFakeNow(t + 60000, () => { c.currentChapterIndex = 1; c._recordWork(); });
   withFakeNow(t + 60000, () => { c.currentChapterIndex = 0; c._recordWork(); });
-  assert.equal(c.stats.byChapter[0].minutes, 2);
-  assert.equal(c.stats.byChapter[1].minutes, 1);
+  assert.equal(c.stats.byChapter[0].editor.minutes, 2);
+  assert.equal(c.stats.byChapter[1].editor.minutes, 1);
 });
 
 test('_recordWork: gated to view==="editor" (setup view does NOT count)', async () => {
@@ -1019,6 +1065,35 @@ test('loadSaved: migrates legacy numeric calls[kind]=N to {count, totalMs, timed
   assert.equal(c.stats.calls['glossary-extract'].timedCount, 0);
 });
 
+test('loadSaved: pre-rules-bucket flat byChapter entries migrate into the editor sub-bucket', async () => {
+  // Saves before the editor/rules split had `byChapter[idx] = {minutes,
+  // _lastMinute, firstWorkAt, lastWorkAt}`. After the split they live
+  // under `.editor`; the `.rules` sub-bucket starts empty.
+  await globalThis.localforage.setItem('book-translate-state:v1', {
+    view: 'setup',
+    stats: {
+      calls: {},
+      byChapter: {
+        '0': {
+          minutes: 5,
+          _lastMinute: 28000000,
+          firstWorkAt: '2026-04-01T10:00:00.000Z',
+          lastWorkAt:  '2026-04-01T10:04:00.000Z',
+        },
+      },
+    },
+  });
+  const c = makeComponent();
+  await c.init();
+  const ch0 = c.stats.byChapter[0];
+  assert.ok(ch0.editor, 'editor sub-bucket must exist after migration');
+  assert.equal(ch0.editor.minutes, 5);
+  assert.equal(ch0.editor.firstWorkAt, '2026-04-01T10:00:00.000Z');
+  assert.equal(ch0.editor.lastWorkAt,  '2026-04-01T10:04:00.000Z');
+  assert.ok(ch0.rules, 'rules sub-bucket must exist (empty)');
+  assert.equal(ch0.rules.minutes, 0);
+});
+
 test('loadSaved: pre-timedCount {count, totalMs} entries get timedCount inferred (totalMs>0 → count, else 0)', async () => {
   // Simulate saves between the duration feature shipping and the
   // timedCount field landing — `{count, totalMs}` without timedCount.
@@ -1051,7 +1126,7 @@ test('stats survive persistNow / loadSaved round-trip', async () => {
 
   const c2 = makeComponent();
   await c2.init();
-  assert.equal(c2.stats.byChapter[0]?.minutes, 1);
+  assert.equal(c2.stats.byChapter[0]?.editor?.minutes, 1);
   assert.equal(c2.stats.calls['chapter-translate'].count, 1);
   assert.equal(c2.stats.calls['chapter-translate'].totalMs, 1234);
   assert.equal(c2.stats.calls['chapter-translate'].timedCount, 1);
@@ -1182,7 +1257,7 @@ test('charsPerHourTotal: based on ACCEPTED chapters only — in-progress chapter
   c.book.chapters[0].paragraphs[1].translation = '12345';      // 5 chars
   withFakeNow(1_700_000_000_000, () => c._recordWork());
   withFakeNow(1_700_000_120_000, () => c._recordWork()); // +2 minutes total
-  assert.equal(c.stats.byChapter[0].minutes, 2);
+  assert.equal(c.stats.byChapter[0].editor.minutes, 2);
   // In-progress chapter must NOT contribute.
   assert.equal(c.charsPerHourTotal, null);
 
@@ -1191,6 +1266,25 @@ test('charsPerHourTotal: based on ACCEPTED chapters only — in-progress chapter
   // (10 + 5 = 15) → 23 chars / 2 minutes × 60 = 690 chars/h.
   await c.acceptAndNext();
   assert.equal(c.charsPerHourTotal, 690);
+});
+
+test('charsPerHourTotal: ignores rules-view minutes (rate is about translation throughput, not polish)', async () => {
+  const c = await initInEditor();
+  c.book.chapters[0].paragraphs[0].translation = 'a'.repeat(1000);
+  c.book.chapters[0].paragraphs[1].translation = '';
+  // 2 minutes of rules-view work — this should NOT enter the rate
+  // because the rules pass polishes existing text, it doesn't produce
+  // chars. The denominator is editor minutes only.
+  c.view = 'rules';
+  withFakeNow(1_700_000_000_000, () => c._recordWork());
+  withFakeNow(1_700_000_120_000, () => c._recordWork());
+  assert.equal(c.stats.byChapter[0].rules.minutes, 2);
+  assert.equal(c.stats.byChapter[0].editor.minutes, 0);
+  c.view = 'editor';
+  await c.acceptAndNext();
+  // No editor minutes for chapter 0 → still null even though rules
+  // minutes are non-zero.
+  assert.equal(c.charsPerHourTotal, null);
 });
 
 // ---------- Apply rules (per-chapter rule-based edit pass) ----------
