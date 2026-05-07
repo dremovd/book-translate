@@ -46,6 +46,8 @@ def parse_args(argv=None):
                    help='Suppress per-25-novel progress; only print final summary (cron-friendly)')
     p.add_argument('--lock', default='data/jjwxc/.snapshot.lock',
                    help='Lock file path (prevents overlapping cron runs). Set empty to disable.')
+    p.add_argument('--failures', default='data/jjwxc/failures.jsonl',
+                   help='Where to record monitored novels that failed both initial and retry fetch.')
     return p.parse_args(argv)
 
 
@@ -59,6 +61,22 @@ def _candidate_ids(path):
             seen.add(nid)
             out.append(nid)
     return out
+
+
+def _snapshot_one(nid, output_path):
+    """Fetch one novel and append a row. Returns (ok, error_message_or_None)."""
+    url = eng.build_onebook_url(nid)
+    try:
+        html = eng.fetch_html(url)
+    except RuntimeError as e:
+        return False, f'fetch: {e}'
+    try:
+        data = eng.parse_onebook_html(html)
+    except Exception as e:
+        return False, f'parse: {e}'
+    row = {'ts': eng.now_iso(), 'novel_id': nid, **data}
+    eng.append_jsonl(output_path, row)
+    return True, None
 
 
 def _run(args):
@@ -78,31 +96,41 @@ def _run(args):
         print('nothing to snapshot.', flush=True)
         return 0, 0
     ok = 0
-    failed = 0
+    failures = []  # [(nid, error)]
     for i, nid in enumerate(ids, 1):
-        url = eng.build_onebook_url(nid)
-        try:
-            html = eng.fetch_html(url)
-        except RuntimeError as e:
-            # Always loud — cron should email failures.
-            print(f'  [{i}/{len(ids)}] novel {nid}: FETCH FAILED ({e})', flush=True)
-            failed += 1
-            continue
-        try:
-            data = eng.parse_onebook_html(html)
-        except Exception as e:
-            print(f'  [{i}/{len(ids)}] novel {nid}: PARSE FAILED ({e})', flush=True)
-            failed += 1
-            continue
-        row = {'ts': eng.now_iso(), 'novel_id': nid, **data}
-        eng.append_jsonl(args.output, row)
-        ok += 1
-        if not args.quiet and (i % 25 == 0 or i == len(ids)):
-            print(f'  [{i}/{len(ids)}] last: {nid} collects={data["collects"]} '
-                  f'wc={data["word_count"]} status={data["status"]}', flush=True)
+        success, err = _snapshot_one(nid, args.output)
+        if success:
+            ok += 1
+            if not args.quiet and (i % 25 == 0 or i == len(ids)):
+                print(f'  [{i}/{len(ids)}] last: {nid}', flush=True)
+        else:
+            print(f'  [{i}/{len(ids)}] novel {nid}: {err}', flush=True)
+            failures.append((nid, err))
         if i < len(ids):
             time.sleep(args.sleep)
-    return ok, failed
+
+    # Retry pass — full coverage means no monitored novel quietly loses its
+    # data point. Walk every initial failure with exponential backoff. Any
+    # still-failing ids land in a separate JSONL so the next cron run sees
+    # them (and the verify script can surface them).
+    unrecovered = []
+    if failures:
+        print(f'\nretry pass: {len(failures)} failed initially', flush=True)
+        for j, (nid, err) in enumerate(failures, 1):
+            backoff = min(args.sleep * 4 * j, 30.0)
+            time.sleep(backoff)
+            success, err2 = _snapshot_one(nid, args.output)
+            if success:
+                ok += 1
+                print(f'  retry [{j}/{len(failures)}] novel {nid}: ok', flush=True)
+            else:
+                print(f'  retry [{j}/{len(failures)}] novel {nid}: STILL FAILING ({err2})', flush=True)
+                unrecovered.append({'ts': eng.now_iso(), 'novel_id': nid,
+                                    'first_error': err, 'retry_error': err2})
+        if unrecovered:
+            for row in unrecovered:
+                eng.append_jsonl(args.failures, row)
+    return ok, len(unrecovered)
 
 
 def main(argv=None):

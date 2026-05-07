@@ -30,12 +30,11 @@ BOOKBASE_URL = 'https://www.jjwxc.net/bookbase.php'
 ONEBOOK_URL = 'https://www.jjwxc.net/onebook.php'
 
 _NOVELID_RE = re.compile(r'onebook\.php\?novelid=(\d+)')
-# Capture the element's tag name + itemprop name + the content up to the next
-# tag. Most itemprops wrap a leaf text like <span itemprop="x">42</span>;
-# nested cases (<span itemprop="name"><span itemprop="articleSection">…</span>)
-# yield empty plain content, in which case we fall back to a wider window with
-# tags stripped so wrappers like <font color=red>完结</font> still resolve.
-_ITEMPROP_OPEN_RE = re.compile(r'<(\w+)[^>]*\bitemprop="([^"]+)"[^>]*>')
+# Capture full opening tag of an itemprop element: tag name, full open-tag
+# string, itemprop name. We need the full open-tag string because <meta> and
+# <img> are self-closing and their value lives in the `content=`/`src=`
+# attribute, not in tag content.
+_ITEMPROP_OPEN_RE = re.compile(r'<(\w+)([^>]*\bitemprop="([^"]+)"[^>]*)>')
 _TAG_RE = re.compile(r'<[^>]+>')
 _WS_RE = re.compile(r'\s+')
 _LASTUPDATE_RE = re.compile(r'最新更新:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})')
@@ -44,6 +43,22 @@ _TITLE_TAG_RE = re.compile(r'<title>\s*《([^》]+)》([^_]+?)\s*[_^]')
 _TAG_BLOCK_RE = re.compile(
     r'内容标签[\s\S]{0,2000}?<div[^>]*>([\s\S]*?)</div>', re.MULTILINE
 )
+_AUTHORID_RE = re.compile(r'oneauthor\.php\?authorid=(\d+)')
+_VOID_TAGS = {'meta', 'img', 'input', 'br', 'hr', 'link'}
+_ATTR_RE = re.compile(r'(\w+)\s*=\s*"([^"]*)"')
+# Per-chapter rows on the detail page. Each row carries:
+#   - chapter_id (chapterid=N in the chapter URL)
+#   - title text inside the <a itemprop="url">…</a>
+#   - word_count from <td itemprop="wordCount">N</td>
+#   - publish_date from the trailing <span>YYYY-MM-DD HH:MM:SS</span>
+_CHAPTER_ROW_RE = re.compile(
+    r'<tr[^>]*itemprop="chapter[^"]*"[^>]*>([\s\S]*?)</tr>'
+)
+_CHAPTER_LINK_RE = re.compile(
+    r'<a[^>]*itemprop="url"[^>]*href="[^"]*chapterid=(\d+)[^"]*"[^>]*>([\s\S]*?)</a>'
+)
+_CHAPTER_WC_RE = re.compile(r'itemprop="wordCount"[^>]*>(\d+)<')
+_CHAPTER_DATE_RE = re.compile(r'(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})')
 
 
 def _strip_tags(s):
@@ -112,9 +127,16 @@ def parse_onebook_html(html):
     props = {}  # name -> first textual value
     word_counts = []  # raw per-chunk wordCount values, in document order
     for m in _ITEMPROP_OPEN_RE.finditer(html):
-        tag = m.group(1)
-        name = m.group(2)
-        raw = _extract_itemprop_value(html, m.end(), tag)
+        tag = m.group(1).lower()
+        attrs_str = m.group(2)
+        name = m.group(3)
+        if tag in _VOID_TAGS:
+            # Self-closing element: extract value from attributes.
+            attrs = dict(_ATTR_RE.findall(attrs_str))
+            raw = attrs.get('content') or attrs.get('src') or attrs.get('_src') or ''
+            raw = raw.strip()
+        else:
+            raw = _extract_itemprop_value(html, m.end(), tag)
         if name == 'wordCount':
             word_counts.append(raw)
         elif name not in props:
@@ -153,9 +175,18 @@ def parse_onebook_html(html):
     title = props.get('articleSection') or _fallback_title(html)
     author = props.get('author') or _fallback_author(html)
 
+    author_id = None
+    am = _AUTHORID_RE.search(html)
+    if am:
+        author_id = int(am.group(1))
+
+    chapters = _parse_chapter_list(html)
+
     return {
+        'schema_version': 2,
         'title': title,
         'author': author,
+        'author_id': author_id,
         'genre': props.get('genre'),
         'word_count': total_wc,
         'chapter_count': chapter_count,
@@ -164,7 +195,13 @@ def parse_onebook_html(html):
         'score': _parse_int(props.get('scoreCount')),
         'status': status,
         'last_update': last_update,
+        'date_modified': _normalize_date(props.get('dateModified')),
+        'description': _normalize_description(props.get('description')),
+        'series': _normalize_series(props.get('series')),
+        'cover_url': props.get('image') or None,
+        'nutrition_count': _parse_int(props.get('nutritionCount')) or 0,
         'tags': tags,
+        'chapters': chapters,
     }
 
 
@@ -187,6 +224,78 @@ def _fallback_author(html):
     if m:
         return m.group(2).strip()
     return None
+
+
+def _normalize_date(s):
+    """Strip jjwxc's '0000-00-00 00:00:00' placeholder so callers can rely
+    on a real date or None — never a fake all-zero stamp."""
+    if not s:
+        return None
+    s = s.strip()
+    if not s or s == '0000-00-00 00:00:00':
+        return None
+    return s
+
+
+def _normalize_description(s):
+    """Description text is often newline-noisy and sometimes has trailing
+    template separators ('————'). Collapse whitespace and strip flanking
+    separators so the field is comparable across snapshots."""
+    if not s:
+        return None
+    text = _collapse_ws(s)
+    text = text.strip('—-')
+    text = _collapse_ws(text)
+    return text or None
+
+
+def _normalize_series(s):
+    """jjwxc renders '无从属系列' (= no series) literally — convert to None."""
+    if not s:
+        return None
+    text = _collapse_ws(s)
+    if not text or text in ('无从属系列', '-', '——', '无'):
+        return None
+    return text
+
+
+def _parse_chapter_list(html):
+    """Return list of {chapter_id, idx, title, word_count, published_at}.
+
+    Per-chapter rows on the detail page carry id (in the chapter URL),
+    title, word count (itemprop), and a publish-date string. We deliberately
+    skip per-chapter VIP/click counts: VIP markers are inconsistent across
+    layouts, and clicks are JS-lazy-loaded and absent from the static HTML.
+    """
+    out = []
+    for idx, m in enumerate(_CHAPTER_ROW_RE.finditer(html), 1):
+        body = m.group(1)
+        link = _CHAPTER_LINK_RE.search(body)
+        if not link:
+            # Restricted-view rows have no link; record an indexed placeholder
+            # so the per-chapter list length still reflects what jjwxc shows.
+            out.append({
+                'idx': idx,
+                'chapter_id': None,
+                'title': None,
+                'word_count': None,
+                'published_at': None,
+            })
+            continue
+        chapter_id = int(link.group(1))
+        title = _collapse_ws(_strip_tags(link.group(2)))
+        wc_m = _CHAPTER_WC_RE.search(body)
+        word_count = int(wc_m.group(1)) if wc_m else None
+        date_m = _CHAPTER_DATE_RE.search(body)
+        published_at = date_m.group(1) if date_m else None
+        out.append({
+            'idx': idx,
+            'chapter_id': chapter_id,
+            'title': title,
+            'word_count': word_count,
+            'published_at': published_at,
+        })
+    return out
 
 
 def _parse_content_tags(html):

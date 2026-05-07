@@ -72,6 +72,33 @@ class TestParseOnebookCompleted(unittest.TestCase):
             self.assertNotIn('&nbsp;', t)
             self.assertNotIn('\xa0', t)
 
+    def test_schema_version(self):
+        self.assertEqual(self.data['schema_version'], 2)
+
+    def test_author_id(self):
+        self.assertEqual(self.data['author_id'], 30)
+
+    def test_series(self):
+        self.assertEqual(self.data['series'], '宣德曲')
+
+    def test_cover_url(self):
+        self.assertIsNotNone(self.data['cover_url'])
+        self.assertTrue(self.data['cover_url'].startswith('http'))
+
+    def test_chapters_aligned_with_chapter_count(self):
+        self.assertEqual(len(self.data['chapters']), self.data['chapter_count'])
+
+    def test_chapters_have_id_title_wc_date(self):
+        for ch in self.data['chapters']:
+            self.assertIn('chapter_id', ch)
+            self.assertIn('title', ch)
+            self.assertIn('word_count', ch)
+            self.assertIn('published_at', ch)
+        self.assertEqual(self.data['chapters'][0]['chapter_id'], 1)
+        self.assertEqual(self.data['chapters'][0]['title'], '楔子')
+        self.assertEqual(self.data['chapters'][0]['word_count'], 1529)
+        self.assertEqual(self.data['chapters'][0]['published_at'], '2005-06-05 13:05:51')
+
 
 class TestParseOnebookOngoing(unittest.TestCase):
     def setUp(self):
@@ -111,6 +138,43 @@ class TestParseOnebookRestricted(unittest.TestCase):
         # collects/genre/etc. itemprops are present even in this layout.
         self.assertIsNotNone(self.data['collects'])
         self.assertIsNotNone(self.data['genre'])
+
+
+class TestSelfClosingItemprops(unittest.TestCase):
+    """`<meta itemprop="dateModified" content="…">` and `<img itemprop="image"
+    src="…">` carry their value in attributes, not tag content. The walker
+    used to swallow text from neighbouring elements; this guards the fix."""
+
+    def test_meta_content_attribute(self):
+        html = '<meta itemprop="dateModified" content="2026-05-07 12:00:00" />'
+        d = eng.parse_onebook_html(html)
+        self.assertEqual(d['date_modified'], '2026-05-07 12:00:00')
+
+    def test_img_src_attribute(self):
+        html = '<img itemprop="image" src="https://example.com/cover.jpg">'
+        d = eng.parse_onebook_html(html)
+        self.assertEqual(d['cover_url'], 'https://example.com/cover.jpg')
+
+    def test_normalize_zero_date_modified(self):
+        html = '<meta itemprop="dateModified" content="0000-00-00 00:00:00" />'
+        d = eng.parse_onebook_html(html)
+        self.assertIsNone(d['date_modified'])
+
+
+class TestNormalizers(unittest.TestCase):
+    """jjwxc's '无从属系列' literal means 'no series'; description text often
+    has framing separators we want to strip; both should normalise to a clean
+    representation downstream code can rely on."""
+
+    def test_no_series_literal_becomes_none(self):
+        html = '<span itemprop="series">无从属系列</span>'
+        d = eng.parse_onebook_html(html)
+        self.assertIsNone(d['series'])
+
+    def test_description_strips_separators(self):
+        html = '<div itemprop="description">————hello world————</div>'
+        d = eng.parse_onebook_html(html)
+        self.assertEqual(d['description'], 'hello world')
 
 
 class TestParseLastUpdatePlaceholder(unittest.TestCase):
@@ -230,6 +294,78 @@ class TestGrowthCompute(unittest.TestCase):
         self.assertEqual(g['collects_per_day'], 20.0)
 
 
+class TestVerifyCoverage(unittest.TestCase):
+    """The verify script's coverage check is the load-bearing 'no missing
+    data points' guard: every candidate eligible on cycle D must have a
+    snapshot row on day D."""
+
+    def setUp(self):
+        import importlib.util
+        path = Path(__file__).resolve().parent / 'jjwxc-verify.py'
+        spec = importlib.util.spec_from_file_location('jjwxc_verify', path)
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+
+    def _write_jsonl(self, path, rows):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            import json
+            for r in rows:
+                f.write(json.dumps(r) + '\n')
+
+    def test_no_gaps_when_full_coverage(self):
+        with tempfile.TemporaryDirectory() as td:
+            cand = os.path.join(td, 'cand.jsonl')
+            snap = os.path.join(td, 'snap.jsonl')
+            self._write_jsonl(cand, [
+                {'novel_id': 1, 'first_seen': '2026-05-06T00:00:00Z'},
+                {'novel_id': 2, 'first_seen': '2026-05-06T00:00:00Z'},
+            ])
+            self._write_jsonl(snap, [
+                {'ts': '2026-05-06T01:00:00Z', 'novel_id': 1},
+                {'ts': '2026-05-06T01:00:00Z', 'novel_id': 2},
+                {'ts': '2026-05-07T01:00:00Z', 'novel_id': 1},
+                {'ts': '2026-05-07T01:00:00Z', 'novel_id': 2},
+            ])
+            self.assertEqual(self.mod.verify_coverage(cand, snap), [])
+
+    def test_gap_detected_when_one_novel_missing_in_cycle(self):
+        with tempfile.TemporaryDirectory() as td:
+            cand = os.path.join(td, 'cand.jsonl')
+            snap = os.path.join(td, 'snap.jsonl')
+            self._write_jsonl(cand, [
+                {'novel_id': 1, 'first_seen': '2026-05-06T00:00:00Z'},
+                {'novel_id': 2, 'first_seen': '2026-05-06T00:00:00Z'},
+            ])
+            self._write_jsonl(snap, [
+                {'ts': '2026-05-06T01:00:00Z', 'novel_id': 1},
+                # novel 2 missing for 2026-05-06
+                {'ts': '2026-05-07T01:00:00Z', 'novel_id': 1},
+                {'ts': '2026-05-07T01:00:00Z', 'novel_id': 2},
+            ])
+            gaps = self.mod.verify_coverage(cand, snap)
+            self.assertEqual(len(gaps), 1)
+            self.assertEqual(gaps[0][0], '2026-05-06')
+            self.assertEqual(gaps[0][1], {2})
+
+    def test_late_added_candidate_not_flagged_for_earlier_cycle(self):
+        # Candidate added on 2026-05-07 should NOT count as missing for the
+        # 2026-05-06 cycle — they didn't exist then.
+        with tempfile.TemporaryDirectory() as td:
+            cand = os.path.join(td, 'cand.jsonl')
+            snap = os.path.join(td, 'snap.jsonl')
+            self._write_jsonl(cand, [
+                {'novel_id': 1, 'first_seen': '2026-05-06T00:00:00Z'},
+                {'novel_id': 2, 'first_seen': '2026-05-07T12:00:00Z'},
+            ])
+            self._write_jsonl(snap, [
+                {'ts': '2026-05-06T01:00:00Z', 'novel_id': 1},
+                {'ts': '2026-05-07T01:00:00Z', 'novel_id': 1},
+                {'ts': '2026-05-07T13:00:00Z', 'novel_id': 2},
+            ])
+            self.assertEqual(self.mod.verify_coverage(cand, snap), [])
+
+
 class TestLock(unittest.TestCase):
     """The cron driver depends on _Lock raising on contention so a second
     invocation can exit with EX_TEMPFAIL instead of corrupting state by
@@ -257,7 +393,8 @@ class TestLock(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, 'x.lock')
             with eng._Lock(path):
-                self.assertEqual(open(path).read().strip(), str(os.getpid()))
+                with open(path) as fh:
+                    self.assertEqual(fh.read().strip(), str(os.getpid()))
 
 
 if __name__ == '__main__':
