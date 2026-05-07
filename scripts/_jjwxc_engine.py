@@ -326,8 +326,14 @@ def _parse_content_tags(html):
 
 # --------- HTTP / IO helpers ---------
 
-def fetch_html(url, *, timeout=30, retries=3, backoff_seconds=2.0):
-    """GET `url`, decode as gb18030, with retries on transient failures."""
+def fetch_html(url, *, timeout=30, retries=3, backoff_seconds=2.0, encoding='gb18030'):
+    """GET `url`, decode bytes with the given encoding, retry on transient
+    failures.
+
+    Encoding is per-site: jjwxc serves gb18030, fanqie serves utf-8. Pass
+    ``encoding=None`` to detect from response Content-Type charset (falls
+    back to utf-8 if absent).
+    """
     last_err = None
     for attempt in range(retries):
         try:
@@ -343,7 +349,12 @@ def fetch_html(url, *, timeout=30, retries=3, backoff_seconds=2.0):
                 raw = resp.read()
                 if resp.headers.get('Content-Encoding') == 'gzip':
                     raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
-            return raw.decode('gb18030', errors='replace')
+                resolved = encoding
+                if resolved is None:
+                    ct = resp.headers.get('Content-Type', '')
+                    m = re.search(r'charset=([^\s;]+)', ct, re.I)
+                    resolved = m.group(1) if m else 'utf-8'
+            return raw.decode(resolved, errors='replace')
         except (urllib.error.URLError, TimeoutError, ConnectionResetError) as e:
             last_err = e
             if attempt + 1 < retries:
