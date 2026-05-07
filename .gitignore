@@ -19,6 +19,10 @@ translations/
 .rulate-state.json
 .mirnovel-state.json
 
+# Scraped jjwxc data (candidates registry + time-series snapshots).
+# Personal research data, regenerable from scratch — never committed.
+data/jjwxc/
+
 # Python bytecode caches.
 __pycache__/
 *.pyc
