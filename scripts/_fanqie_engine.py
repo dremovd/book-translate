@@ -63,6 +63,7 @@ RANK_CATEGORIES = [
     (2, '1017', '民国言情'),
 ]
 RANK_URL = 'https://fanqienovel.com/rank'
+HOME_URL = 'https://fanqienovel.com/'
 PAGE_URL = 'https://fanqienovel.com/page'
 
 _UNDEF_RE = re.compile(r'(?<=[:\[,])\s*undefined\s*(?=[,\]\}])')
@@ -123,6 +124,31 @@ def parse_rank_book_list(html):
     state = extract_initial_state(html)
     bl = state.get('rank', {}).get('book_list') or []
     return list(bl)
+
+
+def parse_home_lists(html):
+    """Return a dict of named book lists from the homepage SSR state.
+
+    Fanqie's homepage embeds several editorial / activity surfaces in
+    ``state.home``: ``updateList`` (recent chapter publishes, 20 entries
+    incl. chapter title and updateTime), ``boyList`` / ``girlList`` /
+    ``editorList`` / ``weekList`` (editorial picks, 6–9 entries each).
+
+    Each value list contains dicts with ``bookId``-bearing entries; we
+    keep only those (filtering out the announcement/notice entries which
+    don't have books).
+    """
+    state = extract_initial_state(html)
+    home = state.get('home') or {}
+    out = {}
+    for key in ('updateList', 'boyList', 'girlList', 'editorList', 'weekList'):
+        lst = home.get(key)
+        if not isinstance(lst, list):
+            continue
+        kept = [e for e in lst if isinstance(e, dict) and e.get('bookId')]
+        if kept:
+            out[key] = kept
+    return out
 
 
 def _to_int(v):
@@ -240,6 +266,10 @@ def normalize_rank_entry(entry):
 def build_rank_url(*, gender, category_id):
     qs = urllib.parse.urlencode({'gender': gender, 'category_id': category_id})
     return f'{RANK_URL}?{qs}'
+
+
+def build_home_url():
+    return HOME_URL
 
 
 def build_page_url(book_id):

@@ -36,10 +36,8 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-def _run(args):
-    seen = eng.load_candidate_book_ids(args.output)
-    if not args.quiet:
-        print(f'existing candidates: {len(seen)}')
+def _walk_rank_categories(args, seen):
+    """Walk every (gender, category) rank slot — popularity-weighted books."""
     added = 0
     fetched = 0
     rc = 0
@@ -67,6 +65,7 @@ def _run(args):
             row = {
                 'book_id': bid,
                 'first_seen': ts,
+                'discover_source': 'rank',
                 'discover_gender': gender,
                 'discover_category_id': category_id,
                 'discover_category_name': name,
@@ -77,11 +76,68 @@ def _run(args):
             new_on_page += 1
             added += 1
         if not args.quiet:
-            print(f'  g={gender} cat={category_id} {name}: {len(books)} books, '
+            print(f'  rank g={gender} cat={category_id} {name}: {len(books)} books, '
                   f'{new_on_page} new (total candidates: {len(seen)})', flush=True)
         if i < len(eng.RANK_CATEGORIES):
             time.sleep(args.sleep)
     return added, fetched, rc
+
+
+def _walk_homepage(args, seen):
+    """Walk the homepage SSR lists — captures recent updates + editorial picks
+    that the popularity rank doesn't surface (active novels, fresh writers).
+    Single fetch (vs 37 for rank) so cost is negligible.
+    """
+    try:
+        html = eng.fetch_html(eng.build_home_url())
+    except RuntimeError as e:
+        print(f'home: FETCH FAILED ({e})', flush=True)
+        return 0, 0, 1
+    try:
+        lists = eng.parse_home_lists(html)
+    except Exception as e:
+        print(f'home: PARSE FAILED ({e})', flush=True)
+        return 0, 0, 1
+    added = 0
+    ts = eng.now_iso()
+    for source_name, entries in lists.items():
+        new_in_list = 0
+        for entry in entries:
+            bid = entry.get('bookId')
+            if not bid or bid in seen:
+                continue
+            row = {
+                'book_id': bid,
+                'first_seen': ts,
+                'discover_source': f'home.{source_name}',
+            }
+            if not args.dry_run:
+                eng.append_jsonl(args.output, row)
+            seen.add(bid)
+            new_in_list += 1
+            added += 1
+        if not args.quiet:
+            print(f'  home.{source_name}: {len(entries)} entries, '
+                  f'{new_in_list} new (total candidates: {len(seen)})', flush=True)
+    return added, 1, 0
+
+
+def _run(args):
+    seen = eng.load_candidate_book_ids(args.output)
+    if not args.quiet:
+        print(f'existing candidates: {len(seen)}')
+    total_added = 0
+    total_fetched = 0
+    overall_rc = 0
+    if not args.quiet:
+        print('--- rank book_list per (gender, category) ---', flush=True)
+    a, f, r = _walk_rank_categories(args, seen)
+    total_added += a; total_fetched += f; overall_rc = overall_rc or r
+    if not args.quiet:
+        print('--- homepage SSR lists (updateList + editorial) ---', flush=True)
+    a, f, r = _walk_homepage(args, seen)
+    total_added += a; total_fetched += f; overall_rc = overall_rc or r
+    return total_added, total_fetched, overall_rc
 
 
 def main(argv=None):
@@ -95,7 +151,8 @@ def main(argv=None):
             sys.exit(75)
     else:
         added, fetched, rc = _run(args)
-    print(f'discover: fetched {fetched}/{len(eng.RANK_CATEGORIES)} categories, '
+    expected = len(eng.RANK_CATEGORIES) + 1   # 37 rank slots + 1 homepage fetch
+    print(f'discover: fetched {fetched}/{expected} surfaces, '
           f'added {added} new candidates' + (' (dry-run)' if args.dry_run else ''),
           flush=True)
     sys.exit(rc)
