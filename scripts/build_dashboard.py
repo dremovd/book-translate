@@ -238,19 +238,54 @@ def _scan_cron_logs(data_dir, hours=48):
     return len(errors), errors
 
 
-def _coverage_gap(by_id, candidates, id_field, hours_threshold=30):
-    """How many candidates haven't been snapshotted in the last `hours_threshold` h?"""
-    now = datetime.now(tz=timezone.utc)
-    cutoff = now.timestamp() - hours_threshold * 3600
-    cand_ids = {r.get(id_field) for r in candidates if r.get(id_field) is not None}
-    snapshotted_recent = set()
-    for nid, rows in by_id.items():
-        if not rows:
+def _coverage_gap(by_id, candidates, id_field, last_snapshot_ts, grace_hours=2):
+    """How many candidates that *should* have been snapshotted by now actually
+    weren't?
+
+    Discover and snapshot run on different cadences (hourly discover + daily
+    snapshot is the current setup), so candidates added after the most
+    recent snapshot run don't count as "missing" — they've had no chance
+    yet. We compute coverage *relative* to the last snapshot run:
+
+      eligible = candidates with first_seen <= last_snapshot_ts + grace
+      missing  = eligible \ {ids snapshotted in the last snapshot cycle}
+
+    grace_hours absorbs the snapshot run's own duration (a 15-min snapshot
+    pass means books discovered during the run still get snapshotted).
+
+    Returns (missing_count, eligible_count). If we have no snapshots yet
+    or no candidates with first_seen, returns (0, 0) so the dashboard
+    doesn't false-alarm on first deploy.
+    """
+    last_t = _parse_ts(last_snapshot_ts)
+    if not last_t:
+        return 0, 0
+    eligibility_cutoff = last_t.timestamp() + grace_hours * 3600
+
+    eligible = set()
+    for r in candidates:
+        nid = r.get(id_field)
+        fs = _parse_ts(r.get('first_seen'))
+        if nid is None or not fs:
             continue
-        t = _parse_ts(rows[-1].get('ts'))
-        if t and t.timestamp() >= cutoff:
-            snapshotted_recent.add(nid)
-    return len(cand_ids - snapshotted_recent), len(cand_ids)
+        if fs.timestamp() <= eligibility_cutoff:
+            eligible.add(nid)
+
+    # "Snapshotted in the last cycle" = has any snapshot row dated within the
+    # 6-hour window around last_snapshot_ts (covers a snapshot run that
+    # spans an hour or two).
+    cycle_lo = last_t.timestamp() - 6 * 3600
+    cycle_hi = last_t.timestamp() + 6 * 3600
+    snapshotted_this_cycle = set()
+    for nid, rows in by_id.items():
+        for r in rows:
+            t = _parse_ts(r.get('ts'))
+            if t and cycle_lo <= t.timestamp() <= cycle_hi:
+                snapshotted_this_cycle.add(nid)
+                break
+
+    missing = eligible - snapshotted_this_cycle
+    return len(missing), len(eligible)
 
 
 def _classify_freshness(last_snapshot_ts):
@@ -302,7 +337,8 @@ def _platform_view(plat_name, cfg):
         if (_parse_ts(r.get('ts')) and
             (datetime.now(tz=timezone.utc) - _parse_ts(r['ts'])).total_seconds() < 86400)
     )
-    coverage_missing, coverage_total = _coverage_gap(by_id, cands, cfg['id_field'])
+    coverage_missing, coverage_total = _coverage_gap(
+        by_id, cands, cfg['id_field'], last_ts)
 
     return {
         'plat_name': plat_name,
@@ -689,7 +725,7 @@ def _health_card(view):
   <div class="name">{view['plat_name']}</div>
   <div class="row {cls}">{view['fresh_emoji']} {_esc(view['fresh_label'])}</div>
   <div class="row {fail_cls}">⚠ failures (24h / total): <b>{view['failures_24h']} / {view['failures_total']}</b></div>
-  <div class="row {cov_cls}">∅ candidates without recent (≤30h) snapshot: <b>{view['coverage_missing']:,} / {view['coverage_total']:,}</b></div>
+  <div class="row {cov_cls}">∅ candidates eligible at last snapshot but unscraped: <b>{view['coverage_missing']:,} / {view['coverage_total']:,}</b></div>
   <div class="row {err_cls}">✗ recent log errors (48h): <b>{view['recent_errors_count']}</b></div>
   {err_block}
 </div>'''
