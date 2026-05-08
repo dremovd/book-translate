@@ -26,6 +26,7 @@ USER_AGENT_MOBILE = (
     'AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'
 )
 RANK_YUEPIAO_URL = 'https://m.qidian.com/rank/yuepiao'
+RANK_NEWBOOK_URL = 'https://m.qidian.com/rank/newbook'
 BOOK_URL = 'https://m.qidian.com/book'
 
 # /rank/yuepiao paginates client-side via XHR — the URL ?page=N parameter is
@@ -98,8 +99,9 @@ def _normalize_status(action_status):
     return None
 
 
-def parse_yuepiao_records(html):
-    """Return ``(records, page_meta)`` from a /rank/yuepiao page.
+def parse_rank_records(html):
+    """Return ``(records, page_meta)`` from any /rank/* page (yuepiao,
+    newbook, …) that uses the SSR ``pageData.records`` shape.
 
     records: list of raw dicts as the rank API surfaces them
         (each has ``bid``, ``bName``, ``bAuth``, ``cat``, ``cnt``, …).
@@ -112,6 +114,10 @@ def parse_yuepiao_records(html):
         'pageNum': pd.get('pageNum'),
         'isLast': pd.get('isLast'),
     }
+
+
+# Back-compat alias kept so old callers (and tests) don't break.
+parse_yuepiao_records = parse_rank_records
 
 
 def parse_book_detail(html):
@@ -197,6 +203,19 @@ def build_yuepiao_url(*, catid=None, page=1):
     if catid is not None:
         return f'{RANK_YUEPIAO_URL}/catid{catid}/'
     return f'{RANK_YUEPIAO_URL}?page={page}' if page > 1 else RANK_YUEPIAO_URL
+
+
+def build_newbook_url(*, catid=None):
+    """Build a /rank/newbook URL.
+
+    /rank/newbook is the dedicated **newest-book** ranking on m.qidian.com —
+    the only path to brand-new (chapter 1–~50) novels through the SSR. Same
+    catid-walk pattern as yuepiao: 20 records per fetch, total up to 600
+    across channels.
+    """
+    if catid is not None:
+        return f'{RANK_NEWBOOK_URL}/catid{catid}/'
+    return RANK_NEWBOOK_URL
 
 
 def build_book_url(book_id):
