@@ -24,6 +24,9 @@ from scripts import _fanqie_engine as eng
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description='Discover fanqienovel candidate books.')
+    p.add_argument('--surfaces', nargs='+', default=['rank', 'home'],
+                   choices=['rank', 'home'],
+                   help='Which discover surfaces to walk (default: both).')
     p.add_argument('--sleep', type=float, default=0.5,
                    help='Seconds between rank-page fetches (default: 0.5)')
     p.add_argument('--output', default='data/fanqie/candidates.jsonl',
@@ -129,14 +132,16 @@ def _run(args):
     total_added = 0
     total_fetched = 0
     overall_rc = 0
-    if not args.quiet:
-        print('--- rank book_list per (gender, category) ---', flush=True)
-    a, f, r = _walk_rank_categories(args, seen)
-    total_added += a; total_fetched += f; overall_rc = overall_rc or r
-    if not args.quiet:
-        print('--- homepage SSR lists (updateList + editorial) ---', flush=True)
-    a, f, r = _walk_homepage(args, seen)
-    total_added += a; total_fetched += f; overall_rc = overall_rc or r
+    if 'rank' in args.surfaces:
+        if not args.quiet:
+            print('--- rank book_list per (gender, category) ---', flush=True)
+        a, f, r = _walk_rank_categories(args, seen)
+        total_added += a; total_fetched += f; overall_rc = overall_rc or r
+    if 'home' in args.surfaces:
+        if not args.quiet:
+            print('--- homepage SSR lists (updateList + editorial) ---', flush=True)
+        a, f, r = _walk_homepage(args, seen)
+        total_added += a; total_fetched += f; overall_rc = overall_rc or r
     return total_added, total_fetched, overall_rc
 
 
