@@ -326,9 +326,14 @@ def _parse_content_tags(html):
 
 # --------- HTTP / IO helpers ---------
 
-def fetch_html(url, *, timeout=30, retries=3, backoff_seconds=2.0, encoding='gb18030'):
-    """GET `url`, decode bytes with the given encoding, retry on transient
-    failures.
+def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0, encoding='gb18030'):
+    """GET `url`, decode bytes with the given encoding.
+
+    Retries on transient failures only — connection resets, DNS, raw
+    timeouts. **HTTP 4xx is treated as terminal:** retrying a 403/404
+    just re-triggers any WAF on the other end (we learned this the hard
+    way when Qidian's WAF kept us in a CLOSE-WAIT loop). 5xx is treated
+    as transient.
 
     Encoding is per-site: jjwxc serves gb18030, fanqie serves utf-8. Pass
     ``encoding=None`` to detect from response Content-Type charset (falls
@@ -355,6 +360,13 @@ def fetch_html(url, *, timeout=30, retries=3, backoff_seconds=2.0, encoding='gb1
                     m = re.search(r'charset=([^\s;]+)', ct, re.I)
                     resolved = m.group(1) if m else 'utf-8'
             return raw.decode(resolved, errors='replace')
+        except urllib.error.HTTPError as e:
+            # Don't retry client-side errors — they're terminal for this URL.
+            if 400 <= e.code < 500:
+                raise RuntimeError(f'fetch {url}: HTTP {e.code}') from e
+            last_err = e
+            if attempt + 1 < retries:
+                time.sleep(backoff_seconds * (attempt + 1))
         except (urllib.error.URLError, TimeoutError, ConnectionResetError) as e:
             last_err = e
             if attempt + 1 < retries:
