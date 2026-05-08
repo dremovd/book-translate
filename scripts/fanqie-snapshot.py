@@ -39,6 +39,8 @@ def parse_args(argv=None):
                    help='Lock file path; set empty to disable')
     p.add_argument('--failures', default='data/fanqie/failures.jsonl',
                    help='Where to record monitored books that failed both initial and retry fetch')
+    p.add_argument('--max-consecutive-fails', type=int, default=20,
+                   help='Abort after this many consecutive failures (default 20). 0 disables.')
     return p.parse_args(argv)
 
 
@@ -91,15 +93,23 @@ def _run(args):
         return 0, 0
     ok = 0
     failures = []
+    consec_fail = 0
     for i, bid in enumerate(ids, 1):
         success, err = _snapshot_one(bid, args.output)
         if success:
             ok += 1
+            consec_fail = 0
             if not args.quiet and (i % 25 == 0 or i == len(ids)):
                 print(f'  [{i}/{len(ids)}] last: {bid}', flush=True)
         else:
+            consec_fail += 1
             print(f'  [{i}/{len(ids)}] book {bid}: {err}', flush=True)
             failures.append((bid, err))
+            if args.max_consecutive_fails and consec_fail >= args.max_consecutive_fails:
+                print(f'  ABORTING — {consec_fail} consecutive failures '
+                      f'(probable WAF / rate-limit). {len(ids) - i} books skipped.',
+                      flush=True)
+                break
         if i < len(ids):
             time.sleep(args.sleep)
 

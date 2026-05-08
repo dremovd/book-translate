@@ -48,6 +48,8 @@ def parse_args(argv=None):
                    help='Lock file path (prevents overlapping cron runs). Set empty to disable.')
     p.add_argument('--failures', default='data/jjwxc/failures.jsonl',
                    help='Where to record monitored novels that failed both initial and retry fetch.')
+    p.add_argument('--max-consecutive-fails', type=int, default=20,
+                   help='Abort after this many consecutive failures (default 20). 0 disables.')
     return p.parse_args(argv)
 
 
@@ -97,15 +99,23 @@ def _run(args):
         return 0, 0
     ok = 0
     failures = []  # [(nid, error)]
+    consec_fail = 0
     for i, nid in enumerate(ids, 1):
         success, err = _snapshot_one(nid, args.output)
         if success:
             ok += 1
+            consec_fail = 0
             if not args.quiet and (i % 25 == 0 or i == len(ids)):
                 print(f'  [{i}/{len(ids)}] last: {nid}', flush=True)
         else:
+            consec_fail += 1
             print(f'  [{i}/{len(ids)}] novel {nid}: {err}', flush=True)
             failures.append((nid, err))
+            if args.max_consecutive_fails and consec_fail >= args.max_consecutive_fails:
+                print(f'  ABORTING — {consec_fail} consecutive failures '
+                      f'(probable WAF / rate-limit). {len(ids) - i} novels skipped.',
+                      flush=True)
+                break
         if i < len(ids):
             time.sleep(args.sleep)
 
