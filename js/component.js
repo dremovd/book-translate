@@ -190,12 +190,10 @@ export function defaultConfig() {
 export function makeComponent() {
   return {
     // ---- state ----
-    view: 'setup',               // 'setup' | 'project' | 'glossary' | 'editor' | 'rules' | 'stats'
-    // Editor sidebar (chapters list + glossary mini) shown by default;
-    // toggle via the "Hide chapters" button in the editor toolbar.
-    // Persisted with the rest of the state so the user's choice
-    // survives a page reload.
-    sidebarHidden: false,
+    view: 'setup',               // 'setup' | 'project' | 'glossary' | 'editor' | 'rules' | 'stats' | 'navigation'
+    // Live text filter for the chapter glossary mini. Transient —
+    // not persisted: each session starts unfiltered.
+    glossaryFilter: '',
     rawBook: '',
     headingLevel: 1,             // 1 = split on `#`, 2 = split on `##`, …
     splitPercent: 60,            // editor column split — % of width given to translation, clamped 20..80
@@ -259,7 +257,6 @@ export function makeComponent() {
         this.$watch('originalFontSize',    schedule);
         this.$watch('translationFontSize', schedule);
         this.$watch('showAdvanced',        schedule);
-        this.$watch('sidebarHidden',       schedule);
 
         // Resize all translation textareas whenever the editor becomes
         // visible or the shown chapter changes — these are the two moments
@@ -310,7 +307,6 @@ export function makeComponent() {
           this.rawBook = saved.rawBook ?? '';
           this.headingLevel = saved.headingLevel ?? 1;
           this.splitPercent = clampSplit(saved.splitPercent ?? 60);
-          this.sidebarHidden = !!saved.sidebarHidden;
           this.originalFontSize    = clampFontSize(saved.originalFontSize,    'medium');
           this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
           this.showAdvanced = !!saved.showAdvanced;
@@ -555,7 +551,6 @@ export function makeComponent() {
           originalFontSize: this.originalFontSize,
           translationFontSize: this.translationFontSize,
           showAdvanced: this.showAdvanced,
-          sidebarHidden: this.sidebarHidden,
           book: this.book,
           glossary: this.glossary,
           currentChapterIndex: this.currentChapterIndex,
@@ -891,6 +886,22 @@ export function makeComponent() {
       );
     },
 
+    // Chapter subset narrowed by the live `glossaryFilter` text — case-
+    // insensitive substring match against the term, translation, notes,
+    // and (bilingual-only) originalForm fields. Empty filter passes
+    // every entry through unchanged.
+    _filteredChapterGlossary() {
+      const subset = this._glossarySubsetForChapter(this.currentChapterIndex);
+      const q = (this.glossaryFilter || '').trim().toLowerCase();
+      if (!q) return subset;
+      return subset.filter(t =>
+        (t.term || '').toLowerCase().includes(q)
+        || (t.translation || '').toLowerCase().includes(q)
+        || (t.notes || '').toLowerCase().includes(q)
+        || (t.originalForm || '').toLowerCase().includes(q)
+      );
+    },
+
     // ---------- Apply rules (per-chapter rule-based edit pass) ----------
     //
     // Stores its result on `chapter.pendingPass`:
@@ -1095,13 +1106,13 @@ export function makeComponent() {
     },
 
     addTerm() { this.glossary.push({ term: '', translation: '', notes: '' }); },
-    // Sidebar variant: tag the new entry to the current chapter so it shows
-    // up in the chapter-scoped subset (where it was added).
+    // Sidebar variant: insert at index 0 so the freshly-added (still-
+    // empty) row appears at the top of the mini list — easier to find
+    // without scrolling. NO `chapters` field: an entry without
+    // chapters applies to EVERY chapter (see _glossarySubsetForChapter),
+    // which is what users want when adding a new term mid-edit.
     addTermForCurrentChapter() {
-      this.glossary.push({
-        term: '', translation: '', notes: '',
-        chapters: [this.currentChapterIndex],
-      });
+      this.glossary.unshift({ term: '', translation: '', notes: '' });
     },
     removeTerm(i) { this.glossary.splice(i, 1); },
 
@@ -1117,7 +1128,33 @@ export function makeComponent() {
     gotoStats()    { this.view = 'stats'; },
     gotoRules()    { this.view = 'rules'; },
     gotoEditor()   { if (this.book && this.anyTranslated) this.view = 'editor'; },
-    toggleSidebar() { this.sidebarHidden = !this.sidebarHidden; },
+    gotoNavigation() { if (this.book?.chapters?.length) this.view = 'navigation'; },
+
+    // Apply-rules nav: scroll the next paragraph with a pending
+    // suggestion into view. Targets `.rules-suggestion` (one per diff
+    // row) and picks the first one whose top is below the current
+    // viewport (with a small offset so the row already partially
+    // visible at the top doesn't count). Wraps around to the first
+    // suggestion when past the last.
+    scrollToNextSuggestion() {
+      if (typeof document === 'undefined' || typeof window === 'undefined') return;
+      const targets = Array.from(document.querySelectorAll('.rules-suggestion'));
+      if (!targets.length) return;
+      const offset = 80;
+      const next = targets.find(t => t.getBoundingClientRect().top > offset)
+                   || targets[0];
+      next.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+
+    // True when the current chapter's pending pass has any unresolved
+    // suggestion (paragraph-level or title-level). Surfaced on the
+    // Apply-rules "next suggestion" button.
+    get hasPendingSuggestions() {
+      const pp = this.book?.chapters?.[this.currentChapterIndex]?.pendingPass;
+      if (!pp) return false;
+      if (pp.titleSuggestion) return true;
+      return Object.keys(pp.suggestions || {}).length > 0;
+    },
 
     get canExport() {
       return !!(this.book || (this.rawBook && this.rawBook.trim()) || this.glossary.length);

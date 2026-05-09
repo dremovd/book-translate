@@ -1,27 +1,41 @@
 [x-cloak] { display: none !important; }
 
-/* Slim header — just the brand. Pico's default `nav` has generous
-   vertical padding suited to a multi-link top bar; with only the
-   project name there, the chrome should be a thin strip. */
+/* Thin header — brand + tiny progress strip. Override Pico's generous
+   nav padding so the chrome is as low as possible. Sticky so the
+   sidebar toggle + chapter-position strip stay reachable while
+   scrolling through long chapters. */
 header.container {
-  padding-top: 0.4rem;
-  padding-bottom: 0.4rem;
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
   border-bottom: 1px solid var(--pico-muted-border-color);
   margin-bottom: 0.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  background: var(--pico-background-color);
 }
 header.container nav {
   padding: 0;
   min-height: 0;
+  /* Pico's nav defaults to space-between; with our single <ul> child
+     the ul ends up flush-left. Override to center the ul horizontally
+     inside the header strip. */
+  justify-content: center;
 }
 header.container nav ul {
   margin: 0;
-  padding: 0.15rem 0;
-  /* Pack everything to the left; pico nav's default would push the
-     last <ul> to the right with space-between, but we only have one
-     <ul> now so we want it strictly left-aligned. */
-  justify-content: flex-start;
+  padding: 0;
+  /* Centered: brand + language pair + chapter-progress sit in the
+     middle of the header strip. The sidebar toggle was moved to a
+     fixed-position element on the left edge so it stays reachable
+     and doesn't tug the rest of the header off-center. */
+  justify-content: center;
   gap: 0.6rem;
 }
+header.container nav ul li {
+  padding: 0.05rem 0;
+}
+
 header.container .brand {
   text-decoration: none;
 }
@@ -173,26 +187,71 @@ header.container .chapter-progress progress {
    contrast, single line, narrow padding) so it doesn't crowd the
    editor; widens to full width so the readout is centred and
    doesn't shift when its numbers change. */
-.status-bar {
+/* Apply-rules: floating "next suggestion" button. Sits in the
+   bottom-right (just above the editor progress dial would be, but
+   since the dial only shows in editor view, they don't collide).
+   Primary-tinted so it stands out as a navigational action. */
+.next-suggestion {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10;
-  text-align: center;
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-  padding: 0.2rem 0.75rem;
-  background: var(--pico-background-color, #fff);
-  color: var(--pico-muted-color, #666);
-  border-top: 1px solid var(--pico-muted-border-color, #e5e5e5);
-  opacity: 0.85;
-  pointer-events: none; /* don't intercept mouse events on the editor below */
+  right: 0.6rem;
+  bottom: 0.6rem;
+  z-index: 11;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  margin: 0;
+  min-height: 0;
+  width: auto;
+  white-space: nowrap;
+  border-radius: 4px;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.12));
 }
-.status-bar:hover { opacity: 1; }
-/* Reserve space at the page bottom so the bar doesn't cover the last
-   row of editor controls when scrolled all the way down. */
-body { padding-bottom: 1.6rem; }
+
+/* Editor progress dial — fixed-position circular indicator, right
+   edge of the viewport. Arc fills with chapter scroll progress;
+   center text is the estimated minutes-until-finished. Hover for
+   the full chars-left + rate breakdown via title attr. */
+.progress-dial {
+  position: fixed;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  width: 60px;
+  height: 60px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08));
+}
+.progress-dial-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);   /* arc starts at 12 o'clock */
+}
+.progress-dial-track,
+.progress-dial-arc {
+  fill: var(--pico-background-color, #fff);
+  stroke-width: 3;
+}
+.progress-dial-track {
+  stroke: var(--pico-muted-border-color, #ddd);
+}
+.progress-dial-arc {
+  stroke: var(--pico-primary, #4f46e5);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.18s ease-out;
+}
+.progress-dial-text {
+  position: relative;
+  z-index: 1;
+  font-size: 0.78rem;
+  color: var(--pico-color);
+  text-align: center;
+}
 
 /* Header chars/min rolling-rate badge — sits next to the chapter count
    and the save indicator. Same tabular-nums treatment so the digits
@@ -255,7 +314,7 @@ article[role="alert"] .close {
 
 .editor-grid {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 220px 1fr;
   gap: 1rem;
   align-items: start;
 }
@@ -282,17 +341,6 @@ article[role="alert"] .close {
   list-style: none;
   padding: 0;
   margin: 0 0 0.75rem 0;
-  /* 2-column flow so a long book doesn't run as one mile-long
-     vertical list. `column-fill: balance` keeps the two columns
-     roughly equal height. */
-  columns: 2;
-  column-gap: 0.4rem;
-  column-fill: balance;
-}
-.sidebar ul.chapters li {
-  /* Prevent a single chapter row from being split across columns
-     (e.g. title on one column, status dot on the next). */
-  break-inside: avoid;
 }
 
 .sidebar ul.chapters li a {
@@ -352,11 +400,34 @@ article[role="alert"] .close {
   font-weight: normal;
   margin-left: 0.3rem;
 }
-.sidebar details .gloss-hint {
+.sidebar .gloss-hint {
   font-size: 0.7rem;
   opacity: 0.55;
   margin: 0.3rem 0 0.5rem 0;
   line-height: 1.3;
+}
+
+/* "+ term" button on top — compact, full-width so it lines up
+   with the filter input below it. */
+.sidebar .gloss-add {
+  width: 100%;
+  margin: 0 0 0.4rem 0;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+/* Live text filter — case-insensitive substring match over each
+   entry's term / translation / notes / originalForm. Sits between
+   the add-term button and the list. */
+.sidebar .gloss-filter {
+  width: 100%;
+  margin: 0 0 0.5rem 0;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.75rem;
+  height: auto;
+  min-height: 0;
+  line-height: 1.4;
+  border-radius: 2px;
 }
 
 .sidebar .gloss-mini {
@@ -386,8 +457,14 @@ article[role="alert"] .close {
   min-height: 0;
   line-height: 1.4;
 }
+/* Term + translation columns mirror the source / translation panes:
+   term in muted (source-side), translation in default body color
+   (translation-side) — same scheme as `.original` / `.translation`. */
+.sidebar .gloss-mini input.gloss-mini-term {
+  color: var(--pico-muted-color);
+}
 .sidebar .gloss-mini input.gloss-mini-trans {
-  color: var(--pico-primary, var(--pico-color));
+  color: var(--pico-color);
 }
 
 .sidebar .gloss-mini button {
@@ -457,6 +534,24 @@ article[role="alert"].warning {
 
 /* Editor toolbar (chapter info + font-size selectors) sits above the
    paragraph grid. Flex row that wraps on narrow viewports. */
+/* Chapter prev/next pair in the editor toolbar. Compact tiny buttons
+   that sit on the left while the font-size controls float to the
+   right (toolbar is space-between). */
+.chapter-nav {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.chapter-nav button {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin: 0;
+  min-height: 0;
+  width: auto;
+  white-space: nowrap;
+}
+
 .editor-toolbar {
   display: flex;
   justify-content: space-between;
@@ -586,9 +681,10 @@ textarea.translation:focus {
   line-height: 1.3;
   margin-bottom: 0.75rem;
 }
-.original.title-row {
-  color: var(--pico-color);
-}
+/* Title row colours inherit from the base .original / .translation
+   rules: original-side title in muted (matches the source pane),
+   translation-side title in the default color (matches the
+   translation pane). No per-title-row color overrides. */
 input.translation.title-row {
   font-size: 1.4rem;
   font-weight: 600;
@@ -598,7 +694,6 @@ input.translation.title-row {
   min-height: 0;
   border: none;
   background: transparent;
-  color: var(--pico-color);
 }
 input.translation.title-row:focus {
   outline: 1px solid var(--pico-primary);
@@ -693,22 +788,6 @@ input.translation.title-row:focus {
 
 .editor-actions button { margin: 0; }
 
-/* Sidebar collapse. The grid normally has [sidebar | main]; in
-   sidebar-hidden mode the main spans the full width. The sidebar
-   itself is hidden via x-show, which clears the slot in the grid. */
-.editor-grid.sidebar-hidden {
-  grid-template-columns: 1fr;
-}
-.sidebar-toggle {
-  margin-right: 0.6rem;
-  font-size: 0.7rem;
-  padding: 0.1rem 0.45rem;
-  line-height: 1.4;
-  min-height: 0;
-  width: auto;
-  white-space: nowrap;
-}
-
 /* Project view — landing dashboard. Cards link to each section so
    the editor view can stay focused on the chapter being edited. */
 .project-view hgroup p { color: var(--pico-muted-color); margin-top: 0.25rem; }
@@ -782,6 +861,18 @@ input.translation.title-row:focus {
   height: 4px;
   margin-top: 0.4rem;
 }
+
+/* Project-view chapter list. Wider than the old sidebar copy, so it
+   flows in a multi-column grid; reuses the .sidebar ul.chapters li a
+   visual styling for the rows themselves. */
+.chapters.project-chapters {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.15rem 0.4rem;
+}
 .project-actions {
   display: flex;
   gap: 0.5rem;
@@ -797,6 +888,14 @@ input.translation.title-row:focus {
    previously exported project. */
 .setup-import {
   margin: 0.5rem 0 1rem;
+}
+
+/* Tiny hint shown under the source textareas in Setup once they're
+   locked (glossary already built). Same muted style as Pico's <small>
+   but italic to flag it as a status note rather than a label. */
+.readonly-hint {
+  font-style: italic;
+  color: var(--pico-muted-color);
 }
 
 /* Bottom of Setup. Red-tinted outline so the destructive action is

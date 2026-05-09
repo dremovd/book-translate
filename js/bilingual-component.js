@@ -136,9 +136,9 @@ function defaultConfig() {
 export function makeBilingualComponent() {
   return {
     // ---- state ----
-    view: 'setup',                // 'setup' | 'project' | 'glossary' | 'editor' | 'rules' | 'stats'
-    // See component.js — editor-sidebar visibility, persisted across reloads.
-    sidebarHidden: false,
+    view: 'setup',                // 'setup' | 'project' | 'glossary' | 'editor' | 'rules' | 'stats' | 'navigation'
+    // See component.js — transient text filter for the chapter glossary mini.
+    glossaryFilter: '',
     // Two raw markdown inputs, named by their role (not by abstract A/B):
     //   rawEditor    — the side the user reads & edits against; paragraphs
     //                  are split from this and shown in the editor's
@@ -190,7 +190,6 @@ export function makeBilingualComponent() {
         this.$watch('editorHeadingLevel',     schedule);
         this.$watch('referenceHeadingLevel',  schedule);
         this.$watch('splitPercent',        schedule);
-        this.$watch('sidebarHidden',       schedule);
         this.$watch('originalFontSize',    schedule);
         this.$watch('showAdvanced',        schedule);
         this.$watch('translationFontSize', schedule);
@@ -230,7 +229,6 @@ export function makeBilingualComponent() {
           this.editorHeadingLevel    = saved.editorHeadingLevel    ?? saved.headingLevelA ?? 1;
           this.referenceHeadingLevel = saved.referenceHeadingLevel ?? saved.headingLevelB ?? 1;
           this.splitPercent          = clampSplit(saved.splitPercent ?? 60);
-          this.sidebarHidden         = !!saved.sidebarHidden;
           this.originalFontSize    = clampFontSize(saved.originalFontSize,    'medium');
           this.translationFontSize = clampFontSize(saved.translationFontSize, 'big');
           this.showAdvanced        = !!saved.showAdvanced;
@@ -261,7 +259,6 @@ export function makeBilingualComponent() {
           originalFontSize: this.originalFontSize,
           translationFontSize: this.translationFontSize,
           showAdvanced: this.showAdvanced,
-          sidebarHidden: this.sidebarHidden,
           book: this.book,
           glossary: this.glossary,
           currentChapterIndex: this.currentChapterIndex,
@@ -493,7 +490,25 @@ export function makeBilingualComponent() {
     gotoStats()    { this.view = 'stats'; },
     gotoRules()    { this.view = 'rules'; },
     gotoEditor()   { if (this.book && this.anyTranslated) this.view = 'editor'; },
-    toggleSidebar() { this.sidebarHidden = !this.sidebarHidden; },
+    gotoNavigation() { if (this.book?.chapters?.length) this.view = 'navigation'; },
+
+    // See component.js — Apply-rules "scroll to next suggestion" helper.
+    scrollToNextSuggestion() {
+      if (typeof document === 'undefined' || typeof window === 'undefined') return;
+      const targets = Array.from(document.querySelectorAll('.rules-suggestion'));
+      if (!targets.length) return;
+      const offset = 80;
+      const next = targets.find(t => t.getBoundingClientRect().top > offset)
+                   || targets[0];
+      next.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+
+    get hasPendingSuggestions() {
+      const pp = this.book?.chapters?.[this.currentChapterIndex]?.pendingPass;
+      if (!pp) return false;
+      if (pp.titleSuggestion) return true;
+      return Object.keys(pp.suggestions || {}).length > 0;
+    },
     selectChapter(i) {
       const ch = this.book?.chapters?.[i];
       if (!ch || ch.status === 'pending') return;
@@ -804,14 +819,32 @@ export function makeBilingualComponent() {
 
     _glossarySubsetForChapter(chapterIdx) {
       return this.glossary.filter(t =>
-        Array.isArray(t.chapters) && t.chapters.includes(chapterIdx)
+        !Array.isArray(t.chapters)
+        || t.chapters.length === 0
+        || t.chapters.includes(chapterIdx)
+      );
+    },
+
+    // See component.js — chapter subset narrowed by `glossaryFilter`,
+    // case-insensitive substring against term, translation, notes,
+    // and originalForm.
+    _filteredChapterGlossary() {
+      const subset = this._glossarySubsetForChapter(this.currentChapterIndex);
+      const q = (this.glossaryFilter || '').trim().toLowerCase();
+      if (!q) return subset;
+      return subset.filter(t =>
+        (t.term || '').toLowerCase().includes(q)
+        || (t.translation || '').toLowerCase().includes(q)
+        || (t.notes || '').toLowerCase().includes(q)
+        || (t.originalForm || '').toLowerCase().includes(q)
       );
     },
 
     addTermForCurrentChapter() {
-      this.glossary.push({
+      // No `chapters` → applies everywhere (see _glossarySubsetForChapter).
+      // unshift so the new (empty) row appears at the top of the mini.
+      this.glossary.unshift({
         term: '', originalForm: '', translation: '', notes: '',
-        chapters: [this.currentChapterIndex],
       });
     },
 

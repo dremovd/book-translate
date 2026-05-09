@@ -13,13 +13,6 @@
   <header class="container">
     <nav>
       <ul>
-        <li x-show="view === 'editor'" x-cloak>
-          <button class="tiny secondary outline sidebar-toggle" type="button"
-                  @click="toggleSidebar()"
-                  :title="sidebarHidden ? 'Show chapters sidebar' : 'Hide chapters sidebar'">
-            <span x-text="sidebarHidden ? '▸ Chapters' : '◂ Hide'"></span>
-          </button>
-        </li>
         <li>
           <a href="#" @click.prevent="gotoProject()" class="brand"
              :title="config.projectName ? 'Project: ' + config.projectName : 'Project'">
@@ -110,6 +103,11 @@
           <strong>Stats</strong>
           <small>Throughput &amp; API calls</small>
         </a>
+        <a class="project-card" href="#" @click.prevent="gotoNavigation()"
+           :class="{ disabled: !book?.chapters?.length }">
+          <strong>Navigation</strong>
+          <small>Chapter index — jump to any chapter</small>
+        </a>
       </div>
 
       <div class="project-actions">
@@ -126,6 +124,22 @@
         <small class="save-indicator project-save" x-show="saveIndicator" x-cloak
                title="State auto-saved to your browser (localforage).">✓ Saved</small>
       </div>
+    </section>
+
+    <!-- NAVIGATION — see index.html for the rationale. -->
+    <section x-show="view === 'navigation'" x-cloak class="container project-view">
+      <h2>Chapters</h2>
+      <ul class="chapters project-chapters" x-show="book?.chapters?.length" x-cloak>
+        <template x-for="(ch, i) in (book?.chapters || [])" :key="i">
+          <li>
+            <a href="#" @click.prevent="selectChapter(i); gotoEditor();"
+               :class="{ active: i === currentChapterIndex, disabled: ch.status === 'pending' }">
+              <span class="chapter-title" x-text="(i + 1) + '. ' + ch.title"></span>
+              <span class="chapter-status" :class="ch.status" :title="ch.status"></span>
+            </a>
+          </li>
+        </template>
+      </ul>
     </section>
 
     <!-- SETUP -->
@@ -146,33 +160,46 @@
       <!-- ===== Simple fields (always visible) ===== -->
       <div class="grid">
         <label>Reading language
-          <input x-model="config.editorLanguage" placeholder="English">
+          <input x-model="config.editorLanguage" placeholder="English"
+                 :readonly="glossary.length > 0">
         </label>
         <label>Original language
-          <input x-model="config.referenceLanguage" placeholder="Chinese">
+          <input x-model="config.referenceLanguage" placeholder="Chinese"
+                 :readonly="glossary.length > 0">
         </label>
       </div>
 
+      <!-- Both source textareas + file inputs lock once a glossary has
+           been built (see index.html for the rationale). File inputs
+           live OUTSIDE the <label> wrappers so clicking the label text
+           doesn't trigger the file dialog. -->
+      <input type="file" accept=".md,.markdown,text/markdown"
+             @change="loadFileIntoSide('editor', $event)"
+             x-show="glossary.length === 0" x-cloak>
       <label>
         <strong><span x-text="config.editorLanguage || 'Reading'"></span> text (.md)</strong>
         <span x-show="editorChapterCount > 0"><small><strong x-text="editorChapterCount"></strong> chapter(s) detected.</small></span>
-        <input type="file" accept=".md,.markdown,text/markdown"
-               @change="loadFileIntoSide('editor', $event)">
         <textarea rows="12" x-model="rawEditor"
                   @dragover.prevent
                   @drop="loadFileIntoSide('editor', $event)"
+                  :readonly="glossary.length > 0"
                   placeholder="# Chapter One&#10;&#10;…"></textarea>
       </label>
+      <input type="file" accept=".md,.markdown,text/markdown"
+             @change="loadFileIntoSide('reference', $event)"
+             x-show="glossary.length === 0" x-cloak>
       <label>
         <strong><span x-text="config.referenceLanguage || 'Original'"></span> text (.md)</strong>
         <span x-show="referenceChapterCount > 0"><small><strong x-text="referenceChapterCount"></strong> chapter(s) detected.</small></span>
-        <input type="file" accept=".md,.markdown,text/markdown"
-               @change="loadFileIntoSide('reference', $event)">
         <textarea rows="12" x-model="rawReference"
                   @dragover.prevent
                   @drop="loadFileIntoSide('reference', $event)"
+                  :readonly="glossary.length > 0"
                   placeholder="# Chapter One&#10;&#10;…"></textarea>
       </label>
+      <small x-show="glossary.length > 0" x-cloak class="readonly-hint">
+        Sources locked — glossary is built. Use “Clear all project data” below to start over.
+      </small>
 
       <article x-show="chapterCountMismatch" x-cloak role="alert" class="warning">
         <strong>Chapter counts don't match.</strong>
@@ -184,7 +211,8 @@
       <label>Project name (optional)
         <input x-model="config.projectName" placeholder="e.g. meiyou-renxiang-ni — used as a filename prefix on every export">
       </label>
-      <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"></label>
+      <label>Target language<input x-model="config.targetLanguage" placeholder="Russian"
+               :readonly="glossary.length > 0"></label>
 
       <!-- ===== Toggle for advanced fields ===== -->
       <button class="secondary outline" type="button"
@@ -265,7 +293,10 @@
         </label>
       </div>
 
-      <button @click="startFromRaw()" :disabled="busy || !canStartFromRaw" :aria-busy="busy && view === 'setup'"
+      <button @click="startFromRaw()"
+              :disabled="busy || !canStartFromRaw || anyTranslated"
+              :aria-busy="busy && view === 'setup'"
+              :title="anyTranslated ? 'Translations exist — rebuilding the glossary would invalidate them. Clear all project data to start fresh.' : ''"
               style="margin-top: 1rem;">
         <span x-text="busy ? 'Building glossary…' : 'Build glossary'"></span>
       </button>
@@ -502,42 +533,42 @@
     </section>
 
     <!-- EDITOR -->
-    <section x-show="view === 'editor'" x-cloak class="editor-grid"
-             :class="{ 'sidebar-hidden': sidebarHidden }">
-      <aside class="sidebar" x-show="!sidebarHidden" x-cloak>
-        <h4>Chapters</h4>
-        <ul class="chapters">
-          <template x-for="(ch, i) in (book?.chapters || [])" :key="i">
-            <li>
-              <a href="#" @click.prevent="selectChapter(i)"
-                 :class="{ active: i === currentChapterIndex, disabled: ch.status === 'pending' }">
-                <span class="chapter-title" x-text="(i + 1) + '. ' + ch.title"></span>
-                <span class="chapter-status" :class="ch.status" :title="ch.status"></span>
-              </a>
-            </li>
+    <section x-show="view === 'editor'" x-cloak class="editor-grid">
+      <!-- Sidebar = chapter-scoped Glossary mini.
+           Chapter list moved to the Project view. -->
+      <aside class="sidebar">
+        <h4>
+          Glossary
+          <small class="gloss-count"
+                 x-text="`(${_glossarySubsetForChapter(currentChapterIndex).length} of ${glossary.length})`"></small>
+        </h4>
+        <p class="gloss-hint">Filtered to this chapter. Edit in the full Glossary view.</p>
+        <input class="gloss-filter" type="search" x-model="glossaryFilter"
+               placeholder="Filter terms…">
+        <button class="secondary outline gloss-add" @click="addTermForCurrentChapter()" type="button">Add term</button>
+        <div class="gloss-mini">
+          <template x-for="(t, i) in _filteredChapterGlossary()" :key="i">
+            <div class="gloss-mini-entry">
+              <input class="gloss-mini-term"  x-model="t.term"        placeholder="term">
+              <input class="gloss-mini-trans" x-model="t.translation" placeholder="translation">
+            </div>
           </template>
-        </ul>
-        <details>
-          <summary>
-            Glossary
-            <small class="gloss-count"
-                   x-text="`(${_glossarySubsetForChapter(currentChapterIndex).length} of ${glossary.length})`"></small>
-          </summary>
-          <p class="gloss-hint">Filtered to this chapter. Edit in the full Glossary view.</p>
-          <div class="gloss-mini">
-            <template x-for="(t, i) in _glossarySubsetForChapter(currentChapterIndex)" :key="i">
-              <div class="gloss-mini-entry">
-                <input class="gloss-mini-term"  x-model="t.term"        placeholder="term">
-                <input class="gloss-mini-trans" x-model="t.translation" placeholder="translation">
-              </div>
-            </template>
-            <button class="secondary outline" @click="addTermForCurrentChapter()" type="button">+ term for this chapter</button>
-          </div>
-        </details>
+        </div>
       </aside>
 
       <div class="editor-main">
         <div class="editor-toolbar">
+          <!-- Chapter navigation. See index.html for the rationale. -->
+          <div class="chapter-nav">
+            <button class="tiny secondary outline" type="button"
+                    @click="selectChapter(currentChapterIndex - 1)"
+                    :disabled="currentChapterIndex <= 0"
+                    title="Previous chapter">◂ Prev</button>
+            <button class="tiny secondary outline" type="button"
+                    @click="selectChapter(currentChapterIndex + 1)"
+                    :disabled="!(book?.chapters?.[currentChapterIndex + 1] && book.chapters[currentChapterIndex + 1].status !== 'pending')"
+                    title="Next chapter (only if already translated)">Next ▸</button>
+          </div>
           <div class="font-size-controls">
             <label>
               <small x-text="config.editorLanguage || 'Original'"></small>
@@ -627,15 +658,28 @@
     </section>
   </main>
 
-  <!-- Editor status bar — see index.html for the rationale. -->
-  <div class="status-bar" x-show="view === 'editor' && chapterProgressInfo" x-cloak
+  <!-- Apply-rules: jump to the next pending suggestion (see index.html). -->
+  <button class="next-suggestion" type="button"
+          x-show="view === 'rules' && hasPendingSuggestions" x-cloak
+          @click="scrollToNextSuggestion()"
+          title="Scroll to the next pending suggestion">
+    Next suggestion ↓
+  </button>
+
+  <!-- Editor progress dial — see index.html. -->
+  <div class="progress-dial" x-show="view === 'editor' && chapterProgressInfo" x-cloak
        :title="chapterProgressInfo
-         ? `Rate: ${chapterProgressInfo.rate} chars/h${chapterProgressInfo.rateIsDefault ? ' (default — accept a chapter for a data-driven rate)' : ' (from your accepted chapters)'}`
+         ? `${chapterProgressInfo.charsLeft} chars left · rate ${chapterProgressInfo.rate} chars/h${chapterProgressInfo.rateIsDefault ? ' (default — accept a chapter for a real rate)' : ''}`
          : ''">
-    <span x-text="`${chapterProgressInfo?.total ?? 0} chars`"></span>
-    <span> · ~<span x-text="chapterProgressInfo?.charsLeft ?? 0"></span> left</span>
-    <span> · ~<span x-text="formatDurationShort(chapterProgressInfo?.secondsLeft ?? 0)"></span><span
-      x-show="chapterProgressInfo?.rateIsDefault" x-cloak>*</span></span>
+    <svg viewBox="0 0 36 36" class="progress-dial-svg" aria-hidden="true">
+      <circle class="progress-dial-track" cx="18" cy="18" r="15.9"></circle>
+      <circle class="progress-dial-arc"   cx="18" cy="18" r="15.9"
+              :stroke-dasharray="`${(scrollProgress || 0) * 100}, 100`"></circle>
+    </svg>
+    <span class="progress-dial-text">
+      <span x-text="formatDurationShort(chapterProgressInfo?.secondsLeft ?? 0)"></span><span
+        x-show="chapterProgressInfo?.rateIsDefault" x-cloak>*</span>
+    </span>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/localforage@1/dist/localforage.min.js"></script>
