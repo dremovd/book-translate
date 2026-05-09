@@ -26,6 +26,36 @@ USER_AGENT = (
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
     'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 )
+
+# Pool of plausible-looking modern desktop browser User-Agent strings. Each
+# request picks one at random; combined with the full header pack below it
+# blends in as a real-browser session rather than 1000 identical urllib
+# fingerprints.
+_DESKTOP_UA_POOL = [
+    USER_AGENT,
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 '
+    '(KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+]
+_MOBILE_UA_POOL = [
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) '
+    'AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) '
+    'AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 13; SM-A546E) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) '
+    'AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',
+]
 BOOKBASE_URL = 'https://www.jjwxc.net/bookbase.php'
 ONEBOOK_URL = 'https://www.jjwxc.net/onebook.php'
 
@@ -326,35 +356,97 @@ def _parse_content_tags(html):
 
 # --------- HTTP / IO helpers ---------
 
-def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0,
-               encoding='gb18030', min_body_bytes=0):
-    """GET `url`, decode bytes with the given encoding.
+def _chrome_header_pack(user_agent, *, referer=None,
+                        accept_lang='zh-CN,zh;q=0.9,en;q=0.6'):
+    """Full set of headers a real Chrome sends with every navigation request.
 
-    Retries on transient failures only — connection resets, DNS, raw
-    timeouts. **HTTP 4xx is treated as terminal:** retrying a 403/404
-    just re-triggers any WAF on the other end. 5xx is treated as transient.
-
-    `min_body_bytes`: if > 0 and the response body is smaller than this,
-    treat it as a rate-limit signal (HTTP 429-style soft-block). Raises a
-    plain RuntimeError so the snapshot's consecutive-failures abort fires
-    just like for explicit 4xx. We hit this when fanqie soft-blocked our
-    server with 200 OK + 9-byte empty bodies, which the original code
-    surfaced misleadingly as "INITIAL_STATE marker not found".
-
-    Encoding is per-site: jjwxc serves gb18030, fanqie/qidian utf-8.
+    Bare urllib previously sent only User-Agent + Accept + Accept-Encoding,
+    which is a strong "automated client" tell to modern WAFs. This adds
+    Sec-Fetch-* and sec-ch-ua-* signals that match the chosen UA's family.
     """
+    is_mobile = ('Mobile' in user_agent
+                 or 'iPhone' in user_agent
+                 or 'Android' in user_agent)
+    if 'Windows' in user_agent: platform = '"Windows"'
+    elif 'Android' in user_agent: platform = '"Android"'
+    elif 'iPhone' in user_agent or 'iPad' in user_agent: platform = '"iOS"'
+    elif 'Linux' in user_agent: platform = '"Linux"'
+    else: platform = '"macOS"'
+    headers = {
+        'User-Agent': user_agent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,'
+                  'image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': accept_lang,
+        'Accept-Encoding': 'gzip, deflate',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-User': '?1',
+        'Sec-Ch-Ua': ('"Not(A:Brand";v="99", "Google Chrome";v="120", '
+                      '"Chromium";v="120"'),
+        'Sec-Ch-Ua-Mobile': '?1' if is_mobile else '?0',
+        'Sec-Ch-Ua-Platform': platform,
+        'DNT': '1',
+        'Connection': 'keep-alive',
+    }
+    if referer:
+        headers['Referer'] = referer
+        headers['Sec-Fetch-Site'] = 'same-origin'
+    else:
+        headers['Sec-Fetch-Site'] = 'none'
+    return headers
+
+
+# Cookie jar pool keyed by jar_key (typically the site name). One jar per
+# logical site means cookies set by an earlier request automatically ride
+# along on the next one — a real-browser signal that a fresh-bot fetch
+# cannot fake.
+_COOKIE_JARS = {}
+_COOKIE_OPENERS = {}
+
+
+def _opener_for(jar_key):
+    import http.cookiejar
+    if jar_key not in _COOKIE_OPENERS:
+        cj = http.cookiejar.CookieJar()
+        _COOKIE_JARS[jar_key] = cj
+        _COOKIE_OPENERS[jar_key] = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(cj))
+    return _COOKIE_OPENERS[jar_key]
+
+
+def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0,
+               encoding='gb18030', min_body_bytes=0,
+               ua_pool=None, jar_key='default', referer=None):
+    """GET `url`, decode with `encoding`. Retries on transient failures only.
+
+    Anti-block measures:
+      • Per-attempt random pick from `ua_pool` (default _DESKTOP_UA_POOL;
+        pass _MOBILE_UA_POOL for mobile sites).
+      • Full Chrome header pack (Sec-Fetch-*, sec-ch-ua-*, Accept-Language).
+      • Per-`jar_key` cookie jar that persists across calls — set the same
+        key for every request to a site so cookies set during discovery
+        carry over to snapshot.
+
+    Other behaviour:
+      • HTTP 4xx is terminal (don't retry — 403/404 just re-triggers WAFs).
+      • 5xx and transport errors retry with linear backoff.
+      • `min_body_bytes` > 0: tiny bodies treated as silent rate-limit and
+        raised as RuntimeError tagged "treating as HTTP 429".
+      • `encoding=None`: detect from response Content-Type charset.
+    """
+    import random
+    pool = ua_pool or _DESKTOP_UA_POOL
     last_err = None
     for attempt in range(retries):
+        ua = random.choice(pool)
+        opener = _opener_for(jar_key)
         try:
             req = urllib.request.Request(
-                url,
-                headers={
-                    'User-Agent': USER_AGENT,
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Accept': 'text/html,application/xhtml+xml',
-                },
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                url, headers=_chrome_header_pack(ua, referer=referer))
+            with opener.open(req, timeout=timeout) as resp:
                 raw = resp.read()
                 if resp.headers.get('Content-Encoding') == 'gzip':
                     raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
@@ -364,15 +456,11 @@ def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0,
                     m = re.search(r'charset=([^\s;]+)', ct, re.I)
                     resolved = m.group(1) if m else 'utf-8'
             if min_body_bytes and len(raw) < min_body_bytes:
-                # 200 OK with no real content == upstream is rate-limiting us
-                # with a soft block. Surface as a fetch failure so the
-                # consecutive-fails abort can react like it does to 403.
                 raise RuntimeError(
                     f'fetch {url}: rate-limited (200 OK but body {len(raw)} '
                     f'bytes < min {min_body_bytes}; treating as HTTP 429)')
             return raw.decode(resolved, errors='replace')
         except urllib.error.HTTPError as e:
-            # Don't retry client-side errors — they're terminal for this URL.
             if 400 <= e.code < 500:
                 raise RuntimeError(f'fetch {url}: HTTP {e.code}') from e
             last_err = e
@@ -383,6 +471,20 @@ def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0,
             if attempt + 1 < retries:
                 time.sleep(backoff_seconds * (attempt + 1))
     raise RuntimeError(f'fetch failed for {url}: {last_err}')
+
+
+def jittered_sleep(base_seconds, *, frac=0.30):
+    """``time.sleep(base_seconds × uniform(1−frac, 1+frac))``.
+
+    Constant ``time.sleep(args.sleep)`` makes a request stream that's
+    perfectly periodic — easy to fingerprint as a bot. Adding ±30% jitter
+    makes the inter-request gap look human without changing the long-run
+    average rate.
+    """
+    import random
+    if base_seconds <= 0:
+        return
+    time.sleep(base_seconds * random.uniform(max(0.0, 1 - frac), 1 + frac))
 
 
 def build_bookbase_url(*, sort_type=3, page=1, isfinish=1):
