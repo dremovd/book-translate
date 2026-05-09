@@ -200,7 +200,8 @@ def main(argv=None):
             sys.exit(75)  # EX_TEMPFAIL — cron will retry
     else:
         ok, failed = _run(args)
-    print(f'snapshot: {ok} ok, {failed} failed -> {args.output}', flush=True)
+    stats = eng.fetch_stats('jjwxc')
+    print(f'snapshot: {ok} ok (direct={stats["direct_ok"]} proxy_rescued={stats["proxy_rescued"]}), {failed} failed -> {args.output}', flush=True)
     sys.exit(1 if failed else 0)
 
 

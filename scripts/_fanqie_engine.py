@@ -288,6 +288,7 @@ from scripts._jjwxc_engine import (  # noqa: E402
     filter_by_cycle,
     latest_snapshot_ts_by_id,
     jittered_sleep,
+    fetch_stats,
 )
 
 

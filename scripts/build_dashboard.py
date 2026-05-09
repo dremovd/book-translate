@@ -258,7 +258,7 @@ def _classify_error_line(line):
     return 'other'
 
 
-def _scan_cron_logs(data_dir, hours=48):
+def _scan_cron_logs(data_dir, hours=2):
     """Scan recent cron.log.YYYY-MM-DD files for error markers. Returns
     (counts_by_category, [sample lines]).
 
@@ -363,43 +363,64 @@ def _coverage_gap(by_id, candidates, id_field, last_snapshot_ts,
     return len(missing), len(eligible)
 
 
-def _classify_health(last_snapshot_ts, *, coverage_missing, coverage_total,
-                     failures_24h, recent_errors):
-    """Combine multiple signals into a single status indicator.
+def _classify_global(last_snapshot_ts, *, coverage_missing, coverage_total):
+    """GLOBAL health: is the system, viewed across the full ~24h cycle,
+    covering its candidate set?
 
-    Just-fresh-data isn't enough — a partial snapshot run that succeeded for
-    100 books and got blocked on the next 200 will look "fresh" by age but
-    is in fact catastrophic. Order: BLOCKED (most severe) > stale > healthy.
+    🟢 — every eligible candidate has a snapshot in the cycle window
+    🟡 — 10–50% candidates overdue (system is catching up)
+    🔴 — >50% overdue (cycle isn't keeping up; raise cron limit / cadence
+         OR an upstream block ate most of a cycle)
     """
     t = _parse_ts(last_snapshot_ts)
     if not t:
         return '🔴', 'no snapshot data yet'
-    age_h = (datetime.now(tz=timezone.utc) - t).total_seconds() / 3600
+    if coverage_total == 0:
+        return '🟢', 'no eligible candidates yet'
+    miss_pct = coverage_missing / coverage_total
+    if miss_pct >= 0.5:
+        return '🔴', (f'{coverage_missing:,}/{coverage_total:,} ({miss_pct*100:.0f}%) '
+                      f'overdue (cycle is not keeping up)')
+    if miss_pct >= 0.1:
+        return '🟡', (f'{coverage_missing:,}/{coverage_total:,} ({miss_pct*100:.0f}%) '
+                      f'overdue (system is catching up)')
+    return '🟢', f'{coverage_total - coverage_missing:,}/{coverage_total:,} covered'
 
-    # BLOCKED: large fraction of eligible candidates missed in last cycle.
-    # That pattern is what an upstream WAF / rate-limit looks like — the
-    # snapshot DID run (fresh ts), but only got a small fraction through.
-    if coverage_total > 0:
-        miss_pct = coverage_missing / coverage_total
-        if miss_pct >= 0.5:
-            return '🔴', (f'BLOCKED — {coverage_missing}/{coverage_total} '
-                          f'({miss_pct * 100:.0f}%) candidates unscraped in last cycle, '
-                          f'last snapshot {age_h:.1f}h ago')
-        if miss_pct >= 0.2:
-            return '🟡', (f'partial — {coverage_missing}/{coverage_total} '
-                          f'({miss_pct * 100:.0f}%) candidates unscraped, '
-                          f'last snapshot {age_h:.1f}h ago')
 
-    # Same-cycle failures are also a strong signal.
-    if failures_24h >= 50:
-        return '🔴', f'{failures_24h} per-novel failures in last 24h — likely WAF/rate-limit'
+def _classify_recent(*, recent_error_counts, fresh_window_hours=6):
+    """RECENT health: did the cron ticks in the last `fresh_window_hours`
+    fire cleanly?
 
-    # Plain freshness fallback.
-    if age_h <= 30:
-        return '🟢', f'{age_h:.1f}h since last snapshot'
-    if age_h <= 48:
-        return '🟡', f'{age_h:.1f}h since last snapshot (cron may have skipped)'
-    return '🔴', f'{age_h:.1f}h since last snapshot — STALE, check cron'
+    Snapshot age is NOT the right signal — with --cycle-hours, a healthy
+    system that's already covered everyone writes zero new snapshot rows
+    on a tick (it has nothing to do), and the most recent ts can be many
+    hours old while operation is perfectly fine. So we look exclusively
+    at whether errors landed in the recent log window:
+
+    🟢 — no errors at all
+    🟡 — non-blocking errors (parse / network / timeout / a few 'other')
+    🔴 — rate-limit / WAF signals (403, 429, 5xx, abort) OR many parse errors
+    """
+    block_count = (recent_error_counts.get('403', 0)
+                   + recent_error_counts.get('429', 0)
+                   + recent_error_counts.get('5xx', 0)
+                   + recent_error_counts.get('abort', 0))
+    other_count = (recent_error_counts.get('parse', 0)
+                   + recent_error_counts.get('other', 0)
+                   + recent_error_counts.get('timeout', 0)
+                   + recent_error_counts.get('network', 0))
+    # 404 doesn't count — books being removed isn't a system fault.
+
+    if block_count > 0:
+        return '🔴', (f'{block_count} rate-limit / WAF errors in last '
+                      f'{fresh_window_hours}h')
+    if other_count > 5:
+        return '🟡', (f'{other_count} non-fatal errors in last '
+                      f'{fresh_window_hours}h')
+    if other_count > 0:
+        return '🟡', (f'{other_count} minor errors in last '
+                      f'{fresh_window_hours}h')
+    return '🟢', f'no errors in last {fresh_window_hours}h'
 
 
 def _platform_view(plat_name, cfg):
@@ -433,20 +454,34 @@ def _platform_view(plat_name, cfg):
     last_ts = max((r['ts'] for r in snaps if r.get('ts')), default=None)
     err_counts, err_samples = _scan_cron_logs(cfg['data_dir'])
     err_total = sum(err_counts.values())
-    failures_24h = sum(
-        1 for r in failures
-        if (_parse_ts(r.get('ts')) and
-            (datetime.now(tz=timezone.utc) - _parse_ts(r['ts'])).total_seconds() < 86400)
-    )
+    # Dedup failures by book/novel id: 5 retry-rows for the same removed book
+    # is one failed book, not five new failures. Use the snapshot id_field
+    # to know how to key.
+    id_field = cfg['id_field']
+    now = datetime.now(tz=timezone.utc)
+    fresh_failed_ids = set()
+    for r in failures:
+        t = _parse_ts(r.get('ts'))
+        if not t or (now - t).total_seconds() >= 86400:
+            continue
+        rid = r.get(id_field)
+        if rid is not None:
+            fresh_failed_ids.add(rid)
+    failures_24h = len(fresh_failed_ids)
     coverage_missing, coverage_total = _coverage_gap(
         by_id, cands, cfg['id_field'], last_ts)
-    fresh_emoji, fresh_label = _classify_health(
+    global_emoji, global_label = _classify_global(
         last_ts,
         coverage_missing=coverage_missing,
         coverage_total=coverage_total,
-        failures_24h=failures_24h,
-        recent_errors=err_total,
     )
+    recent_emoji, recent_label = _classify_recent(
+        recent_error_counts=err_counts,
+    )
+    # Aggregate emoji used by the top banner — worst-of-the-two.
+    fresh_emoji = '🔴' if '🔴' in (global_emoji, recent_emoji) else \
+                  '🟡' if '🟡' in (global_emoji, recent_emoji) else '🟢'
+    fresh_label = f'global {global_label} · recent {recent_label}'
 
     return {
         'plat_name': plat_name,
@@ -462,6 +497,10 @@ def _platform_view(plat_name, cfg):
         'last_snapshot_ts': last_ts,
         'fresh_emoji': fresh_emoji,
         'fresh_label': fresh_label,
+        'global_emoji': global_emoji,
+        'global_label': global_label,
+        'recent_emoji': recent_emoji,
+        'recent_label': recent_label,
         'recent_errors_count': err_total,
         'recent_errors_counts_by_cat': err_counts,
         'recent_errors_samples': err_samples,
@@ -817,8 +856,13 @@ def _platform_section(view, top_n):
 </section>'''
 
 
+def _emoji_cls(emoji):
+    return 'ok' if emoji == '🟢' else ('warn' if emoji == '🟡' else 'err')
+
+
 def _health_card(view):
-    cls = 'ok' if view['fresh_emoji'] == '🟢' else ('warn' if view['fresh_emoji'] == '🟡' else 'err')
+    g_cls = _emoji_cls(view['global_emoji'])
+    r_cls = _emoji_cls(view['recent_emoji'])
     err_cls = 'ok' if view['recent_errors_count'] == 0 else 'err'
     fail_cls = 'ok' if view['failures_24h'] == 0 else 'warn'
     cov_cls = ('ok' if view['coverage_missing'] == 0
@@ -843,10 +887,11 @@ def _health_card(view):
     return f'''
 <div class="health-card">
   <div class="name">{view['plat_name']}</div>
-  <div class="row {cls}">{view['fresh_emoji']} {_esc(view['fresh_label'])}</div>
-  <div class="row {fail_cls}">⚠ failures (24h / total): <b>{view['failures_24h']} / {view['failures_total']}</b></div>
-  <div class="row {cov_cls}">∅ candidates eligible at last snapshot but unscraped: <b>{view['coverage_missing']:,} / {view['coverage_total']:,}</b></div>
-  <div class="row {err_cls}">✗ recent log errors (48h): <b>{view['recent_errors_count']}</b> &nbsp; {cat_breakdown}</div>
+  <div class="row {g_cls}"><span class="badge">global</span> {view['global_emoji']} {_esc(view['global_label'])}</div>
+  <div class="row {r_cls}"><span class="badge">recent (6h)</span> {view['recent_emoji']} {_esc(view['recent_label'])}</div>
+  <div class="row {fail_cls}">⚠ unique books failed in last 24h / total rows: <b>{view['failures_24h']} / {view['failures_total']}</b></div>
+  <div class="row {cov_cls}">∅ candidates overdue (>24h): <b>{view['coverage_missing']:,} / {view['coverage_total']:,}</b></div>
+  <div class="row {err_cls}">✗ recent log errors (6h): <b>{view['recent_errors_count']}</b> &nbsp; {cat_breakdown}</div>
   {err_block}
 </div>'''
 
@@ -859,18 +904,26 @@ def render_html(views, top_n=50):
     health_cards = '\n'.join(_health_card(v) for v in views)
     built = datetime.now(tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
 
-    # Top-level health summary line so issues are visible without scrolling.
-    any_stale = any(v['fresh_emoji'] != '🟢' for v in views)
-    any_errs = any(v['recent_errors_count'] > 0 for v in views)
-    any_fails = any(v['failures_24h'] > 0 for v in views)
-    if any_stale or any_errs or any_fails:
-        tags = []
-        if any_stale: tags.append('stale data')
-        if any_errs: tags.append('log errors')
-        if any_fails: tags.append('per-novel failures')
-        banner = f'<div style="background:#411; color:#ff8b8b; padding:8px 22px; font-size:13px;">⚠ HEALTH: {", ".join(tags)} — see cards below.</div>'
-    else:
-        banner = '<div style="background:#15301f; color:#6dd498; padding:8px 22px; font-size:13px;">✓ HEALTH: all platforms fresh, no recent errors.</div>'
+    # Two top-level rollups: GLOBAL (cycle coverage) + RECENT (last 6h).
+    # Each is independent — green-recent + amber-global means "right now is
+    # fine, but the cycle is still catching up from an earlier outage."
+    def _worst(emojis):
+        return ('🔴' if '🔴' in emojis else
+                '🟡' if '🟡' in emojis else '🟢')
+    g_worst = _worst([v['global_emoji'] for v in views])
+    r_worst = _worst([v['recent_emoji'] for v in views])
+    g_color = {'🟢': '#15301f', '🟡': '#3a3210', '🔴': '#411'}[g_worst]
+    g_text  = {'🟢': '#6dd498', '🟡': '#f0c25c', '🔴': '#ff8b8b'}[g_worst]
+    r_color = {'🟢': '#15301f', '🟡': '#3a3210', '🔴': '#411'}[r_worst]
+    r_text  = {'🟢': '#6dd498', '🟡': '#f0c25c', '🔴': '#ff8b8b'}[r_worst]
+    banner = (
+        '<div style="display:flex; gap:8px;">'
+        f'<div style="flex:1; background:{g_color}; color:{g_text}; padding:8px 22px; font-size:13px;">'
+        f'{g_worst} <b>GLOBAL</b> &nbsp; cycle coverage across all platforms</div>'
+        f'<div style="flex:1; background:{r_color}; color:{r_text}; padding:8px 22px; font-size:13px;">'
+        f'{r_worst} <b>RECENT</b> &nbsp; last 6h fetches</div>'
+        '</div>'
+    )
 
     return f'''<!DOCTYPE html>
 <html lang="en">

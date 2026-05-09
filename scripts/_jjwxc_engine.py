@@ -457,6 +457,11 @@ def _opener_for(jar_key, proxy=None):
 # tries direct first; this avoids burning proxy bandwidth when the IP-block
 # has already cooled.
 _BLOCKED_JARS = set()
+# Process-local counters per jar_key. Snapshot/discover scripts read these
+# at the end of a run and emit a "stats" line so the dashboard can
+# distinguish "WAF rescued by proxy" from "WAF failed both direct and proxy".
+_DIRECT_OK_COUNT = {}      # jar_key -> int
+_PROXY_RESCUE_COUNT = {}   # jar_key -> int
 _BLOCK_PATTERNS = (
     'HTTP 403', 'HTTP Error 403', 'Forbidden',
     'HTTP 429', 'HTTP Error 429', 'treating as HTTP 429',
@@ -535,16 +540,37 @@ def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0,
     # If this jar is already known-blocked in this process AND we have a
     # proxy configured, skip the direct attempt — go straight to proxy.
     if jar_key in _BLOCKED_JARS and proxy:
-        return _do(proxy)
+        result = _do(proxy)
+        _PROXY_RESCUE_COUNT[jar_key] = _PROXY_RESCUE_COUNT.get(jar_key, 0) + 1
+        return result
     # Otherwise try direct first. On a block-shaped failure, fail over to
     # proxy (if configured) and remember the jar is blocked for this run.
     try:
-        return _do(None)
+        result = _do(None)
+        _DIRECT_OK_COUNT[jar_key] = _DIRECT_OK_COUNT.get(jar_key, 0) + 1
+        return result
     except RuntimeError as e:
         if proxy and _is_block(str(e)):
             _BLOCKED_JARS.add(jar_key)
-            return _do(proxy)
+            result = _do(proxy)
+            _PROXY_RESCUE_COUNT[jar_key] = _PROXY_RESCUE_COUNT.get(jar_key, 0) + 1
+            return result
         raise
+
+
+def fetch_stats(jar_key=None):
+    """Snapshot of fetch counters. With jar_key, returns just one site's
+    stats. Without, returns the full dict — useful for end-of-run summary
+    lines like "fetch_stats: direct=N proxy_rescued=M failed=K"."""
+    if jar_key is not None:
+        return {
+            'direct_ok': _DIRECT_OK_COUNT.get(jar_key, 0),
+            'proxy_rescued': _PROXY_RESCUE_COUNT.get(jar_key, 0),
+        }
+    return {
+        'direct_ok': dict(_DIRECT_OK_COUNT),
+        'proxy_rescued': dict(_PROXY_RESCUE_COUNT),
+    }
 
 
 def jittered_sleep(base_seconds, *, frac=0.30):
