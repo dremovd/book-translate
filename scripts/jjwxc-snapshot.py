@@ -70,6 +70,28 @@ def _candidate_ids(path):
     return out
 
 
+def _permanently_dead_ids(failures_path, id_field, threshold=3):
+    """ids that have failed `threshold` times in a row with a permanent
+    error (HTTP 404 / Not Found / Gone). The platform removed the book;
+    no amount of retrying brings it back, and re-fetching every cron tick
+    just pollutes failures.jsonl with duplicate rows. Skip them.
+    """
+    consec = {}
+    for row in eng.read_jsonl(failures_path):
+        nid = row.get(id_field)
+        if nid is None:
+            continue
+        err = (row.get('retry_error') or row.get('first_error') or '')
+        is_terminal = ('HTTP 404' in err or 'Not Found' in err
+                       or 'HTTP 410' in err or 'Gone' in err)
+        if is_terminal:
+            consec[nid] = consec.get(nid, 0) + 1
+        else:
+            # Any non-terminal failure resets the streak — book may yet recover.
+            consec[nid] = 0
+    return {nid for nid, n in consec.items() if n >= threshold}
+
+
 def _snapshot_one(nid, output_path):
     """Fetch one novel and append a row. Returns (ok, error_message_or_None)."""
     url = eng.build_onebook_url(nid)
@@ -104,6 +126,16 @@ def _run(args):
         if not args.quiet:
             print(f'cycle-hours={args.cycle_hours}: {len(ids)} due for snapshot '
                   f'(skipped {before - len(ids)} fresh-enough)')
+    # Drop ids that have already failed permanently (HTTP 404 / Gone) on
+    # several consecutive ticks — re-fetching them is wasted bandwidth and
+    # they would otherwise emit a fresh failures.jsonl row each cycle.
+    dead = _permanently_dead_ids(args.failures, 'novel_id')
+    if dead:
+        before = len(ids)
+        ids = [n for n in ids if n not in dead]
+        if not args.quiet:
+            print(f'skipping {before - len(ids)} permanently-dead ids '
+                  f'(404/Gone × ≥3 consecutive failures)')
     if args.limit > 0:
         ids = ids[:args.limit]
         if not args.quiet:

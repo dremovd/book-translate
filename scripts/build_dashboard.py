@@ -312,29 +312,35 @@ def _scan_cron_logs(data_dir, hours=48):
     return counts, errors
 
 
-def _coverage_gap(by_id, candidates, id_field, last_snapshot_ts, grace_hours=2):
-    """How many candidates that *should* have been snapshotted by now actually
-    weren't?
+def _coverage_gap(by_id, candidates, id_field, last_snapshot_ts,
+                   cycle_hours=24, grace_hours=2):
+    """How many candidates that *should* have been snapshotted within the
+    cycle actually weren't?
 
-    Discover and snapshot run on different cadences (hourly discover + daily
-    snapshot is the current setup), so candidates added after the most
-    recent snapshot run don't count as "missing" — they've had no chance
-    yet. We compute coverage *relative* to the last snapshot run:
+    Designed for the "continuous-slow" cron pattern: snapshot fires every
+    15-60 min and processes a small batch (`--cycle-hours N --limit M`),
+    eventually covering every candidate within N hours. The right
+    coverage question for that pattern is *not* "did everyone get a row
+    in the last big snapshot run" (there is no big run) — it's:
 
-      eligible = candidates with first_seen <= last_snapshot_ts + grace
-      missing  = eligible \ {ids snapshotted in the last snapshot cycle}
+      Has every candidate that's been in the system for at least cycle_hours
+      had a snapshot in the past cycle_hours?
 
-    grace_hours absorbs the snapshot run's own duration (a 15-min snapshot
-    pass means books discovered during the run still get snapshotted).
+      eligible = candidates with first_seen <= now - cycle_hours - grace
+      covered  = candidates with latest snapshot <= cycle_hours old
+      missing  = eligible \ covered
 
-    Returns (missing_count, eligible_count). If we have no snapshots yet
-    or no candidates with first_seen, returns (0, 0) so the dashboard
-    doesn't false-alarm on first deploy.
+    grace_hours absorbs scheduling jitter — a candidate added 23h ago
+    isn't yet "overdue" for a 24h cycle.
+
+    Returns (missing_count, eligible_count). (0, 0) if there's no data
+    yet to evaluate (avoids false alarms on first deploy).
     """
-    last_t = _parse_ts(last_snapshot_ts)
-    if not last_t:
+    if not last_snapshot_ts:
         return 0, 0
-    eligibility_cutoff = last_t.timestamp() + grace_hours * 3600
+    now = datetime.now(tz=timezone.utc)
+    snap_cutoff = now.timestamp() - cycle_hours * 3600
+    elig_cutoff = now.timestamp() - (cycle_hours + grace_hours) * 3600
 
     eligible = set()
     for r in candidates:
@@ -342,23 +348,18 @@ def _coverage_gap(by_id, candidates, id_field, last_snapshot_ts, grace_hours=2):
         fs = _parse_ts(r.get('first_seen'))
         if nid is None or not fs:
             continue
-        if fs.timestamp() <= eligibility_cutoff:
+        if fs.timestamp() <= elig_cutoff:
             eligible.add(nid)
 
-    # "Snapshotted in the last cycle" = has any snapshot row dated within the
-    # 6-hour window around last_snapshot_ts (covers a snapshot run that
-    # spans an hour or two).
-    cycle_lo = last_t.timestamp() - 6 * 3600
-    cycle_hi = last_t.timestamp() + 6 * 3600
-    snapshotted_this_cycle = set()
+    covered = set()
     for nid, rows in by_id.items():
-        for r in rows:
-            t = _parse_ts(r.get('ts'))
-            if t and cycle_lo <= t.timestamp() <= cycle_hi:
-                snapshotted_this_cycle.add(nid)
-                break
+        if not rows:
+            continue
+        latest_t = _parse_ts(rows[-1].get('ts'))
+        if latest_t and latest_t.timestamp() >= snap_cutoff:
+            covered.add(nid)
 
-    missing = eligible - snapshotted_this_cycle
+    missing = eligible - covered
     return len(missing), len(eligible)
 
 

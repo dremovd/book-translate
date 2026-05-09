@@ -59,6 +59,24 @@ def _candidate_ids(path):
     return out
 
 
+def _permanently_dead_ids(failures_path, threshold=3):
+    """book_ids that have failed with terminal HTTP 404 / Gone N times in a
+    row — the book is gone from the platform; re-fetching every cron tick
+    is wasted and pollutes failures.jsonl with duplicate rows."""
+    consec = {}
+    for row in eng.read_jsonl(failures_path):
+        bid = row.get('book_id')
+        if bid is None:
+            continue
+        err = (row.get('retry_error') or row.get('first_error') or '')
+        if ('HTTP 404' in err or 'Not Found' in err
+                or 'HTTP 410' in err or 'Gone' in err):
+            consec[bid] = consec.get(bid, 0) + 1
+        else:
+            consec[bid] = 0
+    return {bid for bid, n in consec.items() if n >= threshold}
+
+
 def _snapshot_one(book_id, output_path):
     """Fetch one book and append a row. Returns (ok, error_message_or_None)."""
     url = eng.build_page_url(book_id)
@@ -94,6 +112,13 @@ def _run(args):
         if not args.quiet:
             print(f'cycle-hours={args.cycle_hours}: {len(ids)} due '
                   f'(skipped {before - len(ids)} fresh-enough)')
+    dead = _permanently_dead_ids(args.failures)
+    if dead:
+        before = len(ids)
+        ids = [b for b in ids if b not in dead]
+        if not args.quiet:
+            print(f'skipping {before - len(ids)} permanently-dead ids '
+                  f'(404/Gone × ≥3 consecutive failures)')
     if args.limit > 0:
         ids = ids[:args.limit]
         if not args.quiet:
