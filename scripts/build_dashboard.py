@@ -212,13 +212,69 @@ def _compute_growth(rows, metric_field):
     }
 
 
+def _classify_error_line(line):
+    """Bucket an error log line into a known category for the dashboard.
+
+    Categories surfaced (most-specific first; first match wins):
+      '403'     — explicit Forbidden (qidian-style hard WAF)
+      '429'     — rate-limit; includes our "treating as HTTP 429" surfacing
+                  of empty 200 bodies, plus legacy "INITIAL_STATE not found"
+                  rows from before that fix.
+      '404'     — Not Found (book removed by the platform)
+      '5xx'     — server-side errors (worth distinguishing from rate-limit)
+      'timeout' — TimeoutError / read timeout / connect timeout
+      'network' — URLError / connection reset / DNS failure (transport)
+      'abort'   — our consecutive-fail ABORTING marker — meta-level signal
+                  that one of the above tripped the threshold
+      'parse'   — schema regression / unparseable page that's not a soft-block
+      'other'   — anything not matched above; if this grows, add a category.
+    """
+    # 4xx: explicit codes first. Match both our fetch_html's tidy "HTTP 4XX"
+    # and urllib's default "HTTP Error 4XX: <reason>" from legacy logs.
+    if ('HTTP 403' in line or 'HTTP Error 403' in line or 'Forbidden' in line):
+        return '403'
+    if ('HTTP 429' in line or 'HTTP Error 429' in line or 'treating as HTTP 429' in line
+            or '200 OK but body' in line
+            or ('INITIAL_STATE' in line and 'not found' in line)):
+        return '429'
+    if 'HTTP 404' in line or 'HTTP Error 404' in line or 'Not Found' in line:
+        return '404'
+    # 5xx
+    import re as _re
+    if _re.search(r'HTTP (?:Error )?5\d{2}', line):
+        return '5xx'
+    # Transport-level
+    if 'timed out' in line or 'TimeoutError' in line or 'timeout' in line.lower():
+        return 'timeout'
+    if ('Connection reset' in line or 'ConnectionResetError' in line
+            or 'URLError' in line or 'getaddrinfo' in line
+            or 'Name or service not known' in line):
+        return 'network'
+    # Meta markers
+    if 'ABORTING' in line:
+        return 'abort'
+    if 'PARSE FAILED' in line or 'parse:' in line:
+        return 'parse'
+    return 'other'
+
+
 def _scan_cron_logs(data_dir, hours=48):
     """Scan recent cron.log.YYYY-MM-DD files for error markers. Returns
-    (recent_error_count, [sample lines])."""
+    (counts_by_category, [sample lines]).
+
+    `counts_by_category` is a dict like {'403': 12, '429': 480, 'parse': 5,
+    'other': 3} — surfaced verbatim on the dashboard so you can tell at a
+    glance whether the platform is being WAF'd, rate-soft-limited, schema-
+    drifting, or just network-flaky. Sample lines are still returned so the
+    expandable details panel keeps showing the actual offending text.
+    """
     errors = []
+    counts = {'403': 0, '429': 0, '404': 0, '5xx': 0,
+              'timeout': 0, 'network': 0,
+              'abort': 0, 'parse': 0, 'other': 0}
     cutoff = datetime.now(tz=timezone.utc).timestamp() - hours * 3600
     if not os.path.isdir(data_dir):
-        return 0, errors
+        return counts, errors
     log_files = sorted([f for f in os.listdir(data_dir)
                         if f.startswith('cron.log.')], reverse=True)[:3]
     for fname in log_files:
@@ -227,15 +283,33 @@ def _scan_cron_logs(data_dir, hours=48):
             continue
         try:
             with open(path, encoding='utf-8') as f:
-                for line in f:
+                in_traceback = False
+                for raw in f:
+                    line = raw.rstrip('\n')
+                    # Python traceback blocks: count ONCE per exception, not
+                    # once per stack-frame line. Swallow indented frames; the
+                    # non-indented line that closes the block is the exception
+                    # summary ("AttributeError: ...", "ValueError: ..." etc.).
+                    if line.startswith('Traceback (most recent call last):'):
+                        in_traceback = True
+                        continue
+                    if in_traceback:
+                        if line and not line[0].isspace():
+                            counts[_classify_error_line(line)] += 1
+                            if len(errors) < 6:
+                                errors.append(line[:200])
+                            in_traceback = False
+                        continue
+                    # Non-traceback errors: only count explicit failure markers
+                    # the scrapers emit themselves (single line per incident).
                     if any(kw in line for kw in
-                           ('FAIL', 'STILL FAILING', 'Traceback', 'ABORTING', 'Error')):
-                        errors.append(line.rstrip()[:160])
-                        if len(errors) >= 6:
-                            return len(errors), errors
+                           ('FAIL', 'STILL FAILING', 'ABORTING')):
+                        counts[_classify_error_line(line)] += 1
+                        if len(errors) < 6:
+                            errors.append(line[:200])
         except OSError:
             continue
-    return len(errors), errors
+    return counts, errors
 
 
 def _coverage_gap(by_id, candidates, id_field, last_snapshot_ts, grace_hours=2):
@@ -356,7 +430,8 @@ def _platform_view(plat_name, cfg):
 
     # ── Health signals ──
     last_ts = max((r['ts'] for r in snaps if r.get('ts')), default=None)
-    err_count, err_samples = _scan_cron_logs(cfg['data_dir'])
+    err_counts, err_samples = _scan_cron_logs(cfg['data_dir'])
+    err_total = sum(err_counts.values())
     failures_24h = sum(
         1 for r in failures
         if (_parse_ts(r.get('ts')) and
@@ -369,7 +444,7 @@ def _platform_view(plat_name, cfg):
         coverage_missing=coverage_missing,
         coverage_total=coverage_total,
         failures_24h=failures_24h,
-        recent_errors=err_count,
+        recent_errors=err_total,
     )
 
     return {
@@ -386,7 +461,8 @@ def _platform_view(plat_name, cfg):
         'last_snapshot_ts': last_ts,
         'fresh_emoji': fresh_emoji,
         'fresh_label': fresh_label,
-        'recent_errors_count': err_count,
+        'recent_errors_count': err_total,
+        'recent_errors_counts_by_cat': err_counts,
         'recent_errors_samples': err_samples,
         'failures_24h': failures_24h,
         'failures_total': len(failures),
@@ -752,13 +828,24 @@ def _health_card(view):
         sample = '\n'.join(view['recent_errors_samples'])
         err_block = f'<details><summary>recent log errors</summary><pre>{_esc(sample)}</pre></details>'
 
+    # Compact category-breakdown line. Order = "most specific / most useful
+    # to act on" first. Only categories with >0 hits are shown.
+    cats = view.get('recent_errors_counts_by_cat') or {}
+    bits = []
+    for k in ('403', '429', '404', '5xx', 'timeout', 'network', 'abort', 'parse', 'other'):
+        v = cats.get(k, 0)
+        if v:
+            bits.append(f'{k}=<b>{v}</b>')
+    cat_breakdown = (' · '.join(bits) if bits
+                     else '<span class="muted">—</span>')
+
     return f'''
 <div class="health-card">
   <div class="name">{view['plat_name']}</div>
   <div class="row {cls}">{view['fresh_emoji']} {_esc(view['fresh_label'])}</div>
   <div class="row {fail_cls}">⚠ failures (24h / total): <b>{view['failures_24h']} / {view['failures_total']}</b></div>
   <div class="row {cov_cls}">∅ candidates eligible at last snapshot but unscraped: <b>{view['coverage_missing']:,} / {view['coverage_total']:,}</b></div>
-  <div class="row {err_cls}">✗ recent log errors (48h): <b>{view['recent_errors_count']}</b></div>
+  <div class="row {err_cls}">✗ recent log errors (48h): <b>{view['recent_errors_count']}</b> &nbsp; {cat_breakdown}</div>
   {err_block}
 </div>'''
 

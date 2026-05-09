@@ -465,6 +465,11 @@ _BLOCK_PATTERNS = (
 
 
 def _is_block(err_text):
+    """True for explicit rate-limit / WAF responses. Proxy retry only
+    helps when the error's nature is "this egress IP is rate-limited" —
+    transport/network errors and terminal 4xx (404/410/...) wouldn't be
+    fixed by switching IPs and we'd just waste proxy bandwidth on them.
+    """
     return any(p in err_text for p in _BLOCK_PATTERNS)
 
 
