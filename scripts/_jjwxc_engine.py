@@ -20,7 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 USER_AGENT = (
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
@@ -413,6 +413,55 @@ def read_jsonl(path):
             if not line:
                 continue
             yield json.loads(line)
+
+
+def latest_snapshot_ts_by_id(snapshot_path, id_field):
+    """Return {id: datetime_of_latest_snapshot_for_that_id} from a snapshots.jsonl.
+
+    Used by snapshot scripts' ``--cycle-hours`` filter to skip ids whose most
+    recent snapshot is younger than the cycle threshold. Reads linearly; fine
+    up to a few hundred MB. Returns aware UTC datetimes.
+    """
+    out = {}
+    for row in read_jsonl(snapshot_path):
+        nid = row.get(id_field)
+        ts_str = row.get('ts')
+        if nid is None or not isinstance(ts_str, str):
+            continue
+        try:
+            t = datetime.strptime(ts_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if nid not in out or t > out[nid]:
+            out[nid] = t
+    return out
+
+
+def filter_by_cycle(ids, snapshot_path, id_field, cycle_hours):
+    """Reorder + filter `ids` for "cycle-aware" snapshot iteration.
+
+    With cycle_hours=0 (or negative): pass through unchanged — caller sees
+    the full candidate list in registry order.
+    With cycle_hours>0: drop any id whose latest snapshot is younger than
+    the threshold, then sort the rest so never-snapshotted ids come first
+    and remaining ids are oldest-snapshot-first. This gives a stable
+    "snapshot the most-overdue books first" iteration that pairs with
+    --limit to bound each cron tick's request budget.
+    """
+    if cycle_hours <= 0:
+        return list(ids)
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=cycle_hours)
+    last = latest_snapshot_ts_by_id(snapshot_path, id_field)
+    bucketed = []  # [(sort_key, id)] where sort_key prioritises never-seen first.
+    for nid in ids:
+        t = last.get(nid)
+        if t is None:
+            bucketed.append(((0, datetime.min.replace(tzinfo=timezone.utc)), nid))
+        elif t < cutoff:
+            bucketed.append(((1, t), nid))
+        # else: too recent, drop
+    bucketed.sort(key=lambda x: x[0])
+    return [nid for _, nid in bucketed]
 
 
 def load_candidate_ids(path):
