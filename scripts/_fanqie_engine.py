@@ -285,15 +285,22 @@ from scripts._jjwxc_engine import (  # noqa: E402
     read_jsonl,
     now_iso,
     _Lock,
+    filter_by_cycle,
+    latest_snapshot_ts_by_id,
 )
 
 
 def fetch_html(url, **kw):
-    """Fetch a Fanqie page as utf-8 (server's actual encoding). The shared
-    helper defaults to gb18030 because jjwxc — pin utf-8 here so callers
-    can't accidentally double-decode and break the embedded JSON state.
+    """Fetch a Fanqie page as utf-8 (server's actual encoding).
+
+    Defaults `min_body_bytes=2048` so the soft-block we observed (200 OK
+    with 9-byte empty body when the IP is rate-limited) raises a clean
+    rate-limit error instead of slipping through to the parser as a
+    confusing "no INITIAL_STATE marker" failure. Real fanqie pages —
+    even small "no books found" rank pages — are >40 KB.
     """
     kw.setdefault('encoding', 'utf-8')
+    kw.setdefault('min_body_bytes', 2048)
     return _raw_fetch_html(url, **kw)
 
 

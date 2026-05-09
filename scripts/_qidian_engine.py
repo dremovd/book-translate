@@ -231,6 +231,8 @@ from scripts._jjwxc_engine import (  # noqa: E402
     read_jsonl,
     now_iso,
     _Lock,
+    filter_by_cycle,
+    latest_snapshot_ts_by_id,
 )
 import gzip
 import io
@@ -245,6 +247,10 @@ def fetch_html(url, *, timeout=30, retries=3, backoff_seconds=2.0):
     UA + encoding pinned). Retries on transient network errors only —
     HTTP errors propagate.
     """
+    # min_body_bytes=2048 surfaces qidian's soft-block variants (the WAF can
+    # also serve a small "you're hitting too fast" page that's nominally 200
+    # OK) as fetch failures rather than letting them through to the parser.
+    MIN_BYTES = 2048
     last_err = None
     for attempt in range(retries):
         try:
@@ -261,7 +267,17 @@ def fetch_html(url, *, timeout=30, retries=3, backoff_seconds=2.0):
                 raw = resp.read()
                 if resp.headers.get('Content-Encoding') == 'gzip':
                     raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
+            if len(raw) < MIN_BYTES:
+                raise RuntimeError(
+                    f'fetch {url}: rate-limited (200 OK but body {len(raw)} '
+                    f'bytes < min {MIN_BYTES}; treating as HTTP 429)')
             return raw.decode('utf-8', errors='replace')
+        except urllib.error.HTTPError as e:
+            if 400 <= e.code < 500:
+                raise RuntimeError(f'fetch {url}: HTTP {e.code}') from e
+            last_err = e
+            if attempt + 1 < retries:
+                time.sleep(backoff_seconds * (attempt + 1))
         except (urllib.error.URLError, TimeoutError, ConnectionResetError) as e:
             last_err = e
             if attempt + 1 < retries:

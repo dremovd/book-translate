@@ -326,18 +326,22 @@ def _parse_content_tags(html):
 
 # --------- HTTP / IO helpers ---------
 
-def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0, encoding='gb18030'):
+def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0,
+               encoding='gb18030', min_body_bytes=0):
     """GET `url`, decode bytes with the given encoding.
 
     Retries on transient failures only — connection resets, DNS, raw
     timeouts. **HTTP 4xx is treated as terminal:** retrying a 403/404
-    just re-triggers any WAF on the other end (we learned this the hard
-    way when Qidian's WAF kept us in a CLOSE-WAIT loop). 5xx is treated
-    as transient.
+    just re-triggers any WAF on the other end. 5xx is treated as transient.
 
-    Encoding is per-site: jjwxc serves gb18030, fanqie serves utf-8. Pass
-    ``encoding=None`` to detect from response Content-Type charset (falls
-    back to utf-8 if absent).
+    `min_body_bytes`: if > 0 and the response body is smaller than this,
+    treat it as a rate-limit signal (HTTP 429-style soft-block). Raises a
+    plain RuntimeError so the snapshot's consecutive-failures abort fires
+    just like for explicit 4xx. We hit this when fanqie soft-blocked our
+    server with 200 OK + 9-byte empty bodies, which the original code
+    surfaced misleadingly as "INITIAL_STATE marker not found".
+
+    Encoding is per-site: jjwxc serves gb18030, fanqie/qidian utf-8.
     """
     last_err = None
     for attempt in range(retries):
@@ -359,6 +363,13 @@ def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0, encoding='gb1
                     ct = resp.headers.get('Content-Type', '')
                     m = re.search(r'charset=([^\s;]+)', ct, re.I)
                     resolved = m.group(1) if m else 'utf-8'
+            if min_body_bytes and len(raw) < min_body_bytes:
+                # 200 OK with no real content == upstream is rate-limiting us
+                # with a soft block. Surface as a fetch failure so the
+                # consecutive-fails abort can react like it does to 403.
+                raise RuntimeError(
+                    f'fetch {url}: rate-limited (200 OK but body {len(raw)} '
+                    f'bytes < min {min_body_bytes}; treating as HTTP 429)')
             return raw.decode(resolved, errors='replace')
         except urllib.error.HTTPError as e:
             # Don't retry client-side errors — they're terminal for this URL.
