@@ -447,13 +447,15 @@ def _classify_recent(*, last_run_stats):
     """RECENT health: did the most recent snapshot run finish cleanly?
 
     Driven by the explicit ``snapshot: N ok (direct=… proxy_rescued=…),
-    K failed`` summary line each snapshot tick writes — that's the
-    authoritative signal. A WAF-rescued-by-proxy run is GREEN/AMBER
-    (we got the data, just via fail-over), not red.
+    K failed (404=… other=…)`` summary line. Proxy fail-over is part of
+    the normal happy path — a run done entirely through the proxy is
+    still 🟢. Only actual system-level failures (non-404 retried-twice)
+    or a missing recent run downgrades the status.
 
-    🟢 — no failed books in the most recent run
-    🟡 — proxy rescued some books (data still gathered)
-    🔴 — last run had unrecovered failures, or no run on file
+    🟢 — no system failures in the last run, regardless of how many got
+         proxy-rescued or how many books were 404 (= removed, not a fault)
+    🟡 — last run is older than 2h (cron may have skipped a tick)
+    🔴 — last run had system-level failures, or no run on file at all
     """
     if not last_run_stats:
         return '🔴', 'no recent snapshot run on file'
@@ -465,23 +467,32 @@ def _classify_recent(*, last_run_stats):
     ok = last_run_stats.get('ok', 0)
     age = last_run_stats.get('ts_age_h', 0)
 
-    # Prefer the explicit (404=N other=M) breakdown if present in the
-    # summary line. If absent (older snapshot output), treat all `failed`
-    # as system-level.
+    # Prefer the explicit (404=N other=M) breakdown if present. If absent
+    # (older snapshot output), treat all `failed` as system-level so the
+    # legacy log lines still surface as 🔴.
     sys_failed = failed_other if failed_other is not None else failed
     rm_404 = failed_404 if failed_404 is not None else 0
 
+    # Compose the descriptive label — proxy use and removed books are
+    # *informational*, not warnings, so they're suffixed in plain text.
+    bits = [f'{ok} ok']
+    if direct or proxy:
+        if proxy and not direct:
+            bits[0] = f'{ok} ok (all via proxy)'
+        elif proxy:
+            bits[0] = f'{ok} ok (direct={direct} proxy={proxy})'
+    if rm_404:
+        bits.append(f'{rm_404} removed')
+    if sys_failed:
+        bits.append(f'{sys_failed} system failure(s)')
+    bits.append(f'{age:.1f}h ago')
+    label = 'last run: ' + ', '.join(bits)
+
     if sys_failed > 0:
-        return '🔴', (f'last run: {sys_failed} system failure(s), '
-                      f'{ok} ok ({age:.1f}h ago)')
-    if proxy > 0:
-        suffix = (f' ({rm_404} books removed)' if rm_404 else '')
-        return '🟡', (f'last run: {ok} ok via fail-over '
-                      f'(direct={direct} proxy={proxy}){suffix}, {age:.1f}h ago')
-    if rm_404 > 0:
-        return '🟢', (f'last run: {ok} ok, {rm_404} books removed (no system fault), '
-                      f'{age:.1f}h ago')
-    return '🟢', f'last run: {ok} ok, 0 failed, {age:.1f}h ago'
+        return '🔴', label
+    if age > 2:
+        return '🟡', f'last run is {age:.1f}h old — cron may have skipped'
+    return '🟢', label
 
 
 def _platform_view(plat_name, cfg):
