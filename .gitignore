@@ -23,6 +23,13 @@ translations/
 # Personal research data, regenerable from scratch — never committed.
 data/jjwxc/
 data/fanqie/
+data/qidian/
+
+# Excerpts / heads of full books — copyrighted text we never want in git.
+# Generated locally with e.g. `head -1000 hpmor.md > hpmor.md.head` and
+# kept around for ad-hoc testing. Real `samples/` (small purpose-built
+# demo fixtures) are committed; only full-book excerpts are excluded.
+*.md.head
 
 # Python bytecode caches.
 __pycache__/
