@@ -288,12 +288,38 @@ def _coverage_gap(by_id, candidates, id_field, last_snapshot_ts, grace_hours=2):
     return len(missing), len(eligible)
 
 
-def _classify_freshness(last_snapshot_ts):
-    """Return (status_emoji, status_label) based on last snapshot age."""
+def _classify_health(last_snapshot_ts, *, coverage_missing, coverage_total,
+                     failures_24h, recent_errors):
+    """Combine multiple signals into a single status indicator.
+
+    Just-fresh-data isn't enough — a partial snapshot run that succeeded for
+    100 books and got blocked on the next 200 will look "fresh" by age but
+    is in fact catastrophic. Order: BLOCKED (most severe) > stale > healthy.
+    """
     t = _parse_ts(last_snapshot_ts)
     if not t:
-        return '🔴', 'no snapshot data'
+        return '🔴', 'no snapshot data yet'
     age_h = (datetime.now(tz=timezone.utc) - t).total_seconds() / 3600
+
+    # BLOCKED: large fraction of eligible candidates missed in last cycle.
+    # That pattern is what an upstream WAF / rate-limit looks like — the
+    # snapshot DID run (fresh ts), but only got a small fraction through.
+    if coverage_total > 0:
+        miss_pct = coverage_missing / coverage_total
+        if miss_pct >= 0.5:
+            return '🔴', (f'BLOCKED — {coverage_missing}/{coverage_total} '
+                          f'({miss_pct * 100:.0f}%) candidates unscraped in last cycle, '
+                          f'last snapshot {age_h:.1f}h ago')
+        if miss_pct >= 0.2:
+            return '🟡', (f'partial — {coverage_missing}/{coverage_total} '
+                          f'({miss_pct * 100:.0f}%) candidates unscraped, '
+                          f'last snapshot {age_h:.1f}h ago')
+
+    # Same-cycle failures are also a strong signal.
+    if failures_24h >= 50:
+        return '🔴', f'{failures_24h} per-novel failures in last 24h — likely WAF/rate-limit'
+
+    # Plain freshness fallback.
     if age_h <= 30:
         return '🟢', f'{age_h:.1f}h since last snapshot'
     if age_h <= 48:
@@ -330,7 +356,6 @@ def _platform_view(plat_name, cfg):
 
     # ── Health signals ──
     last_ts = max((r['ts'] for r in snaps if r.get('ts')), default=None)
-    fresh_emoji, fresh_label = _classify_freshness(last_ts)
     err_count, err_samples = _scan_cron_logs(cfg['data_dir'])
     failures_24h = sum(
         1 for r in failures
@@ -339,6 +364,13 @@ def _platform_view(plat_name, cfg):
     )
     coverage_missing, coverage_total = _coverage_gap(
         by_id, cands, cfg['id_field'], last_ts)
+    fresh_emoji, fresh_label = _classify_health(
+        last_ts,
+        coverage_missing=coverage_missing,
+        coverage_total=coverage_total,
+        failures_24h=failures_24h,
+        recent_errors=err_count,
+    )
 
     return {
         'plat_name': plat_name,
