@@ -233,6 +233,7 @@ from scripts._jjwxc_engine import (  # noqa: E402
     _Lock,
     filter_by_cycle,
     latest_snapshot_ts_by_id,
+    jittered_sleep,
 )
 import gzip
 import io
@@ -245,11 +246,14 @@ def fetch_html(url, **kw):
     """Fetch m.qidian.com pages with the mobile UA pool + persistent cookie
     jar that the site's WAF expects to see.
 
-    Delegates to the shared engine's fetch_html with site-pinned defaults:
-      encoding=utf-8, min_body_bytes=2048 (treat tiny 200s as 429),
-      ua_pool=_MOBILE_UA_POOL, jar_key='qidian',
-      referer=https://m.qidian.com/ for /book/* (real-browser nav signal).
+    Defaults (site-pinned):
+      encoding=utf-8, min_body_bytes=2048, ua_pool=_MOBILE_UA_POOL,
+      jar_key='qidian', referer=https://m.qidian.com/ for /book/*.
+    Reads QIDIAN_PROXY_URL or SCRAPERS_PROXY_URL from env and routes through
+    it on block-detection (the underlying fetch_html only spends proxy
+    bandwidth when a direct attempt has tripped a 403/429 in-process).
     """
+    import os
     from scripts._jjwxc_engine import fetch_html as _raw, _MOBILE_UA_POOL
     kw.setdefault('encoding', 'utf-8')
     kw.setdefault('min_body_bytes', 2048)
@@ -257,6 +261,9 @@ def fetch_html(url, **kw):
     kw.setdefault('jar_key', 'qidian')
     if '/book/' in url and 'referer' not in kw:
         kw['referer'] = 'https://m.qidian.com/'
+    if 'proxy' not in kw:
+        kw['proxy'] = (os.environ.get('QIDIAN_PROXY_URL')
+                       or os.environ.get('SCRAPERS_PROXY_URL'))
     return _raw(url, **kw)
 
 

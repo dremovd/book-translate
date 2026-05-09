@@ -22,6 +22,33 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+# Cron jobs don't inherit user shell env; if a .env file lives at the repo
+# root, fold it into os.environ on import so engines can read SCRAPERS_PROXY_URL
+# and friends. Existing env wins over .env (so an explicit `--env ...` from
+# the wrapping shell is still honoured).
+def _load_dotenv_into_environ():
+    import os as _os
+    here = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    for candidate in (_os.path.join(here, '.env'), '.env'):
+        if not _os.path.exists(candidate):
+            continue
+        try:
+            with open(candidate, encoding='utf-8') as _f:
+                for line in _f:
+                    line = line.strip()
+                    if not line or line.startswith('#') or '=' not in line:
+                        continue
+                    k, v = line.split('=', 1)
+                    k = k.strip(); v = v.strip().strip('"').strip("'")
+                    _os.environ.setdefault(k, v)
+        except OSError:
+            pass
+        return
+
+
+_load_dotenv_into_environ()
+
+
 USER_AGENT = (
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
     'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -399,27 +426,51 @@ def _chrome_header_pack(user_agent, *, referer=None,
     return headers
 
 
-# Cookie jar pool keyed by jar_key (typically the site name). One jar per
-# logical site means cookies set by an earlier request automatically ride
-# along on the next one — a real-browser signal that a fresh-bot fetch
-# cannot fake.
+# Cookie jar + opener pool. Keyed by (jar_key, proxy_url) so a request that
+# routes through a different proxy (or no proxy) gets its own opener and
+# doesn't reuse a jar from a different egress.
 _COOKIE_JARS = {}
 _COOKIE_OPENERS = {}
 
 
-def _opener_for(jar_key):
+def _opener_for(jar_key, proxy=None):
     import http.cookiejar
-    if jar_key not in _COOKIE_OPENERS:
+    key = (jar_key, proxy or '')
+    if key not in _COOKIE_OPENERS:
         cj = http.cookiejar.CookieJar()
-        _COOKIE_JARS[jar_key] = cj
-        _COOKIE_OPENERS[jar_key] = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(cj))
-    return _COOKIE_OPENERS[jar_key]
+        _COOKIE_JARS[key] = cj
+        handlers = [urllib.request.HTTPCookieProcessor(cj)]
+        if proxy:
+            # geonode etc. format: http://user:pass@host:port — same URL works
+            # for both http and https through the upstream HTTP proxy.
+            handlers.append(urllib.request.ProxyHandler({
+                'http': proxy, 'https': proxy,
+            }))
+        _COOKIE_OPENERS[key] = urllib.request.build_opener(*handlers)
+    return _COOKIE_OPENERS[key]
+
+
+# Process-local set of jar_keys currently considered "blocked direct" — when
+# a regular fetch trips a 403/429-shaped RuntimeError, we add the jar to this
+# set and route subsequent requests in this process through the configured
+# proxy. The set resets on process exit, so each cron tick starts fresh and
+# tries direct first; this avoids burning proxy bandwidth when the IP-block
+# has already cooled.
+_BLOCKED_JARS = set()
+_BLOCK_PATTERNS = (
+    'HTTP 403', 'HTTP Error 403', 'Forbidden',
+    'HTTP 429', 'HTTP Error 429', 'treating as HTTP 429',
+    '200 OK but body',
+)
+
+
+def _is_block(err_text):
+    return any(p in err_text for p in _BLOCK_PATTERNS)
 
 
 def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0,
                encoding='gb18030', min_body_bytes=0,
-               ua_pool=None, jar_key='default', referer=None):
+               ua_pool=None, jar_key='default', referer=None, proxy=None):
     """GET `url`, decode with `encoding`. Retries on transient failures only.
 
     Anti-block measures:
@@ -437,40 +488,58 @@ def fetch_html(url, *, timeout=15, retries=3, backoff_seconds=2.0,
         raised as RuntimeError tagged "treating as HTTP 429".
       • `encoding=None`: detect from response Content-Type charset.
     """
+    def _do(via_proxy):
+        """Inner fetch — tries once with the chosen proxy setting (or direct
+        when via_proxy is None). All retry / encoding / 429 checks live here.
+        """
+        nonlocal_err = None
+        for attempt in range(retries):
+            ua = random.choice(pool)
+            opener = _opener_for(jar_key, proxy=via_proxy)
+            try:
+                req = urllib.request.Request(
+                    url, headers=_chrome_header_pack(ua, referer=referer))
+                with opener.open(req, timeout=timeout) as resp:
+                    raw = resp.read()
+                    if resp.headers.get('Content-Encoding') == 'gzip':
+                        raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
+                    resolved = encoding
+                    if resolved is None:
+                        ct = resp.headers.get('Content-Type', '')
+                        m = re.search(r'charset=([^\s;]+)', ct, re.I)
+                        resolved = m.group(1) if m else 'utf-8'
+                if min_body_bytes and len(raw) < min_body_bytes:
+                    raise RuntimeError(
+                        f'fetch {url}: rate-limited (200 OK but body {len(raw)} '
+                        f'bytes < min {min_body_bytes}; treating as HTTP 429)')
+                return raw.decode(resolved, errors='replace')
+            except urllib.error.HTTPError as e:
+                if 400 <= e.code < 500:
+                    raise RuntimeError(f'fetch {url}: HTTP {e.code}') from e
+                nonlocal_err = e
+                if attempt + 1 < retries:
+                    time.sleep(backoff_seconds * (attempt + 1))
+            except (urllib.error.URLError, TimeoutError, ConnectionResetError) as e:
+                nonlocal_err = e
+                if attempt + 1 < retries:
+                    time.sleep(backoff_seconds * (attempt + 1))
+        raise RuntimeError(f'fetch failed for {url}: {nonlocal_err}')
+
     import random
     pool = ua_pool or _DESKTOP_UA_POOL
-    last_err = None
-    for attempt in range(retries):
-        ua = random.choice(pool)
-        opener = _opener_for(jar_key)
-        try:
-            req = urllib.request.Request(
-                url, headers=_chrome_header_pack(ua, referer=referer))
-            with opener.open(req, timeout=timeout) as resp:
-                raw = resp.read()
-                if resp.headers.get('Content-Encoding') == 'gzip':
-                    raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
-                resolved = encoding
-                if resolved is None:
-                    ct = resp.headers.get('Content-Type', '')
-                    m = re.search(r'charset=([^\s;]+)', ct, re.I)
-                    resolved = m.group(1) if m else 'utf-8'
-            if min_body_bytes and len(raw) < min_body_bytes:
-                raise RuntimeError(
-                    f'fetch {url}: rate-limited (200 OK but body {len(raw)} '
-                    f'bytes < min {min_body_bytes}; treating as HTTP 429)')
-            return raw.decode(resolved, errors='replace')
-        except urllib.error.HTTPError as e:
-            if 400 <= e.code < 500:
-                raise RuntimeError(f'fetch {url}: HTTP {e.code}') from e
-            last_err = e
-            if attempt + 1 < retries:
-                time.sleep(backoff_seconds * (attempt + 1))
-        except (urllib.error.URLError, TimeoutError, ConnectionResetError) as e:
-            last_err = e
-            if attempt + 1 < retries:
-                time.sleep(backoff_seconds * (attempt + 1))
-    raise RuntimeError(f'fetch failed for {url}: {last_err}')
+    # If this jar is already known-blocked in this process AND we have a
+    # proxy configured, skip the direct attempt — go straight to proxy.
+    if jar_key in _BLOCKED_JARS and proxy:
+        return _do(proxy)
+    # Otherwise try direct first. On a block-shaped failure, fail over to
+    # proxy (if configured) and remember the jar is blocked for this run.
+    try:
+        return _do(None)
+    except RuntimeError as e:
+        if proxy and _is_block(str(e)):
+            _BLOCKED_JARS.add(jar_key)
+            return _do(proxy)
+        raise
 
 
 def jittered_sleep(base_seconds, *, frac=0.30):

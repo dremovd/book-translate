@@ -287,6 +287,7 @@ from scripts._jjwxc_engine import (  # noqa: E402
     _Lock,
     filter_by_cycle,
     latest_snapshot_ts_by_id,
+    jittered_sleep,
 )
 
 
@@ -300,7 +301,11 @@ def fetch_html(url, **kw):
         looks like one returning user, not 1000 fresh bots)
       - referer (homepage for /page/<id> detail fetches; rank pages
         otherwise use no referer)
+      - proxy from FANQIE_PROXY_URL or SCRAPERS_PROXY_URL env var when set
+        (used when fanqie's IP-rate-limit blocks our deploy IP — routes
+        through a residential / mobile-IP proxy pool)
     """
+    import os
     from scripts._jjwxc_engine import _DESKTOP_UA_POOL
     kw.setdefault('encoding', 'utf-8')
     kw.setdefault('min_body_bytes', 2048)
@@ -308,6 +313,9 @@ def fetch_html(url, **kw):
     kw.setdefault('ua_pool', _DESKTOP_UA_POOL)
     if '/page/' in url and 'referer' not in kw:
         kw['referer'] = 'https://fanqienovel.com/'
+    if 'proxy' not in kw:
+        kw['proxy'] = (os.environ.get('FANQIE_PROXY_URL')
+                       or os.environ.get('SCRAPERS_PROXY_URL'))
     return _raw_fetch_html(url, **kw)
 
 
