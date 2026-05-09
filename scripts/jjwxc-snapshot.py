@@ -50,6 +50,11 @@ def parse_args(argv=None):
                    help='Where to record monitored novels that failed both initial and retry fetch.')
     p.add_argument('--max-consecutive-fails', type=int, default=20,
                    help='Abort after this many consecutive failures (default 20). 0 disables.')
+    p.add_argument('--cycle-hours', type=float, default=0,
+                   help='Skip novels whose latest snapshot is younger than N hours. '
+                        '0 (default) = no filter, snapshot all candidates. Use with '
+                        '--limit for "frequent small batches" cron pattern, e.g. '
+                        '--cycle-hours 24 --limit 30 every 15 min ⇒ each book hit once/day.')
     return p.parse_args(argv)
 
 
@@ -90,6 +95,12 @@ def _run(args):
         ids = _candidate_ids(args.candidates)
         if not args.quiet:
             print(f'loaded {len(ids)} candidates from {args.candidates}')
+    if args.cycle_hours and args.cycle_hours > 0:
+        before = len(ids)
+        ids = eng.filter_by_cycle(ids, args.output, 'novel_id', args.cycle_hours)
+        if not args.quiet:
+            print(f'cycle-hours={args.cycle_hours}: {len(ids)} due for snapshot '
+                  f'(skipped {before - len(ids)} fresh-enough)')
     if args.limit > 0:
         ids = ids[:args.limit]
         if not args.quiet:

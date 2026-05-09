@@ -41,6 +41,10 @@ def parse_args(argv=None):
                    help='Abort the snapshot pass after this many consecutive failures (default 20). '
                         'Guards against WAF/rate-limit episodes that would otherwise hang for hours '
                         'or tank the per-novel budget. 0 disables.')
+    p.add_argument('--cycle-hours', type=float, default=0,
+                   help='Skip books whose latest snapshot is younger than N hours. '
+                        '0 (default) = no filter. Use with --limit for "frequent '
+                        'small batches" cron pattern.')
     return p.parse_args(argv)
 
 
@@ -82,6 +86,12 @@ def _run(args):
         ids = _candidate_ids(args.candidates)
         if not args.quiet:
             print(f'loaded {len(ids)} candidates from {args.candidates}')
+    if args.cycle_hours and args.cycle_hours > 0:
+        before = len(ids)
+        ids = eng.filter_by_cycle(ids, args.output, 'book_id', args.cycle_hours)
+        if not args.quiet:
+            print(f'cycle-hours={args.cycle_hours}: {len(ids)} due '
+                  f'(skipped {before - len(ids)} fresh-enough)')
     if args.limit > 0:
         ids = ids[:args.limit]
         if not args.quiet:
