@@ -48,7 +48,7 @@ def _run(args):
     for page in range(args.start_page, args.start_page + args.pages):
         url = eng.build_bookbase_url(sort_type=args.sort_type, page=page, isfinish=args.isfinish)
         try:
-            html = eng.fetch_html(url)
+            html = eng.fetch_html(url, jar_key='jjwxc')
         except RuntimeError as e:
             # Always loud: cron should email this.
             print(f'page {page}: FETCH FAILED ({e}); stopping', flush=True)
@@ -71,7 +71,7 @@ def _run(args):
                 print(f'page {page}: empty listing — stopping')
             break
         if page < args.start_page + args.pages - 1:
-            time.sleep(args.sleep)
+            eng.jittered_sleep(args.sleep)
     return added, fetched_pages, 0
 
 

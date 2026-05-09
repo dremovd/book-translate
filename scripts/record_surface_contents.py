@@ -88,7 +88,7 @@ def walk_jjwxc(args):
         out.append(row)
         if not args.quiet:
             print(f'  bookbase.page{page}: {len(ids)} ids', flush=True)
-        time.sleep(args.sleep)
+        jj_eng.jittered_sleep(args.sleep)
     return out, rc
 
 
@@ -117,7 +117,7 @@ def walk_fanqie(args):
             if not args.quiet:
                 print(f'  rank.g{gender}.cat{cat_id} {name}: {len(ids)} ids', flush=True)
             if i < len(fq_eng.RANK_CATEGORIES):
-                time.sleep(args.sleep)
+                jj_eng.jittered_sleep(args.sleep)
     if 'home' in surfaces:
         try:
             html = fq_eng.fetch_html(fq_eng.build_home_url())
@@ -169,7 +169,7 @@ def walk_qidian(args):
             if not args.quiet:
                 print(f'  {rank_type}.catid{catid}: {len(ids)} ids', flush=True)
             if i < len(qd_eng.RANK_CATIDS):
-                time.sleep(args.sleep)
+                jj_eng.jittered_sleep(args.sleep)
     return out, rc
 
 

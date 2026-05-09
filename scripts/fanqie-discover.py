@@ -82,7 +82,7 @@ def _walk_rank_categories(args, seen):
             print(f'  rank g={gender} cat={category_id} {name}: {len(books)} books, '
                   f'{new_on_page} new (total candidates: {len(seen)})', flush=True)
         if i < len(eng.RANK_CATEGORIES):
-            time.sleep(args.sleep)
+            eng.jittered_sleep(args.sleep)
     return added, fetched, rc
 
 

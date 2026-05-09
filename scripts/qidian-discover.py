@@ -102,7 +102,7 @@ def _walk_rank(rank_type, args, seen):
             print(f'  {rank_type} catid={catid}: {len(records)} records, {new_on_page} new '
                   f'(total candidates: {len(seen)})', flush=True)
         if i < len(eng.RANK_CATIDS):
-            time.sleep(args.sleep)
+            eng.jittered_sleep(args.sleep)
     return added, fetched, rc
 
 

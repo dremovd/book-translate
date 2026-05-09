@@ -121,7 +121,7 @@ def _run(args):
                 aborted_at = i
                 break
         if i < len(ids):
-            time.sleep(args.sleep)
+            eng.jittered_sleep(args.sleep)
 
     unrecovered = []
     if failures:

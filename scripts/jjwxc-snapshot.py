@@ -74,7 +74,10 @@ def _snapshot_one(nid, output_path):
     """Fetch one novel and append a row. Returns (ok, error_message_or_None)."""
     url = eng.build_onebook_url(nid)
     try:
-        html = eng.fetch_html(url)
+        # referer = bookbase listing because that's where browser-nav users
+        # actually came from; cookie jar shared with discover.
+        html = eng.fetch_html(url, jar_key='jjwxc',
+                               referer='https://www.jjwxc.net/bookbase.php')
     except RuntimeError as e:
         return False, f'fetch: {e}'
     try:
@@ -128,7 +131,7 @@ def _run(args):
                       flush=True)
                 break
         if i < len(ids):
-            time.sleep(args.sleep)
+            eng.jittered_sleep(args.sleep)
 
     # Retry pass — full coverage means no monitored novel quietly loses its
     # data point. Walk every initial failure with exponential backoff. Any

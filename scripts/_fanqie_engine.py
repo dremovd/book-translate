@@ -293,14 +293,21 @@ from scripts._jjwxc_engine import (  # noqa: E402
 def fetch_html(url, **kw):
     """Fetch a Fanqie page as utf-8 (server's actual encoding).
 
-    Defaults `min_body_bytes=2048` so the soft-block we observed (200 OK
-    with 9-byte empty body when the IP is rate-limited) raises a clean
-    rate-limit error instead of slipping through to the parser as a
-    confusing "no INITIAL_STATE marker" failure. Real fanqie pages —
-    even small "no books found" rank pages — are >40 KB.
+    Defaults:
+      - encoding=utf-8 (server's actual encoding)
+      - min_body_bytes=2048 (catches the empty-200 soft-block as 429)
+      - jar_key='fanqie' (cookies persist across all fanqie fetches —
+        looks like one returning user, not 1000 fresh bots)
+      - referer (homepage for /page/<id> detail fetches; rank pages
+        otherwise use no referer)
     """
+    from scripts._jjwxc_engine import _DESKTOP_UA_POOL
     kw.setdefault('encoding', 'utf-8')
     kw.setdefault('min_body_bytes', 2048)
+    kw.setdefault('jar_key', 'fanqie')
+    kw.setdefault('ua_pool', _DESKTOP_UA_POOL)
+    if '/page/' in url and 'referer' not in kw:
+        kw['referer'] = 'https://fanqienovel.com/'
     return _raw_fetch_html(url, **kw)
 
 

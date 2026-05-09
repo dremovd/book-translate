@@ -121,7 +121,7 @@ def _run(args):
                       flush=True)
                 break
         if i < len(ids):
-            time.sleep(args.sleep)
+            eng.jittered_sleep(args.sleep)
 
     unrecovered = []
     if failures:
