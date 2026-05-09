@@ -25,6 +25,7 @@ import argparse
 import html as html_mod
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -258,6 +259,61 @@ def _classify_error_line(line):
     return 'other'
 
 
+def _last_snapshot_run_stats(data_dir):
+    """Pull the most recent ``snapshot: …`` summary line from the per-day
+    cron.log files and parse it. Returns a dict like
+    ``{'ok': 25, 'failed': 0, 'direct_ok': 22, 'proxy_rescued': 3,
+       'ts_age_h': 0.3}`` or {} if no summary line found.
+
+    "Last run" is the right unit for the dashboard's RECENT signal: even
+    if a 4h-old failure is still in the log file, the most recent
+    snapshot tick's pass/fail tells you "is the system OK right now?".
+    """
+    if not os.path.isdir(data_dir):
+        return {}
+    log_files = sorted([f for f in os.listdir(data_dir)
+                        if f.startswith('cron.log.')], reverse=True)[:2]
+    summary_re = re.compile(
+        r'snapshot:\s*(\d+)\s*ok\s*(?:\(direct=(\d+)\s*proxy_rescued=(\d+)\))?'
+        r'(?:,\s*(\d+)\s*failed)?(?:\s*\(404=(\d+)\s*other=(\d+)\))?'
+    )
+    # Files are sorted newest-first. Take the last match in the newest file
+    # that has *any* match. Earlier code overwrote a fresh match from today
+    # with a stale match from yesterday's file.
+    for fname in log_files:
+        path = os.path.join(data_dir, fname)
+        last_in_file = None
+        try:
+            with open(path, encoding='utf-8') as f:
+                for line in f:
+                    m = summary_re.search(line)
+                    if m:
+                        ok = int(m.group(1))
+                        direct = int(m.group(2)) if m.group(2) else None
+                        proxy = int(m.group(3)) if m.group(3) else None
+                        failed = int(m.group(4)) if m.group(4) else 0
+                        failed_404 = int(m.group(5)) if m.group(5) else None
+                        failed_other = int(m.group(6)) if m.group(6) else None
+                        last_in_file = {
+                            'ok': ok, 'failed': failed,
+                            'failed_404': failed_404,
+                            'failed_other': failed_other,
+                            'direct_ok': direct, 'proxy_rescued': proxy,
+                            'mtime': os.path.getmtime(path),
+                        }
+        except OSError:
+            continue
+        if last_in_file:
+            last_summary = last_in_file
+            break
+    else:
+        return {}
+    age_h = (datetime.now(tz=timezone.utc).timestamp()
+             - last_summary['mtime']) / 3600
+    last_summary['ts_age_h'] = age_h
+    return last_summary
+
+
 def _scan_cron_logs(data_dir, hours=2):
     """Scan recent cron.log.YYYY-MM-DD files for error markers. Returns
     (counts_by_category, [sample lines]).
@@ -387,40 +443,45 @@ def _classify_global(last_snapshot_ts, *, coverage_missing, coverage_total):
     return '🟢', f'{coverage_total - coverage_missing:,}/{coverage_total:,} covered'
 
 
-def _classify_recent(*, recent_error_counts, fresh_window_hours=6):
-    """RECENT health: did the cron ticks in the last `fresh_window_hours`
-    fire cleanly?
+def _classify_recent(*, last_run_stats):
+    """RECENT health: did the most recent snapshot run finish cleanly?
 
-    Snapshot age is NOT the right signal — with --cycle-hours, a healthy
-    system that's already covered everyone writes zero new snapshot rows
-    on a tick (it has nothing to do), and the most recent ts can be many
-    hours old while operation is perfectly fine. So we look exclusively
-    at whether errors landed in the recent log window:
+    Driven by the explicit ``snapshot: N ok (direct=… proxy_rescued=…),
+    K failed`` summary line each snapshot tick writes — that's the
+    authoritative signal. A WAF-rescued-by-proxy run is GREEN/AMBER
+    (we got the data, just via fail-over), not red.
 
-    🟢 — no errors at all
-    🟡 — non-blocking errors (parse / network / timeout / a few 'other')
-    🔴 — rate-limit / WAF signals (403, 429, 5xx, abort) OR many parse errors
+    🟢 — no failed books in the most recent run
+    🟡 — proxy rescued some books (data still gathered)
+    🔴 — last run had unrecovered failures, or no run on file
     """
-    block_count = (recent_error_counts.get('403', 0)
-                   + recent_error_counts.get('429', 0)
-                   + recent_error_counts.get('5xx', 0)
-                   + recent_error_counts.get('abort', 0))
-    other_count = (recent_error_counts.get('parse', 0)
-                   + recent_error_counts.get('other', 0)
-                   + recent_error_counts.get('timeout', 0)
-                   + recent_error_counts.get('network', 0))
-    # 404 doesn't count — books being removed isn't a system fault.
+    if not last_run_stats:
+        return '🔴', 'no recent snapshot run on file'
+    failed = last_run_stats.get('failed', 0)
+    failed_404 = last_run_stats.get('failed_404')
+    failed_other = last_run_stats.get('failed_other')
+    proxy = last_run_stats.get('proxy_rescued') or 0
+    direct = last_run_stats.get('direct_ok') or 0
+    ok = last_run_stats.get('ok', 0)
+    age = last_run_stats.get('ts_age_h', 0)
 
-    if block_count > 0:
-        return '🔴', (f'{block_count} rate-limit / WAF errors in last '
-                      f'{fresh_window_hours}h')
-    if other_count > 5:
-        return '🟡', (f'{other_count} non-fatal errors in last '
-                      f'{fresh_window_hours}h')
-    if other_count > 0:
-        return '🟡', (f'{other_count} minor errors in last '
-                      f'{fresh_window_hours}h')
-    return '🟢', f'no errors in last {fresh_window_hours}h'
+    # Prefer the explicit (404=N other=M) breakdown if present in the
+    # summary line. If absent (older snapshot output), treat all `failed`
+    # as system-level.
+    sys_failed = failed_other if failed_other is not None else failed
+    rm_404 = failed_404 if failed_404 is not None else 0
+
+    if sys_failed > 0:
+        return '🔴', (f'last run: {sys_failed} system failure(s), '
+                      f'{ok} ok ({age:.1f}h ago)')
+    if proxy > 0:
+        suffix = (f' ({rm_404} books removed)' if rm_404 else '')
+        return '🟡', (f'last run: {ok} ok via fail-over '
+                      f'(direct={direct} proxy={proxy}){suffix}, {age:.1f}h ago')
+    if rm_404 > 0:
+        return '🟢', (f'last run: {ok} ok, {rm_404} books removed (no system fault), '
+                      f'{age:.1f}h ago')
+    return '🟢', f'last run: {ok} ok, 0 failed, {age:.1f}h ago'
 
 
 def _platform_view(plat_name, cfg):
@@ -475,8 +536,9 @@ def _platform_view(plat_name, cfg):
         coverage_missing=coverage_missing,
         coverage_total=coverage_total,
     )
+    last_run_stats = _last_snapshot_run_stats(cfg['data_dir'])
     recent_emoji, recent_label = _classify_recent(
-        recent_error_counts=err_counts,
+        last_run_stats=last_run_stats,
     )
     # Aggregate emoji used by the top banner — worst-of-the-two.
     fresh_emoji = '🔴' if '🔴' in (global_emoji, recent_emoji) else \
@@ -888,10 +950,9 @@ def _health_card(view):
 <div class="health-card">
   <div class="name">{view['plat_name']}</div>
   <div class="row {g_cls}"><span class="badge">global</span> {view['global_emoji']} {_esc(view['global_label'])}</div>
-  <div class="row {r_cls}"><span class="badge">recent (6h)</span> {view['recent_emoji']} {_esc(view['recent_label'])}</div>
-  <div class="row {fail_cls}">⚠ unique books failed in last 24h / total rows: <b>{view['failures_24h']} / {view['failures_total']}</b></div>
-  <div class="row {cov_cls}">∅ candidates overdue (>24h): <b>{view['coverage_missing']:,} / {view['coverage_total']:,}</b></div>
-  <div class="row {err_cls}">✗ recent log errors (6h): <b>{view['recent_errors_count']}</b> &nbsp; {cat_breakdown}</div>
+  <div class="row {r_cls}"><span class="badge">last run</span> {view['recent_emoji']} {_esc(view['recent_label'])}</div>
+  <div class="row {cov_cls}">∅ candidates with no snapshot in last 24h: <b>{view['coverage_missing']:,} / {view['coverage_total']:,}</b></div>
+  <div class="row {fail_cls}">⚠ books failed in last 24h: <b>{view['failures_24h']}</b> &nbsp;<span class="muted">(total rows in failures.jsonl: {view['failures_total']})</span></div>
   {err_block}
 </div>'''
 
@@ -921,7 +982,7 @@ def render_html(views, top_n=50):
         f'<div style="flex:1; background:{g_color}; color:{g_text}; padding:8px 22px; font-size:13px;">'
         f'{g_worst} <b>GLOBAL</b> &nbsp; cycle coverage across all platforms</div>'
         f'<div style="flex:1; background:{r_color}; color:{r_text}; padding:8px 22px; font-size:13px;">'
-        f'{r_worst} <b>RECENT</b> &nbsp; last 6h fetches</div>'
+        f'{r_worst} <b>LAST RUN</b> &nbsp; most recent snapshot tick result</div>'
         '</div>'
     )
 

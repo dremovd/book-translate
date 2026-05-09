@@ -142,7 +142,7 @@ def _run(args):
             print(f'limited to first {len(ids)}')
     if not ids:
         print('nothing to snapshot.', flush=True)
-        return 0, 0
+        return 0, 0, 0
     ok = 0
     failures = []  # [(nid, error)]
     consec_fail = 0
@@ -186,7 +186,12 @@ def _run(args):
         if unrecovered:
             for row in unrecovered:
                 eng.append_jsonl(args.failures, row)
-    return ok, len(unrecovered)
+    failed_404 = sum(
+        1 for row in unrecovered
+        if any(p in (row.get('retry_error') or row.get('first_error') or '')
+               for p in ('HTTP 404', 'Not Found', 'HTTP 410', 'Gone'))
+    )
+    return ok, len(unrecovered), failed_404
 
 
 def main(argv=None):
@@ -194,15 +199,17 @@ def main(argv=None):
     if args.lock:
         try:
             with eng._Lock(args.lock):
-                ok, failed = _run(args)
+                ok, failed, failed_404 = _run(args)
         except RuntimeError as e:
             print(f'snapshot: {e}', flush=True)
             sys.exit(75)  # EX_TEMPFAIL — cron will retry
     else:
-        ok, failed = _run(args)
+        ok, failed, failed_404 = _run(args)
     stats = eng.fetch_stats('jjwxc')
-    print(f'snapshot: {ok} ok (direct={stats["direct_ok"]} proxy_rescued={stats["proxy_rescued"]}), {failed} failed -> {args.output}', flush=True)
-    sys.exit(1 if failed else 0)
+    failed_other = failed - failed_404
+    print(f'snapshot: {ok} ok (direct={stats["direct_ok"]} proxy_rescued={stats["proxy_rescued"]}), '
+          f'{failed} failed (404={failed_404} other={failed_other}) -> {args.output}', flush=True)
+    sys.exit(1 if failed_other else 0)
 
 
 if __name__ == '__main__':
